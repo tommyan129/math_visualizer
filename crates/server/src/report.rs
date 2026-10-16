@@ -2,7 +2,7 @@
 //! the server did on its own; never an echo of the request (design.md "MCP tool").
 
 use dsl::interp::{Note, ObjKind, fmt_num};
-use dsl::state::{BASE_STYLES, Constant, DEFAULT_SCENE, Highlight, Request, State};
+use dsl::state::{BASE_STYLES, Constant, Highlight, NoteSeg, Request, Scene, State};
 use model::protocol::{ReqStatus, ReqView, ViewBox, Warning};
 
 use crate::engine::{ApplyError, ApplyOk, KeyError, RequestsOut, WorkspaceView};
@@ -16,7 +16,7 @@ pub enum Browser {
     /// Connected but no answer in time.
     Timeout,
     Rendered { warnings: Vec<Warning> },
-    View { scene: String, view: ViewBox, warnings: Vec<Warning> },
+    View { view: ViewBox, warnings: Vec<Warning> },
 }
 
 pub fn key_error(e: &KeyError) -> String {
@@ -125,26 +125,112 @@ pub fn apply_lines(ok: &ApplyOk) -> Vec<String> {
                 }
             }
             Note::RequestAdded { number } => format!("요청사항 #{number} 추가"),
+            Note::SceneCreated { key } => format!("추가: {}", scene_line(s, key)),
+            Note::SceneModified { key } => format!("수정: {}", scene_line(s, key)),
+            Note::SceneUnchanged { key } => format!("변경 없음: scene({key})"),
+            Note::SceneDeleted { key } => format!("삭제: scene({key})"),
+            Note::DefaultSceneCreated { key } => format!("자동: 기본 scene({key}) 생성"),
+            Note::DefaultSceneRemoved { key } => format!("자동: 기본 scene({key}) 제거 (그 좌표계의 함수가 없음)"),
+            Note::SceneRefRemoved { scene, target, place } => format!("자동: scene({scene})의 {place}에서 {target} 뺌 (scene은 남음)"),
         });
     }
     lines
 }
 
-fn view_text(v: &ViewBox) -> String {
-    format!("{} <= x <= {} and {} <= y <= {}", fmt_num(v.x_min), fmt_num(v.x_max), fmt_num(v.y_min), fmt_num(v.y_max))
+/// `scene(1) · 2D(x, y) · step 2개`
+fn scene_line(s: &State, key: &str) -> String {
+    match s.scenes.get(key) {
+        Some(sc) => {
+            let system = dsl::state::system_key(&sc.axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>());
+            format!("scene({key}) · {system} · step {}개", sc.step_count())
+        }
+        None => format!("scene({key})"),
+    }
+}
+
+fn view_text(v: &ViewBox, axes: (&str, &str)) -> String {
+    format!("{} <= {} <= {} and {} <= {} <= {}", fmt_num(v.x_min), axes.0, fmt_num(v.x_max), fmt_num(v.y_min), axes.1, fmt_num(v.y_max))
+}
+
+/// Note blocks of a step as text: `{f}` as its definition, math in DSL notation.
+fn note_text(s: &State, sc: &Scene, step: usize) -> Option<String> {
+    let st = sc.steps.get(step)?;
+    if st.note.is_empty() {
+        return None;
+    }
+    let blocks: Vec<String> = st
+        .note
+        .iter()
+        .map(|b| {
+            b.segs
+                .iter()
+                .map(|g| match g {
+                    NoteSeg::Text { text } => text.clone(),
+                    NoteSeg::Tex { tex } => format!("${tex}$"),
+                    NoteSeg::Math { expr } => format!("{{{}}}", dsl::print::expr_dsl(expr)),
+                    NoteSeg::Def { function } => format!("{{{}}}", s.functions.get(function).map_or(function.clone(), |f| f.source())),
+                })
+                .collect()
+        })
+        .collect();
+    Some(blocks.join(" / "))
 }
 
 pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
     let s: &State = &w.state;
     let mut lines = vec![format!("작업 공간: {} · rev {}", w.info.name, w.info.revision)];
-    match browser {
-        Browser::View { scene, view, .. } => {
-            lines.push(format!("scene: {scene}"));
-            lines.push(format!("view: {}", view_text(view)));
-        }
-        _ => lines.push(format!("scene: {DEFAULT_SCENE} (기본)")),
+    let step = w.nav.step as usize;
+    let cur = w.nav.scene.as_ref().and_then(|k| s.scenes.get(k));
+    match cur {
+        None => lines.push("scene: 없음 (정의가 생기면 기본 scene이 만들어짐)".into()),
+        Some(sc) if sc.is_default() => lines.push(format!("scene: {} (기본)", sc.label())),
+        Some(sc) => lines.push(format!("scene: {} · step {step}/{}", sc.label(), sc.step_count())),
     }
-    let hidden = s.scenes.get(DEFAULT_SCENE).map(|sc| sc.hidden.clone()).unwrap_or_default();
+    if let (Browser::View { view, .. }, Some(sc)) = (browser, cur)
+        && sc.axes.len() == 2
+    {
+        lines.push(format!("view: {}", view_text(view, (&sc.axes[0].key, &sc.axes[1].key))));
+    }
+    if let Some(sc) = cur {
+        match (&sc.user_clip, &sc.clip) {
+            (Some(u), _) => lines.push(format!("clip: {} (사용자 조정, Claude 값 {})", u.src, sc.clip.as_ref().map_or("없음", |c| c.src.as_str()))),
+            (None, Some(c)) => lines.push(format!("clip: {}", c.src)),
+            _ => {}
+        }
+        if let Some(n) = note_text(s, sc, step) {
+            lines.push(format!("note: {n}"));
+        }
+    }
+    let mut others: Vec<&Scene> = s.scenes.values().filter(|o| Some(&o.key) != w.nav.scene.as_ref()).collect();
+    others.sort_by_key(|o| (o.number.is_some(), o.number, o.order));
+    if !others.is_empty() {
+        let items: Vec<String> = others
+            .iter()
+            .map(|o| {
+                let mut t = if o.is_default() { format!("{} (기본)", o.label()) } else { format!("{} (step {}개)", o.label(), o.step_count()) };
+                if w.nav.updated.contains(&o.key) {
+                    t.push_str(" 갱신됨");
+                }
+                t
+            })
+            .collect();
+        lines.push(format!("다른 scene: {}", items.join(", ")));
+    }
+    let mark = |key: &str| -> String {
+        let Some(sc) = cur else { return String::new() };
+        if !sc.members.iter().any(|m| m == key) {
+            let system = match (s.function_system(key), s.highlights.get(key)) {
+                (Some(sys), _) => sys,
+                (None, Some(h)) => h.axes.join(", "),
+                _ => String::new(),
+            };
+            return format!(" [다른 좌표계 {system}]");
+        }
+        if sc.steps.get(step).is_some_and(|st| st.concealed.iter().any(|c| c == key)) {
+            return " [공개 전]".into();
+        }
+        if sc.visible(key, step) { String::new() } else { " [꺼짐]".into() }
+    };
     let mut fs: Vec<_> = s.functions.values().collect();
     fs.sort_by_key(|f| f.order);
     if fs.is_empty() {
@@ -152,8 +238,7 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
     } else {
         lines.push("정의:".into());
         for f in fs {
-            let off = if hidden.contains(&f.key) { " [꺼짐]" } else { "" };
-            lines.push(format!("  {}{off}", f.source()));
+            lines.push(format!("  {}{}", f.source(), mark(&f.key)));
         }
     }
     let mut hs: Vec<_> = s.highlights.values().collect();
@@ -161,8 +246,7 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
     if !hs.is_empty() {
         lines.push("강조:".into());
         for h in hs {
-            let off = if hidden.contains(&h.key) { " [꺼짐]" } else { "" };
-            lines.push(format!("  {}{off}", highlight_text(h)));
+            lines.push(format!("  {}{}", highlight_text(h), mark(&h.key)));
         }
     }
     let mut cs: Vec<_> = s.constants.values().collect();
@@ -272,18 +356,45 @@ mod tests {
         assert!(text.contains("삭제: f\n삭제: g (f 삭제로 함께)\n자동: 상수 a 제거 (쓰는 함수 없음)"), "{text}");
     }
 
+    fn view_of(state: State, scene: &str, step: u32) -> WorkspaceView {
+        WorkspaceView {
+            info: WorkspaceInfo { id: "w1".into(), name: "calc".into(), has_key: true, revision: 1, updated_at: 0 },
+            state,
+            nav: model::protocol::Nav { scene: Some(scene.into()), step, updated: vec![] },
+        }
+    }
+
     #[test]
     fn state_text_uses_dsl_notation() {
         let (state, _) = applied(&["define:\n    f(x; n) -> y: sum(x^k; 0 <= k <= n)\n"]);
-        let w = WorkspaceView { info: WorkspaceInfo { id: "w1".into(), name: "calc".into(), has_key: true, revision: 1, updated_at: 0 }, state };
+        let w = view_of(state, "2D(x, y)", 0);
         let b = Browser::View {
-            scene: DEFAULT_SCENE.into(),
             view: ViewBox { x_min: -10.0, x_max: 10.0, y_min: -6.25, y_max: 6.25 },
             warnings: vec![Warning { source: Some("f".into()), code: "W-sum-terms".into(), message: "항이 너무 많은 점은 그리지 않음".into() }],
         };
         assert_eq!(
             state_text(&w, &b),
-            "작업 공간: calc · rev 1\nscene: 2D(x, y)\nview: -10 <= x <= 10 and -6.25 <= y <= 6.25\n정의:\n  f(x; n) -> y: sum(x^k; 0 <= k <= n)\n상수: n = 5 (정수, 0..20)\n브라우저: 경고 1개\n  f: 항이 너무 많은 점은 그리지 않음 [W-sum-terms]"
+            "작업 공간: calc · rev 1\nscene: scene(2D(x, y)) (기본)\nview: -10 <= x <= 10 and -6.25 <= y <= 6.25\n정의:\n  f(x; n) -> y: sum(x^k; 0 <= k <= n)\n상수: n = 5 (정수, 0..20)\n브라우저: 경고 1개\n  f: 항이 너무 많은 점은 그리지 않음 [W-sum-terms]"
         );
+    }
+
+    #[test]
+    fn scene_text() {
+        let (state, notes) = applied(&[
+            "define:\n    f(x; a) -> y: a*x\n    g(t) -> y: t\nH1 = highlight(f; 0 <= x <= 1)\n",
+            "scene(1):\n    space: 2D(x, y)\n    show: f\n    hide: H1\n    clip: -2 <= x <= 2\n    step:\n        show: +H1\n        note: \"{f} 아래 넓이 $\\int$\"\n",
+        ]);
+        let ok = ApplyOk { workspace: "w1".into(), revision: 2, notes, state: state.clone() };
+        assert_eq!(apply_lines(&ok)[1], "추가: scene(1) · 2D(x, y) · step 1개");
+        let w = view_of(state.clone(), "1", 0);
+        let t = state_text(&w, &Browser::NotConnected);
+        assert!(t.contains("scene: scene(1) · step 0/1\nclip: -2 <= x <= 2\n다른 scene: scene(2D(x, y)) (기본), scene(2D(t, y)) (기본)"), "{t}");
+        assert!(t.contains("  g(t) -> y: t [다른 좌표계 2D(t, y)]"), "{t}");
+        assert!(t.contains("H1 = highlight(f; 0 <= x <= 1) · 자동 색 green [공개 전]"), "{t}");
+        let t = state_text(&view_of(state.clone(), "1", 1), &Browser::NotConnected);
+        assert!(t.contains("note: {f(x; a) -> y: a*x} 아래 넓이 $\\int$"), "{t}");
+        let (_, notes) = applied(&["define:\n    g(t) -> y: t\n", "del g\n"]);
+        let ok = ApplyOk { workspace: "w1".into(), revision: 2, notes, state };
+        assert!(apply_lines(&ok).contains(&"자동: 기본 scene(2D(t, y)) 제거 (그 좌표계의 함수가 없음)".to_string()));
     }
 }

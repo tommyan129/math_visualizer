@@ -161,3 +161,31 @@ input { font-family: inherit; }
 .req .st.gone { color: var(--error); }
 .req.done code { color: var(--text-3); text-decoration: line-through; }
 .req input { accent-color: var(--text-1); }
+
+/* ----- stage 3: scenes, steps, notes, clip, splitters ----- */
+.plot-canvas.snap { cursor: crosshair; }
+.stab .updated { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
+.stepbar { flex: 0 0 auto; max-height: 45vh; min-height: 44px; display: flex; align-items: flex-start; gap: 12px; padding: 8px 10px; border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+.stepnav { flex: none; display: flex; align-items: center; gap: 2px; background: var(--card); border-radius: 999px; padding: 3px; }
+.stepnav .iconbtn.round { border-radius: 999px; }
+.stepnav .iconbtn[disabled] { opacity: 0.35; cursor: default; }
+.step-count { font-size: 13px; font-weight: 500; color: var(--text-1); min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
+.note { flex: 1; min-width: 0; height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; scrollbar-width: thin; scrollbar-color: var(--selected) transparent; }
+.note-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; line-height: 1.5; }
+.note-text { font-size: 15px; color: var(--text-15); white-space: pre-wrap; }
+.note-math { font-size: 17px; color: var(--text-1); display: inline-flex; align-items: center; }
+.note-empty { font-size: 13px; color: var(--text-3); }
+.clip-box { display: flex; align-items: center; gap: 4px; padding: 2px 4px; }
+.clip-input { flex: 1; min-width: 0; background: var(--card); border: 0; border-radius: 12px; color: var(--text-15); font: 13px "JetBrains Mono", monospace; padding: 10px 12px; outline: none; }
+.clip-input:focus { box-shadow: 0 0 0 2px var(--text-3); }
+.panel > .err { font-size: 12px; color: var(--error); padding: 4px 12px; white-space: pre-wrap; }
+.scene-warn { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 0; }
+.scene-warn .warning { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--warn); }
+.hint.others { font-size: 12px; color: var(--text-3); padding: 2px 12px 6px; }
+.split { flex: none; position: relative; z-index: 2; touch-action: none; outline: none; }
+.split-x { width: var(--gap); margin: 0 calc(-1 * var(--gap)); cursor: col-resize; }
+.split-y { height: var(--gap); margin: calc(-1 * var(--gap)) 0; cursor: row-resize; }
+.split::after { content: ""; position: absolute; border-radius: 2px; background: transparent; transition: background .15s; }
+.split-x::after { top: 30%; bottom: 30%; left: 3px; width: 2px; }
+.split-y::after { left: 30%; right: 30%; top: 3px; height: 2px; }
+.split:hover::after, .split.active::after, .split:focus-visible::after { background: var(--text-3); }

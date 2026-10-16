@@ -34,6 +34,12 @@ export interface CodegenEnv {
   constIndex: Map<string, number>;
   /** User function key → index in `F`. */
   fnIndex: Map<string, number>;
+  /**
+   * Regions: the scene's horizontal and vertical axis names (`["t", "y"]`), mapped to
+   * the `x` and `y` parameters. Default `["x", "y"]`. `null` in a function body, whose
+   * single input is always `x`.
+   */
+  axes?: [string, string] | null;
 }
 
 const BUILTIN_1 = new Set([
@@ -149,9 +155,12 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
       return num(e.text);
     case "Name":
       switch (e.kind) {
-        case "Input":
-          // Range slots of targetless highlights use both axes.
-          return e.name.key === "y" ? "y" : "x";
+        case "Input": {
+          // Regions use both axes of the scene; a function body has one input.
+          if (env.axes === null) return "x";
+          const [, v] = env.axes ?? ["x", "y"];
+          return e.name.key === v ? "y" : "x";
+        }
         case "Index": {
           const i = indices.lastIndexOf(e.name.key);
           if (i < 0) throw new CodegenError("unbound index");
@@ -231,7 +240,13 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
 
 const CMP = { Lt: "<", Le: "<=", Gt: ">", Ge: ">=", Eq: "===" } as const;
 
-/** Compiles a resolved inequality region (highlight range slot). */
+/** Compiles a constant-free scalar expression (view bounds). */
+export function compileConst(e: Expr, R: Runtime): () => number {
+  const src = `"use strict";\nreturn () => ${expr(e, { constIndex: new Map(), fnIndex: new Map() })};`;
+  return new Function("R", "F", src)(R, []) as () => number;
+}
+
+/** Compiles a resolved inequality region (highlight range slot, clip). */
 export function compileRegion(e: Expr, env: CodegenEnv, R: Runtime, F: Scalar[]): Region {
   const src = `"use strict";\nreturn (x, y, C) => ${expr(e, env)};`;
   return new Function("R", "F", src)(R, F) as Region;
@@ -242,7 +257,7 @@ export function compileRegion(e: Expr, env: CodegenEnv, R: Runtime, F: Scalar[])
  * calls resolve through it at run time, so compile order does not matter.
  */
 export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], discreteCallee: boolean): Compiled {
-  const e = expr(spec.body, env);
+  const e = expr(spec.body, { ...env, axes: null });
   const src =
     `"use strict";\n` +
     `return {\n` +

@@ -46,7 +46,7 @@ function lines(id: string, style: number, layer: 0 | 2, segs: number[]): Batch {
 }
 
 /** Grid lines are built in screen space around a world origin at the view center. */
-export function buildSpace(view: View): Batch[] {
+export function buildSpace(view: View, axisTex: [string, string] = ["x", "y"]): Batch[] {
   const { major, minor, decimals } = gridStep(view.scale);
   const b = view.box();
   const ox = view.cx, oy = view.cy;
@@ -140,12 +140,12 @@ export function buildSpace(view: View): Batch[] {
   const namePlace: LabelPlacement[] = [];
   if (b.y_min <= 0 && 0 <= b.y_max) {
     names.push(b.x_max - 14 * px - ox, -oy);
-    nameLabels.push({ kind: "tex", tex: "x", px: 22 });
+    nameLabels.push({ kind: "tex", tex: axisTex[0], px: 22 });
     namePlace.push({ align: "right", baseline: "bottom", dx: 0, dy: -8, halo: true });
   }
   if (b.x_min <= 0 && 0 <= b.x_max) {
     names.push(-ox, b.y_max - 10 * px - oy);
-    nameLabels.push({ kind: "tex", tex: "y", px: 22 });
+    nameLabels.push({ kind: "tex", tex: axisTex[1], px: 22 });
     namePlace.push({ align: "left", baseline: "top", dx: 14, dy: 0, halo: true });
   }
   out.push({

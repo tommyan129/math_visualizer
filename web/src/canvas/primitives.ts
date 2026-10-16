@@ -41,6 +41,19 @@ interface BatchBase {
   style: number;
   origin: [number, number, number];
   dim: 2 | 3;
+  /** Drawn only inside the scene clip (definitions; not the grid, labels or hover). */
+  clip?: boolean;
+}
+
+/** Scene clip as a world-space alpha mask (1 = inside). */
+export interface ClipMask {
+  id: string;
+  /** World rectangle the mask covers; outside it everything is clipped. */
+  rect: { x0: number; x1: number; y0: number; y1: number };
+  width: number;
+  height: number;
+  /** RGBA, opaque where inside. */
+  pixels: Uint8ClampedArray;
 }
 
 export const POINT_NORMAL = 0;

@@ -3,4 +3,4 @@
 /**
  * Browser-side operations, logged in the same sequence as requests.
  */
-export type UserOp = { "type": "Toggle", scene: string, target: string, visible: boolean, } | { "type": "SetValue", constant: string, value: number, } | { "type": "SetRange", constant: string, min: number, max: number, } | { "type": "SetRequestDone", number: number, done: boolean, };
+export type UserOp = { "type": "Toggle", scene: string, target: string, visible: boolean, } | { "type": "SetValue", constant: string, value: number, } | { "type": "SetRange", constant: string, min: number, max: number, } | { "type": "SetRequestDone", number: number, done: boolean, } | { "type": "SetClip", scene: string, src: string | null, };

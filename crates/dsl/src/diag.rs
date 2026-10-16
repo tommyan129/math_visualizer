@@ -54,6 +54,17 @@ pub mod code {
     pub const ADDRESS_AMBIGUOUS: &str = "E-address-ambiguous";
     pub const ADDRESS_SIGN: &str = "E-address-sign";
     pub const ADDRESS_PART: &str = "E-address-part";
+    // stage 3
+    /// Scene block structure (missing space, step outside a scene, default scene by name).
+    pub const SCENE: &str = "E-scene";
+    pub const SCENE_FIELD: &str = "E-scene-field";
+    /// A definition whose axes do not match the scene's coordinate system.
+    pub const PLACEMENT: &str = "E-placement";
+    /// `set` / `animate` values.
+    pub const STEP: &str = "E-step";
+    pub const NOTE: &str = "E-note";
+    /// `view` shape, or view and clip that never overlap.
+    pub const VIEW: &str = "E-view";
     /// Syntax of a later stage.
     pub const UNSUPPORTED: &str = "E-unsupported";
 }

@@ -20,6 +20,7 @@ fn status(req: &Request, entries: &[StoredEntry], state: &State) -> ReqStatus {
     let (key, is_function) = match &req.target {
         ReqTarget::Function { function } | ReqTarget::Sub { function, .. } => (function.as_str(), true),
         ReqTarget::Highlight { highlight } => (highlight.as_str(), false),
+        ReqTarget::Scene { scene, .. } => return scene_status(req, scene, entries, state),
     };
     let mut deps: BTreeSet<String> = req.deps.iter().cloned().collect();
     let mut modified: Option<(u64, Option<String>)> = None;
@@ -62,8 +63,37 @@ fn status(req: &Request, entries: &[StoredEntry], state: &State) -> ReqStatus {
     }
 }
 
+/// A scene changes when its definition changes (`defined` is that row's sequence);
+/// user toggles and navigation do not count.
+fn scene_status(req: &Request, key: &str, entries: &[StoredEntry], state: &State) -> ReqStatus {
+    let mut modified = None;
+    let mut deleted = None;
+    for e in entries.iter().filter(|e| e.seq > req.seq) {
+        for c in &e.result.changes {
+            match c {
+                Change::PutScene { scene } if scene.key == key && scene.defined == e.seq => modified = Some(e.seq),
+                Change::RemoveScene { key: k } if k == key => {
+                    let cause = e.result.notes.iter().any(|n| matches!(n, Note::DefaultSceneRemoved { key: k } if k == key)).then(|| "그 좌표계의 함수가 모두 지워져".to_string());
+                    deleted = Some((e.seq, cause));
+                }
+                _ => {}
+            }
+        }
+    }
+    let Some(sc) = state.scenes.get(key) else {
+        let (seq, cause) = deleted.unwrap_or((req.seq, None));
+        return ReqStatus::Deleted { seq, cause };
+    };
+    let current = if sc.src.is_empty() { sc.label() } else { sc.src.clone() };
+    match (modified, deleted) {
+        (Some(seq), _) | (None, Some((seq, _))) => ReqStatus::Modified { seq, current, via: None },
+        (None, None) => ReqStatus::Unchanged {},
+    }
+}
+
 fn current(req: &Request, state: &State) -> String {
     match &req.target {
+        ReqTarget::Scene { scene, .. } => state.scenes.get(scene).map(|s| s.src.clone()).unwrap_or_default(),
         ReqTarget::Function { function } | ReqTarget::Sub { function, .. } => state.functions.get(function).map(|f| f.source()).unwrap_or_default(),
         ReqTarget::Highlight { highlight } => state.highlights.get(highlight).map(|h| format!("{} = {}", h.key, h.src)).unwrap_or_default(),
     }
@@ -107,6 +137,21 @@ mod tests {
     }
 
     const FG: &str = "define:\n    f(x; a) -> y: a*x\n    g(x; a) -> y: f(x) + 1\n";
+
+    #[test]
+    fn scene_targets() {
+        const SC: &str = "scene(1):\n    space: 2D(x, y)\n    show: f\n    step:\n        show: +g\n";
+        assert_eq!(statuses(&[FG, SC, "req(scene(1).step(1))\n"]), [ReqStatus::Unchanged {}]);
+        let changed = statuses(&[FG, SC, "req(scene(1).step(1))\n", &SC.replace("+g", "-f")]);
+        assert!(matches!(&changed[0], ReqStatus::Modified { seq: 4, current, .. } if current.contains("-f")), "{changed:?}");
+        // A cascade inside the scene counts as a change; the scene stays.
+        assert!(matches!(statuses(&[FG, SC, "req(scene(1))\n", "del g\n"])[0], ReqStatus::Modified { seq: 4, .. }));
+        assert_eq!(statuses(&[FG, SC, "req(scene(1))\n", "del scene(1)\n"]), [ReqStatus::Deleted { seq: 4, cause: None }]);
+        assert_eq!(
+            statuses(&[FG, "req(scene(2D(x, y)))\n", "del f\n"]),
+            [ReqStatus::Deleted { seq: 3, cause: Some("그 좌표계의 함수가 모두 지워져".into()) }]
+        );
+    }
 
     #[test]
     fn unchanged_modified_deleted() {

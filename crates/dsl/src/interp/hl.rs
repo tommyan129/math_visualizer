@@ -40,11 +40,12 @@ struct HlResolved {
     memo: Option<String>,
     consts: Vec<String>,
     deps: Vec<String>,
+    axes: Vec<String>,
 }
 
 const PARTS: &str = ".coef .var .num .den .exp .base .arg";
 
-fn unparen(e: &Expr) -> &Expr {
+pub(super) fn unparen(e: &Expr) -> &Expr {
     match &e.kind {
         ExprKind::Paren { inner } => unparen(inner),
         _ => e,
@@ -130,7 +131,7 @@ fn candidates<'f>(e: &'f Expr, as_term_expr: bool, out: &mut Vec<Cursor<'f>>) {
     }
 }
 
-fn set_spans(e: &mut Expr, span: Span) {
+pub(super) fn set_spans(e: &mut Expr, span: Span) {
     e.span = span;
     for c in e.children_mut() {
         set_spans(c, span);
@@ -152,7 +153,7 @@ pub fn unescape(raw: &str) -> String {
 }
 
 /// A number literal, optionally negated or parenthesized. The server never evaluates expressions.
-fn literal(e: &Expr) -> Option<f64> {
+pub(super) fn literal(e: &Expr) -> Option<f64> {
     match &e.kind {
         ExprKind::Num { text, .. } => text.parse().ok(),
         ExprKind::Neg { arg } => literal(arg).map(|v| -v),
@@ -171,7 +172,7 @@ fn is_hex_color(s: &str) -> bool {
 }
 
 impl<'s> Cx<'s> {
-    fn text(&self, span: Span) -> &'s str {
+    pub(super) fn text(&self, span: Span) -> &'s str {
         &self.src[span.range()]
     }
 
@@ -185,7 +186,7 @@ impl<'s> Cx<'s> {
             Some(format!("'{key}'는 기본 이름이라 쓸 수 없음"))
         } else if is_reserved(name) {
             Some(format!("'{key}'는 예약어라 이름으로 쓸 수 없음"))
-        } else if matches!(key.as_str(), "x" | "y") {
+        } else if matches!(key.as_str(), "x" | "y") || self.axis_names().contains(key) {
             Some(format!("'{key}'는 좌표축 이름이라 쓸 수 없음"))
         } else if self.failed.contains(key) {
             return false;
@@ -409,11 +410,12 @@ impl<'s> Cx<'s> {
 
     /// Every name in a variable value must exist as an axis, constant, variable, function or builtin.
     fn loose_check(&mut self, e: &Expr) {
+        let axes = self.axis_names();
         let mut bad: Vec<(String, Span, bool)> = vec![];
         e.walk(&mut |n| match &n.kind {
             ExprKind::Name { name, .. } => {
                 let k = &name.key;
-                let known = matches!(k.as_str(), "x" | "y") || is_reserved(name) || self.state.constants.contains_key(k) || self.state.vars.contains_key(k);
+                let known = matches!(k.as_str(), "x" | "y") || axes.contains(k) || is_reserved(name) || self.state.constants.contains_key(k) || self.state.vars.contains_key(k);
                 if !known && !is_bad_tex(name) && !bad.iter().any(|(b, _, _)| b == k) {
                     bad.push((k.clone(), n.span, false));
                 }
@@ -434,14 +436,14 @@ impl<'s> Cx<'s> {
             } else if call {
                 self.err(span, code::UNDECLARED, format!("함수 '{k}'가 정의되지 않음"));
             } else {
-                self.err(span, code::UNDECLARED, format!("'{k}'가 선언되지 않음 (변수 값에는 축 x, y, 상수, 변수, 함수 호출을 씀)"));
+                self.err(span, code::UNDECLARED, format!("'{k}'가 선언되지 않음 (변수 값에는 좌표축 이름, 상수, 변수, 함수 호출을 씀)"));
             }
         }
     }
 
     /// Substitutes user variables (by reference: their current value) and expands
     /// `between(f, g)`. Spans of substituted nodes point at the use site.
-    fn expand(&mut self, e: &mut Expr, deps: &mut BTreeSet<String>, stack: &mut Vec<String>, grid: bool) {
+    pub(super) fn expand(&mut self, e: &mut Expr, deps: &mut BTreeSet<String>, stack: &mut Vec<String>, grid: bool) {
         if !self.tick() {
             return;
         }
@@ -479,12 +481,19 @@ impl<'s> Cx<'s> {
                     self.err_s(span, code::RANGE, "between은 대상 없는 highlight의 범위 칸에서만 쓸 수 있음", "H1 = highlight(; between(f, g))");
                     return;
                 }
-                let node = |kind| Expr { id: 0, ty: Ty::Unknown, span, kind };
-                let name = |k: &str| node(ExprKind::Name { name: Ident::plain(k), kind: NameKind::Unresolved });
-                let call = |f: &Ident| node(ExprKind::Call { callee: f.clone(), kind: NameKind::Unresolved, args: vec![name("x")] });
                 let (f, g) = (fs[0].clone().unwrap(), fs[1].clone().unwrap());
+                let (sf, sg) = (self.state.function_system(&f.key), self.state.function_system(&g.key));
+                if sf != sg {
+                    self.err_s(span, code::PLACEMENT, format!("between의 두 함수가 다른 좌표계임 ({}, {})", sf.unwrap_or_default(), sg.unwrap_or_default()), "같은 입력·출력 축의 함수 두 개");
+                    return;
+                }
+                let func = &self.state.functions[&f.key];
+                let (input, output) = (func.inputs[0].clone(), func.output.clone());
+                let node = |kind| Expr { id: 0, ty: Ty::Unknown, span, kind };
+                let name = |k: &Ident| node(ExprKind::Name { name: k.clone(), kind: NameKind::Unresolved });
+                let call = |f: &Ident| node(ExprKind::Call { callee: f.clone(), kind: NameKind::Unresolved, args: vec![name(&input)] });
                 let chain = |a: &Ident, b: &Ident| {
-                    node(ExprKind::Compare { first: Box::new(call(a)), rest: vec![CompareLink { op: CmpOp::Lt, rhs: name("y") }, CompareLink { op: CmpOp::Lt, rhs: call(b) }] })
+                    node(ExprKind::Compare { first: Box::new(call(a)), rest: vec![CompareLink { op: CmpOp::Lt, rhs: name(&output) }, CompareLink { op: CmpOp::Lt, rhs: call(b) }] })
                 };
                 *e = node(ExprKind::Paren { inner: Box::new(node(ExprKind::Or { args: vec![chain(&f, &g), chain(&g, &f)] })) });
                 return;
@@ -497,7 +506,7 @@ impl<'s> Cx<'s> {
     }
 
     /// Expands and resolves a range slot over `axes`. Returns the resolved region and what it used.
-    fn resolve_range(&mut self, e: &Expr, axes: &[&str], grid: bool, deps: &mut BTreeSet<String>, consts: &mut BTreeSet<String>) -> Option<Expr> {
+    pub(super) fn resolve_range(&mut self, e: &Expr, axes: &[&str], grid: bool, deps: &mut BTreeSet<String>, consts: &mut BTreeSet<String>) -> Option<Expr> {
         let before = self.diags.len();
         let mut r = e.clone();
         self.expand(&mut r, deps, &mut vec![], grid);
@@ -747,6 +756,7 @@ impl<'s> Cx<'s> {
             memo: r.memo,
             consts: r.consts,
             deps: r.deps,
+            axes: r.axes,
             source,
             src: self.text(slots.span).to_string(),
             auto_color,
@@ -761,12 +771,6 @@ impl<'s> Cx<'s> {
             a == b
         });
         self.note_put(ObjKind::Highlight, &key, same);
-        if old.is_none() {
-            // Stage 2: a new highlight starts visible in the default scene.
-            for s in self.state.scenes.values_mut() {
-                s.hidden.retain(|k| k != &key);
-            }
-        }
         self.state.highlights.insert(key, h);
     }
 
@@ -806,15 +810,45 @@ impl<'s> Cx<'s> {
                 return None;
             }
             (_, None) => None,
-            (HlTarget::Grid {}, Some(r)) => Some(self.resolve_range(r, &["x", "y"], true, &mut deps, &mut consts)?),
+            (HlTarget::Grid {}, Some(r)) => {
+                let all = self.axis_names();
+                let all: Vec<&str> = all.iter().map(|s| s.as_str()).collect();
+                Some(self.resolve_range(r, &all, true, &mut deps, &mut consts)?)
+            }
             (HlTarget::Function { function }, Some(r)) => {
                 let input = self.state.functions[function].inputs[0].key.clone();
                 Some(self.resolve_range(r, &[input.as_str()], false, &mut deps, &mut consts)?)
             }
         };
-        if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &target {
-            deps.insert(function.clone());
-            consts.extend(self.state.functions[function].consts.iter().cloned());
+        let axes = match &target {
+            HlTarget::Function { function } | HlTarget::Sub { function, .. } => {
+                deps.insert(function.clone());
+                let f = &self.state.functions[function];
+                consts.extend(f.consts.iter().cloned());
+                vec![f.inputs[0].key.clone(), f.output.key.clone()]
+            }
+            HlTarget::Grid {} => {
+                let mut used = vec![];
+                if let Some(r) = &range {
+                    r.walk(&mut |n| {
+                        if let ExprKind::Name { name, kind: NameKind::Input } = &n.kind
+                            && !used.contains(&name.key)
+                        {
+                            used.push(name.key.clone());
+                        }
+                    });
+                }
+                used
+            }
+        };
+        let fits_some = || {
+            let mut systems: Vec<[String; 2]> = vec![["x".into(), "y".into()]];
+            systems.extend(self.state.functions.values().map(|f| [f.inputs[0].key.clone(), f.output.key.clone()]));
+            systems.iter().any(|s| axes.iter().all(|a| s.contains(a)))
+        };
+        if axes.len() > 2 || !fits_some() {
+            self.err_s(src.range.as_ref().map_or(at, |r| r.span), code::PLACEMENT, format!("범위에 쓴 좌표축 {}이 한 좌표계에 속하지 않음", axes.join(", ")), "x, y만 쓰거나 t, y만 쓰기");
+            return None;
         }
         let default_fill = if matches!(target, HlTarget::Grid {}) { Fill::Region } else { Fill::Axis };
         let mut style = HlStyle { color: auto_color.to_string(), fill: default_fill, opacity: DEFAULT_OPACITY, width: DEFAULT_WIDTH };
@@ -860,7 +894,7 @@ impl<'s> Cx<'s> {
         if self.diags.len() > before {
             return None;
         }
-        Some(HlResolved { target, range, style, style_name, memo, consts: consts.into_iter().collect(), deps: deps.into_iter().collect() })
+        Some(HlResolved { target, range, style, style_name, memo, consts: consts.into_iter().collect(), deps: deps.into_iter().collect(), axes })
     }
 
     /// Re-resolves every highlight against the state after this request. One that no
@@ -888,6 +922,7 @@ impl<'s> Cx<'s> {
                     e.memo = r.memo;
                     e.consts = r.consts;
                     e.deps = r.deps;
+                    e.axes = r.axes;
                 }
                 _ => {
                     self.state.highlights.remove(&h.key);
@@ -908,17 +943,20 @@ impl<'s> Cx<'s> {
 
     // ----- req -----------------------------------------------------------
 
-    pub(super) fn req(&mut self, slots: &Slots, span: Span) {
+    pub(super) fn req(&mut self, slots: &Slots, scene: Option<&ReqScene>, span: Span) {
         let before = self.diags.len();
         if slots.items.len() > 3 {
             self.err_s(slots.spans[3], code::SLOTS, "req 칸은 셋까지 (대상; 범위; memo)", "req(f; 0.9 < x < 1.1; \"설명\")");
             return;
         }
+        let mut deps = BTreeSet::new();
+        if let Some((r, step, at)) = scene {
+            return self.req_scene(r, *step, *at, slots, span);
+        }
         let Some(t) = slots.get(0) else {
             self.err_s(slots.spans[0], code::SLOTS, "req에는 대상이 필요함", "req(f)");
             return;
         };
-        let mut deps = BTreeSet::new();
         let (target, target_src, function) = match &t.kind {
             ExprKind::Name { name, .. } if self.state.functions.contains_key(&name.key) => {
                 let f = &self.state.functions[&name.key];
@@ -957,7 +995,9 @@ impl<'s> Cx<'s> {
                 }
             }
         }
-        let axes: &[&str] = &["x", "y"];
+        let fa = function.as_ref().and_then(|f| self.state.functions.get(f)).map(|f| [f.inputs[0].key.clone(), f.output.key.clone()]);
+        let fa = fa.unwrap_or_else(|| ["x".to_string(), "y".to_string()]);
+        let axes: &[&str] = &[fa[0].as_str(), fa[1].as_str()];
         let range = match slots.get(1) {
             None => None,
             Some(r) => {
@@ -980,11 +1020,60 @@ impl<'s> Cx<'s> {
         if self.diags.len() > before {
             return;
         }
+        self.push_request(target, range, memo, target_src, deps.into_iter().collect(), span);
+    }
+
+    fn push_request(&mut self, target: ReqTarget, range: Option<String>, memo: Option<String>, target_src: String, deps: Vec<String>, span: Span) {
         self.state.counters.next_request += 1;
         let number = self.state.counters.next_request;
-        let request = Request { number, target, range, memo, src: self.text(span).to_string(), target_src, deps: deps.into_iter().collect(), seq: self.seq, done: false, version: 0 };
+        let request = Request { number, target, range, memo, src: self.text(span).to_string(), target_src, deps, seq: self.seq, done: false, version: 0 };
         self.state.requests.insert(number, request);
         self.notes.push(Note::RequestAdded { number });
+    }
+
+    /// `req(scene(1).step(3);; memo)`: no range on a scene target.
+    fn req_scene(&mut self, r: &SceneRef, step: Option<(u32, Span)>, at: Span, slots: &Slots, span: Span) {
+        let key = match r {
+            SceneRef::Number(n) => n.to_string(),
+            SceneRef::System(sp) => sp.key(),
+        };
+        let Some(sc) = self.state.scenes.get(&key) else {
+            self.err(at, code::UNDECLARED, format!("scene({key})이 없음"));
+            return;
+        };
+        if let Some((n, s)) = step
+            && n as usize > sc.step_count()
+        {
+            let count = sc.step_count();
+            self.err_s(s, code::SCENE, format!("scene({key})에는 step이 {count}개뿐임"), if count > 0 { format!("scene({key}).step({count})") } else { format!("scene({key})") });
+            return;
+        }
+        let target_src = if sc.src.is_empty() { sc.label() } else { sc.src.clone() };
+        if let Some(r) = slots.get(1) {
+            self.err_s(r.span, code::RANGE, "scene을 가리키는 req에는 범위를 쓰지 않음", "req(scene(1).step(2);; \"설명\")");
+            return;
+        }
+        let memo = match slots.get(2) {
+            None => None,
+            Some(m) => match self.resolve_memo(m, &mut BTreeSet::new()) {
+                Some(t) => Some(t),
+                None => return,
+            },
+        };
+        self.push_request(ReqTarget::Scene { scene: key, step: step.map(|s| s.0) }, None, memo, target_src, vec![], span);
+    }
+
+    /// Axis names of every coordinate system in use, plus `x`, `y`.
+    pub(super) fn axis_names(&self) -> Vec<String> {
+        let mut v = vec!["x".to_string(), "y".to_string()];
+        for f in self.state.functions.values() {
+            for a in [&f.inputs[0].key, &f.output.key] {
+                if !v.contains(a) {
+                    v.push(a.clone());
+                }
+            }
+        }
+        v
     }
 }
 

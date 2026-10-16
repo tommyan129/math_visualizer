@@ -2,6 +2,7 @@ use super::*;
 use crate::span::LineIndex;
 
 mod stage2;
+mod stage3;
 
 fn run(state: &State, src: &str) -> Result<Applied, Vec<Diagnostic>> {
     apply(state, src, &Limits::default(), 1)
@@ -43,7 +44,7 @@ fn define_creates_function_and_auto_constant() {
     assert_eq!(f.source(), "f(x; a) -> y: a*x^2");
     let c = &a.state.constants["a"];
     assert_eq!((c.value, c.min, c.max, c.integer), (1.0, -10.0, 10.0, false));
-    assert_eq!(a.notes, vec![Note::FunctionCreated { key: "f".into() }, Note::ConstantCreated { key: "a".into() }]);
+    assert_eq!(a.notes, vec![Note::FunctionCreated { key: "f".into() }, Note::ConstantCreated { key: "a".into() }, Note::DefaultSceneCreated { key: "2D(x, y)".into() }]);
     assert!(a.changes.iter().any(|c| matches!(c, Change::PutFunction { function } if function.key == "f" && function.version == 1)));
     assert!(a.changes.iter().any(|c| matches!(c, Change::PutConstant { constant } if constant.key == "a")));
 }
@@ -215,7 +216,7 @@ fn request_is_atomic() {
 
 #[test]
 fn all_independent_errors_in_one_response() {
-    let src = "define:\n    f(x) -> y: 2x\n    g(x) -> y: a*x\n    h(t) -> y: t\n    k(x) -> y: sin(x, 1)\ndel zz\n";
+    let src = "define:\n    f(x) -> y: 2x\n    g(x) -> y: a*x\n    h(t) -> t: t\n    k(x) -> y: sin(x, 1)\ndel zz\n";
     let d = run(&State::default(), src).unwrap_err();
     assert_eq!(d.iter().map(|d| d.code).collect::<Vec<_>>(), vec![code::IMPLICIT_MUL, code::UNDECLARED, code::AXES, code::ARITY, code::UNDECLARED]);
     let idx = LineIndex::new(src);
@@ -240,7 +241,8 @@ fn cycles_are_rejected() {
 #[test]
 fn stage_shape_errors() {
     let s = State::default();
-    assert_eq!(codes(&s, &def(&["f(t) -> y: t"])), vec![code::AXES]);
+    assert_eq!(codes(&s, &def(&["f(t) -> t: t"])), vec![code::AXES]);
+    assert_eq!(codes(&s, &def(&["f(\\pi) -> y: 1"])), vec![code::AXES]);
     assert_eq!(codes(&s, &def(&["g(x, y) -> z: x"])), vec![code::UNSUPPORTED]);
     assert_eq!(codes(&s, &def(&["p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 1"])), vec![code::UNSUPPORTED]);
     assert_eq!(codes(&s, &def(&["A: [[1, 2], [3, 4]]"])), vec![code::UNSUPPORTED]);
@@ -350,10 +352,12 @@ fn user_ops() {
     let r = apply_user_op(&s, &UserOp::SetRange { constant: "a".into(), min: 2.0, max: 3.0 }, 2).unwrap();
     assert_eq!(r.state.constants["a"].value, 2.0, "value moves into the new range");
     let t = apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), target: "f".into(), visible: false }, 2).unwrap();
-    assert_eq!(t.state.scenes[DEFAULT_SCENE].hidden, ["f"]);
-    // Deleting a hidden function clears its toggle entry.
+    assert_eq!(t.state.scenes[DEFAULT_SCENE].toggles, [("f".to_string(), false)].into());
+    assert!(!t.state.scenes[DEFAULT_SCENE].visible("f", 0));
+    // Deleting the last function of the system removes its default scene with the toggles.
     let d = apply(&t.state, "del f\n", &Limits::default(), 3).unwrap();
-    assert!(d.state.scenes[DEFAULT_SCENE].hidden.is_empty());
+    assert!(d.state.scenes.is_empty());
+    assert!(d.notes.contains(&Note::DefaultSceneRemoved { key: DEFAULT_SCENE.into() }));
     assert!(apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), target: "q".into(), visible: false }, 2).is_err());
 }
 

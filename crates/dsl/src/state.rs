@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 use crate::ast::{Expr, Ident};
 
-/// Identifier of the stage-1 default scene.
+/// Key of the default scene of the `2D(x, y)` system.
 pub const DEFAULT_SCENE: &str = "2D(x, y)";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -88,15 +88,219 @@ impl Constant {
     }
 }
 
-/// Per-scene user state. Stage 2 has only the default scene.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+/// A scene: a view preset over one coordinate system (design.md "scene").
+/// Claude scenes are keyed by number (`"1"`), default scenes by their system (`"2D(x, y)"`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct SceneState {
+#[serde(default)]
+pub struct Scene {
     pub key: String,
-    /// Functions and highlights the user turned off.
-    pub hidden: Vec<String>,
+    /// `None` = default scene (one per coordinate system, managed by the server).
+    pub number: Option<u32>,
+    /// Horizontal and vertical axis.
+    pub axes: Vec<Ident>,
+    /// Functions and highlights that fit the coordinate system, in creation order: the
+    /// toggle list. Computed by the server; the browser does not apply placement rules.
+    pub members: Vec<String>,
+    /// Claude's clip (always applied unless the user adjusted it).
+    pub clip: Option<Clip>,
+    /// Camera on first entry.
+    pub view: Option<ViewSpec>,
+    /// Step 0 (scene `show` / `hide` / `view`) followed by one entry per `step:`.
+    pub steps: Vec<StepState>,
+    /// Claude scene fields as written (unresolved), re-resolved on every request.
+    pub source: Option<SceneSource>,
+    /// Block as written; empty for default scenes.
+    pub src: String,
+    /// Functions, highlights, constants and variables referred to.
+    pub deps: Vec<String>,
+    /// Log sequence of the last definition change (not user state).
+    #[ts(type = "number")]
+    pub defined: u64,
+    /// User overrides of visibility (target → on). A step clears the ones it mentions.
+    pub toggles: BTreeMap<String, bool>,
+    /// The user's clip adjustment; `None` = Claude's clip.
+    pub user_clip: Option<Clip>,
+    #[ts(type = "number")]
+    pub order: u64,
     #[ts(type = "number")]
     pub version: u64,
+    /// Stage 1-2 shape: targets the user turned off. Migrated into `toggles` on load.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub hidden: Vec<String>,
+}
+
+impl Scene {
+    pub fn is_default(&self) -> bool {
+        self.number.is_none()
+    }
+
+    /// `scene(1)` / `scene(2D(x, y))`
+    pub fn label(&self) -> String {
+        format!("scene({})", self.key)
+    }
+
+    /// Number of `step:` blocks (step 0 not counted).
+    pub fn step_count(&self) -> usize {
+        self.steps.len().saturating_sub(1)
+    }
+
+    /// Visibility at `step`: the user's override, else the step's cached state.
+    pub fn visible(&self, target: &str, step: usize) -> bool {
+        if let Some(v) = self.toggles.get(target) {
+            return *v;
+        }
+        self.steps.get(step.min(self.step_count())).and_then(|s| s.visible.get(target)).copied().unwrap_or(false)
+    }
+}
+
+/// `2D(x, y)` with the given axis keys.
+pub fn system_key(axes: &[&str]) -> String {
+    format!("2D({})", axes.join(", "))
+}
+
+/// A resolved clip region over the scene axes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Clip {
+    pub expr: Expr,
+    /// As written (DSL notation).
+    pub src: String,
+    /// Constants used (recompute when they change).
+    pub consts: Vec<String>,
+}
+
+/// Camera range per axis; a missing axis keeps 1:1 scale around 0.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ViewSpec {
+    pub h: Option<ViewRange>,
+    pub v: Option<ViewRange>,
+    pub src: String,
+}
+
+/// Bounds are constant-free expressions (`-2*\pi`), evaluated by the browser.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ViewRange {
+    pub lo: Expr,
+    pub hi: Expr,
+}
+
+/// Full state at one step, cached by the server, plus what the step changed.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct StepState {
+    /// Visibility of every target the scene mentions so far.
+    pub visible: BTreeMap<String, bool>,
+    /// Predict-then-reveal: kept out of the toggle list until a step turns them on.
+    pub concealed: Vec<String>,
+    /// Constant values set at or before this step (last wins).
+    pub values: BTreeMap<String, f64>,
+    /// Camera at this step (the last view set at or before it; step 0 = scene view).
+    pub view: Option<ViewSpec>,
+    /// Note blocks shown at this step (replaced, or appended with `note: + ...`).
+    pub note: Vec<NoteBlock>,
+    /// Targets whose visibility this step sets.
+    pub changed: Vec<String>,
+    /// Constants this step sets (`set`, `animate` end values).
+    pub changed_values: Vec<String>,
+    pub changed_view: bool,
+    pub changed_note: bool,
+    /// Played on entry (forward only).
+    pub animate: Vec<Animate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Animate {
+    pub constant: String,
+    pub from: f64,
+    pub to: f64,
+    /// Seconds.
+    pub duration: f64,
+    /// Back and forth until the user grabs the slider or leaves the step.
+    pub looped: bool,
+}
+
+/// Default `animate` duration in seconds (stage-3 decision).
+pub const ANIMATE_SECONDS: f64 = 2.0;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NoteBlock {
+    pub segs: Vec<NoteSeg>,
+    /// String as written (escapes applied).
+    pub text: String,
+}
+
+/// Part of a note string (design.md "note 안의 수식").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "type")]
+#[ts(export)]
+pub enum NoteSeg {
+    Text { text: String },
+    /// `$...$`: unchecked LaTeX.
+    Tex { tex: String },
+    /// `{expr}`: a resolved DSL expression.
+    Math { expr: Expr },
+    /// `{f}`: the whole definition of `f`, rendered from the current state.
+    Def { function: String },
+}
+
+/// Scene fields as written (spans cleared), for re-resolution and cascade.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SceneSource {
+    pub axes: Vec<Ident>,
+    pub show: Vec<Ident>,
+    pub hide: Vec<Ident>,
+    pub clip: Option<Expr>,
+    pub view: Option<Expr>,
+    pub steps: Vec<StepSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct StepSource {
+    pub show: Vec<StepToggle>,
+    pub set: Vec<SetSource>,
+    pub animate: Option<AnimateSource>,
+    pub view: Option<Expr>,
+    pub note: Option<NoteSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct StepToggle {
+    pub on: bool,
+    pub name: Ident,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SetSource {
+    pub name: Ident,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AnimateSource {
+    pub name: Ident,
+    pub from: f64,
+    pub to: f64,
+    pub duration: f64,
+    pub looped: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NoteSource {
+    pub append: bool,
+    /// A string literal or a variable name.
+    pub value: Expr,
 }
 
 /// How a highlight fills (design.md "style" fill rules).
@@ -243,6 +447,10 @@ pub struct Highlight {
     pub consts: Vec<String>,
     /// Functions, variables and styles this highlight refers to (cascade).
     pub deps: Vec<String>,
+    /// Axis names the drawing uses: the target function's axes, or the axes a targetless
+    /// range mentions (scene placement).
+    #[serde(default)]
+    pub axes: Vec<String>,
     pub source: HlSource,
     /// `highlight(...)` as written.
     pub src: String,
@@ -263,6 +471,8 @@ pub enum ReqTarget {
     Highlight { highlight: String },
     /// `f.(b*x)`: re-checked against the current expression for the change status.
     Sub { function: String, address: String },
+    /// `scene(1)` or `scene(1).step(3)` (step number as of the req).
+    Scene { scene: String, step: Option<u32> },
 }
 
 /// `req(target; range; memo)` (user → Claude feedback). Fixed to its history step.
@@ -289,12 +499,12 @@ pub struct Request {
     pub version: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct State {
     pub functions: BTreeMap<String, Function>,
     pub constants: BTreeMap<String, Constant>,
-    pub scenes: BTreeMap<String, SceneState>,
+    pub scenes: BTreeMap<String, Scene>,
     #[serde(default)]
     pub highlights: BTreeMap<String, Highlight>,
     #[serde(default)]
@@ -321,23 +531,6 @@ pub struct Counters {
     pub next_request: u64,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        let mut scenes = BTreeMap::new();
-        scenes.insert(DEFAULT_SCENE.to_string(), SceneState { key: DEFAULT_SCENE.to_string(), hidden: vec![], version: 0 });
-        State {
-            functions: BTreeMap::new(),
-            constants: BTreeMap::new(),
-            scenes,
-            highlights: BTreeMap::new(),
-            styles: BTreeMap::new(),
-            vars: BTreeMap::new(),
-            requests: BTreeMap::new(),
-            counters: Counters::default(),
-        }
-    }
-}
-
 impl State {
     /// Kind of the object named `key`, for namespace checks and messages.
     pub fn kind_of(&self, key: &str) -> Option<&'static str> {
@@ -355,6 +548,28 @@ impl State {
             None
         }
     }
+
+    /// Coordinate system of a function: `2D(input, output)`.
+    pub fn function_system(&self, key: &str) -> Option<String> {
+        let f = self.functions.get(key)?;
+        Some(system_key(&[f.inputs.first().map_or("x", |i| i.key.as_str()), f.output.key.as_str()]))
+    }
+
+    /// Stage 1-2 states: the always-present default scene with `hidden` lists. Moves
+    /// `hidden` into `toggles`; default scenes are then kept in sync by the interpreter.
+    pub fn migrate(&mut self) {
+        for s in self.scenes.values_mut() {
+            if s.axes.is_empty() && s.key == DEFAULT_SCENE {
+                s.axes = vec![Ident::plain("x"), Ident::plain("y")];
+                if s.steps.is_empty() {
+                    s.steps = vec![StepState::default()];
+                }
+            }
+            for k in std::mem::take(&mut s.hidden) {
+                s.toggles.insert(k, false);
+            }
+        }
+    }
 }
 
 /// One element of an applied result: the resolved state of a changed object.
@@ -368,7 +583,8 @@ pub enum Change {
     RemoveFunction { key: String },
     PutConstant { constant: Constant },
     RemoveConstant { key: String },
-    PutScene { scene: SceneState },
+    PutScene { scene: Scene },
+    RemoveScene { key: String },
     SetCounters { counters: Counters },
     PutHighlight { highlight: Highlight },
     RemoveHighlight { key: String },
@@ -397,6 +613,9 @@ impl State {
                 }
                 Change::PutScene { scene } => {
                     self.scenes.insert(scene.key.clone(), scene.clone());
+                }
+                Change::RemoveScene { key } => {
+                    self.scenes.remove(key);
                 }
                 Change::SetCounters { counters } => self.counters = *counters,
                 Change::PutHighlight { highlight } => {
@@ -429,7 +648,7 @@ impl State {
         let mut out = vec![];
         diff_map(&mut self.functions, &old.functions, seq, |f| &mut f.version, |f| Change::PutFunction { function: f }, |k| Change::RemoveFunction { key: k }, &mut out);
         diff_map(&mut self.constants, &old.constants, seq, |c| &mut c.version, |c| Change::PutConstant { constant: c }, |k| Change::RemoveConstant { key: k }, &mut out);
-        diff_map(&mut self.scenes, &old.scenes, seq, |s| &mut s.version, |s| Change::PutScene { scene: s }, |_| unreachable!("scenes are not removed in stage 2"), &mut out);
+        diff_map(&mut self.scenes, &old.scenes, seq, |s| &mut s.version, |s| Change::PutScene { scene: s }, |k| Change::RemoveScene { key: k }, &mut out);
         diff_map(&mut self.styles, &old.styles, seq, |s| &mut s.version, |s| Change::PutStyle { style: s }, |k| Change::RemoveStyle { key: k }, &mut out);
         diff_map(&mut self.vars, &old.vars, seq, |v| &mut v.version, |v| Change::PutVar { var: v }, |k| Change::RemoveVar { key: k }, &mut out);
         diff_map(&mut self.highlights, &old.highlights, seq, |h| &mut h.version, |h| Change::PutHighlight { highlight: h }, |k| Change::RemoveHighlight { key: k }, &mut out);

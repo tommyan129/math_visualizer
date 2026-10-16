@@ -187,4 +187,35 @@ describe("sampling regressions", () => {
     expect(end).toBeLessThan(0.3);
     expect(start).toBeGreaterThanOrEqual(0.3);
   });
+
+  it("small jumps (a few px when zoomed out) still break the line", () => {
+    // Midpoint tangent lines per unit cell of f(x) = x^4/40 - x/2 + 2: jumps of 0.1–0.3 at integers.
+    const f = (x: number) => x ** 4 / 40 - x / 2 + 2;
+    const tangent = (x: number) => {
+      const m = Math.floor(x) + 0.5;
+      return f(m) + (m ** 3 / 10 - 0.5) * (x - m);
+    };
+    const { batch, scalar } = fn(tangent);
+    // Zoomed out: 60 px per unit, so every jump is under jumpPx.
+    const px = 60;
+    const p = sampleCurve(batch, scalar, new Float64Array(), range(-3, 4, -1, 8, 7 * px), "fine");
+    const breaks: number[] = [];
+    for (let k = 1; k + 1 < p.offsets.length; k++) breaks.push(p.xs[p.offsets[k]! - 1]!);
+    let checked = 0;
+    for (let c = -3; c <= 4; c++) {
+      const jumpPx = Math.abs(tangent(c) - tangent(c - 1e-9)) * px;
+      expect(jumpPx).toBeLessThan(30);
+      // Near x = 0 the jump vanishes (f'' = 0); only visible ones must break.
+      if (jumpPx < 4) continue;
+      checked++;
+      expect(breaks.some((b) => b < c && c - b < 0.05)).toBe(true);
+    }
+    expect(checked).toBeGreaterThanOrEqual(5);
+  });
+
+  it("a steep continuous curve is not broken by the small-jump check", () => {
+    const { batch, scalar } = fn((x) => Math.sin(x) * 3 + x * x * x);
+    const p = sampleCurve(batch, scalar, new Float64Array(), range(-3, 4, -1, 8, 420), "fine");
+    expect(p.offsets.length - 1).toBe(1);
+  });
 });

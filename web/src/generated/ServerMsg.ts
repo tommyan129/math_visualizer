@@ -7,4 +7,4 @@ import type { WorkspaceInfo } from "./WorkspaceInfo";
 /**
  * Server -> browser.
  */
-export type ServerMsg = { "type": "Welcome", protocol: number, } | { "type": "ReloadRequired", protocol: number, } | { "type": "TakenOver", } | { "type": "Workspaces", list: Array<WorkspaceInfo>, } | { "type": "Snapshot", snapshot: Snapshot, } | { "type": "Response", id: number, response: ServerResponse, } | { "type": "Request", id: number, request: ServerRequest, };
+export type ServerMsg = { "type": "Welcome", protocol: number, } | { "type": "ReloadRequired", protocol: number, } | { "type": "TakenOver", } | { "type": "Workspaces", list: Array<WorkspaceInfo>, } | { "type": "Snapshot", snapshot: Snapshot, } | { "type": "Response", id: number, response: ServerResponse, } | { "type": "Request", id: number, request: ServerRequest, } | { "type": "Navigate", workspace: string, };

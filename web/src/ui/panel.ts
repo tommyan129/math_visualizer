@@ -5,10 +5,12 @@
 import type { Constant } from "../generated/Constant";
 import type { Function as Fn } from "../generated/Function";
 import type { Highlight } from "../generated/Highlight";
+import type { Scene } from "../generated/Scene";
 import type { State } from "../generated/State";
 import type { Warning } from "../generated/Warning";
 import { resolveHighlights, sortedHighlights } from "../canvas/highlight";
 import { colorOf } from "../canvas/plot";
+import { activeClip, concealedAt, visibleAt } from "../canvas/scene";
 import { definitionTex, exprTex, identTex, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon, ICONS } from "./dom";
@@ -22,6 +24,18 @@ export interface PanelActions {
   /** Resolves to an error message, or null. */
   setValue(constant: string, value: number): Promise<string | null>;
   setRange(constant: string, min: number, max: number): Promise<string | null>;
+  /** The user's clip as DSL text; null = back to Claude's. Resolves to an error or null. */
+  setClip(src: string | null): Promise<string | null>;
+}
+
+/** What the panel shows: the current scene and step of the open workspace. */
+export interface PanelView {
+  state: State | null;
+  scene: Scene | null;
+  step: number;
+  hasKey: boolean;
+  warnings(key: string): Warning[];
+  sceneWarnings: Warning[];
 }
 
 function hexAlpha(hex: string, a: number): string {
@@ -101,6 +115,7 @@ class ConstantCard {
   }
 
   private async commit(v: number): Promise<void> {
+    this.previewing = false;
     const e = await this.actions.setValue(this.c.key, v);
     this.dragging = false;
     if (e) this.fail(e);
@@ -120,12 +135,26 @@ class ConstantCard {
     this.fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
   }
 
+  /** Animate playback is moving this slider: snapshots do not reset it. */
+  previewing = false;
+
+  get constant(): Constant {
+    return this.c;
+  }
+
+  /** Moves the slider without sending (animate playback). */
+  preview(v: number): void {
+    this.previewing = true;
+    this.rng.value = String(v);
+    this.show(v);
+  }
+
   update(c: Constant): void {
     this.c = c;
     this.rng.min = String(c.min);
     this.rng.max = String(c.max);
     this.rng.step = String(c.step);
-    if (!this.dragging) {
+    if (!this.dragging && !this.previewing) {
       this.rng.value = String(c.value);
       this.show(c.value);
     }
@@ -146,32 +175,98 @@ export class Panel {
   private hint = h("div", { class: "hint" });
   private cards = new Map<string, ConstantCard>();
   private defKey = "";
+  private clipSec = h("div", { class: "sec" });
+  private clipBox = h("div", { class: "clip-box" });
+  private clipInput = h("input", { class: "clip-input", "aria-label": "clip", spellcheck: "false" });
+  private clipReset = h("button", { class: "iconbtn small", "aria-label": "Claude의 clip으로", title: "Claude의 clip으로" }, icon(ICONS.reset));
+  private clipErr = h("div", { class: "err", hidden: true });
+  private sceneWarn = h("div", { class: "scene-warn" });
+  private others = h("div", { class: "hint others" });
+  private clipSrc = "";
+  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [] };
 
   constructor(private actions: PanelActions) {
-    this.el.append(this.hint, h("div", { class: "sec" }, "정의"), this.defs, this.hlSec, this.hls, h("div", { class: "sec" }, "상수"), this.consts);
+    this.clipBox.append(this.clipInput, this.clipReset);
+    this.el.append(this.hint, this.sceneWarn, h("div", { class: "sec" }, "정의"), this.defs, this.others, this.hlSec, this.hls, h("div", { class: "sec" }, "상수"), this.consts, this.clipSec, this.clipBox, this.clipErr);
+    const send = async (src: string | null) => {
+      const e = await this.actions.setClip(src);
+      this.clipErr.textContent = e ?? "";
+      this.clipErr.hidden = !e;
+      if (e) this.clipInput.value = this.clipSrc;
+    };
+    this.clipInput.addEventListener("change", () => {
+      const t = this.clipInput.value.trim();
+      if (t === this.clipSrc) return;
+      void send(t === "" ? null : t);
+    });
+    this.clipInput.addEventListener("keydown", (e) => e.key === "Enter" && this.clipInput.blur());
+    this.clipReset.addEventListener("click", () => void send(null));
   }
 
   isDragging(key: string): boolean {
     return this.cards.get(key)?.dragging ?? false;
   }
 
-  render(state: State | null, hasKey: boolean, warnings: (key: string) => Warning[]): void {
-    this.render0 = () => this.renderHighlights(state, warnings);
+  /** Slider shows a value set from outside (animate) without sending it, until `endPreview`. */
+  showValue(key: string, value: number): void {
+    this.cards.get(key)?.preview(value);
+  }
+
+  endPreview(key: string): void {
+    const c = this.cards.get(key);
+    if (!c) return;
+    c.previewing = false;
+    c.update(c.constant);
+  }
+
+  /** Is `key` listed (a member of the scene, not concealed)? */
+  private listed(key: string): boolean {
+    const sc = this.v.scene;
+    return !!sc && sc.members.includes(key) && !concealedAt(sc, this.v.step).has(key);
+  }
+
+  private shown(key: string): boolean {
+    return !!this.v.scene && visibleAt(this.v.scene, this.v.step, key);
+  }
+
+  render(v: PanelView): void {
+    this.v = v;
+    const { state, hasKey } = v;
+    this.render0 = () => this.renderHighlights(v.state, v.warnings);
     this.hint.textContent = !state
       ? "왼쪽에서 작업 공간을 만들거나 고르세요."
       : !hasKey
         ? "Claude가 이 작업 공간을 쓰려면 ⋯ 메뉴에서 key를 만들어 알려주세요."
         : "";
     this.hint.hidden = this.hint.textContent === "";
-    this.renderDefs(state, warnings);
-    this.renderHighlights(state, warnings);
+    this.sceneWarn.replaceChildren(...v.sceneWarnings.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message)));
+    this.sceneWarn.hidden = v.sceneWarnings.length === 0;
+    this.renderDefs(state, v.warnings);
+    this.renderHighlights(state, v.warnings);
     this.renderConsts(state);
+    this.renderClip();
+  }
+
+  private renderClip(): void {
+    const sc = this.v.scene;
+    const show = !!sc;
+    this.clipSec.hidden = this.clipBox.hidden = !show;
+    if (!sc) {
+      this.clipErr.hidden = true;
+      return;
+    }
+    this.clipSec.textContent = `clip · ${sc.number === null ? sc.key : `scene ${sc.number}`}`;
+    const c = activeClip(sc);
+    this.clipSrc = c?.src ?? "";
+    if (document.activeElement !== this.clipInput) this.clipInput.value = this.clipSrc;
+    this.clipInput.placeholder = "clip 없음 (예: 0 <= x <= 10)";
+    this.clipReset.hidden = !sc.user_clip;
   }
 
   private renderHighlights(state: State | null, warnings: (key: string) => Warning[]): void {
-    const hs = state ? sortedHighlights(state) : [];
-    const hidden = new Set(state ? Object.values(state.scenes).flatMap((s) => s!.hidden) : []);
-    const key = JSON.stringify([hs.map((x) => [x.key, x.version, hidden.has(x.key), warnings(x.key).map((w) => w.message)]), [...this.open]]);
+    const hs = state ? sortedHighlights(state).filter((x) => this.listed(x.key)) : [];
+    const hidden = new Set(hs.filter((x) => !this.shown(x.key)).map((x) => x.key));
+    const key = JSON.stringify([this.v.scene?.key, hs.map((x) => [x.key, x.version, hidden.has(x.key), warnings(x.key).map((w) => w.message)]), [...this.open]]);
     if (key === this.hlKey) return;
     this.hlKey = key;
     this.hlSec.hidden = hs.length === 0;
@@ -231,16 +326,20 @@ export class Panel {
   private render0: () => void = () => {};
 
   private renderDefs(state: State | null, warnings: (key: string) => Warning[]): void {
-    const fns = state ? Object.values(state.functions).map((f) => f!).sort((a, b) => a.order - b.order) : [];
-    const hidden = new Set(state ? Object.values(state.scenes).flatMap((s) => s!.hidden) : []);
+    const all = state ? Object.values(state.functions).map((f) => f!).sort((a, b) => a.order - b.order) : [];
+    const fns = all.filter((f) => this.listed(f.key));
+    const hidden = new Set(state ? [...Object.keys(state.functions), ...Object.keys(state.highlights)].filter((k) => !this.shown(k)) : []);
+    const elsewhere = state ? [...Object.keys(state.functions), ...Object.keys(state.highlights)].filter((k) => !this.v.scene?.members.includes(k)).length : 0;
+    this.others.textContent = elsewhere > 0 ? `다른 좌표계 정의 ${elsewhere}개` : "";
+    this.others.hidden = elsewhere === 0 || !this.v.scene;
     // Re-render only when something visible changed (MathJax output is cached anyway).
     const nodes = state ? resolveHighlights(state, hidden).nodeColors : new Map<string, Map<number, string>>();
-    const key = JSON.stringify(fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])]]));
+    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])]])]);
     if (key === this.defKey) return;
     this.defKey = key;
-    const colors = new Map(fns.map((f) => [f.key, colorOf(f)]));
+    const colors = new Map(all.map((f) => [f.key, colorOf(f)]));
     this.defs.replaceChildren();
-    if (state && fns.length === 0) this.defs.append(h("div", { class: "hint" }, "아직 정의가 없음. Claude가 apply로 보내면 여기에 나타남."));
+    if (state && all.length === 0) this.defs.append(h("div", { class: "hint" }, "아직 정의가 없음. Claude가 apply로 보내면 여기에 나타남."));
     for (const f of fns) this.defs.append(this.defEl(f, { colors, nodes: nodes.get(f.key) }, !hidden.has(f.key), warnings(f.key)));
   }
 

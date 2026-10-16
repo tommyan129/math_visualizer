@@ -1,19 +1,35 @@
-// Top bar: workspace name, scene tabs (stage 1: only the default `2D(x, y)`), connection.
+// Top bar: workspace name, scene tabs (default scenes by coordinate system, Claude
+// scenes by number, a yellow dot when a scene changed while not shown), connection.
 
+import type { Scene } from "../generated/Scene";
 import type { ConnStatus } from "../net/client";
+import { sceneAxes, sortedScenes } from "../canvas/scene";
 import { texElement } from "../math/mathjax";
 import { h } from "./dom";
+
+export interface TopbarScenes {
+  scenes: Scene[];
+  current: string | null;
+  updated: Set<string>;
+  select(key: string): void;
+}
 
 export class Topbar {
   readonly el = h("header", { class: "topbar" });
 
   constructor(private reclaim: () => void) {}
 
-  render(name: string | null, conn: ConnStatus, revision: number | null): void {
-    const tab = h("button", { class: "stab on", role: "tab", "aria-selected": "true" }, texElement("\\mathrm{2D}(x, y)"));
-    const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "scene" }, tab);
+  render(name: string | null, conn: ConnStatus, revision: number | null, sc: TopbarScenes): void {
+    const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "scene" });
+    for (const s of sortedScenes(sc.scenes)) {
+      const on = s.key === sc.current;
+      const [, tex] = sceneAxes(s);
+      const label: Node = s.number === null ? texElement(`\\mathrm{2D}(${tex[0]}, ${tex[1]})`) : document.createTextNode(`scene ${s.number}`);
+      const dot = sc.updated.has(s.key) ? h("span", { class: "updated", "aria-label": "갱신됨", title: "갱신됨" }) : null;
+      tabs.append(h("button", { class: `stab${on ? " on" : ""}`, role: "tab", "aria-selected": on ? "true" : "false", onclick: () => sc.select(s.key) }, label, dot));
+    }
     const parts: Node[] = [h("span", { class: "ws-name" }, name ?? "작업 공간 없음")];
-    if (name) parts.push(tabs);
+    if (name && sc.scenes.length > 0) parts.push(tabs);
     parts.push(h("div", { class: "spacer" }), this.conn(conn, revision));
     this.el.replaceChildren(...parts);
   }

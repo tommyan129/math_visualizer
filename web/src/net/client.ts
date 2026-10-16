@@ -7,7 +7,7 @@ import type { ServerResponse } from "../generated/ServerResponse";
 import type { ServerRequest } from "../generated/ServerRequest";
 import type { BrowserReply } from "../generated/BrowserReply";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export type ConnStatus = "connecting" | "connected" | "disconnected" | "taken-over" | "reload";
 

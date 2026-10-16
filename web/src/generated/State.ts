@@ -4,11 +4,11 @@ import type { Counters } from "./Counters";
 import type { Function } from "./Function";
 import type { Highlight } from "./Highlight";
 import type { Request } from "./Request";
-import type { SceneState } from "./SceneState";
+import type { Scene } from "./Scene";
 import type { StyleDef } from "./StyleDef";
 import type { UserVar } from "./UserVar";
 
-export type State = { functions: { [key in string]: Function }, constants: { [key in string]: Constant }, scenes: { [key in string]: SceneState }, highlights: { [key in string]: Highlight }, styles: { [key in string]: StyleDef }, vars: { [key in string]: UserVar }, 
+export type State = { functions: { [key in string]: Function }, constants: { [key in string]: Constant }, scenes: { [key in string]: Scene }, highlights: { [key in string]: Highlight }, styles: { [key in string]: StyleDef }, vars: { [key in string]: UserVar }, 
 /**
  * Keyed by request number.
  */

@@ -19,9 +19,14 @@ export type FillItem =
   | { key: string; kind: "fill"; rule: FillRule; n: number }
   | { key: string; kind: "raster"; rect: RasterRect; width: number; height: number };
 
+/** Key of the scene clip mask in `fills` requests and results. */
+export const CLIP_KEY = "\u0000clip";
+
 export type ToWorker =
   | { type: "functions"; fns: FnSpec[]; constKeys: string[] }
   | { type: "highlights"; specs: HlSpec[] }
+  /** Current scene: axis names (regions map them to x, y) and the clip region. */
+  | { type: "scene"; axes: [string, string]; clip: Expr | null }
   | { type: "sample"; id: number; keys: string[]; C: Float64Array; range: SampleRange; quality: Quality }
   | { type: "fills"; id: number; items: FillItem[]; C: Float64Array; range: SampleRange; quality: Quality };
 
@@ -77,14 +82,18 @@ let fnIndex = new Map<string, number>();
 let hlSpecs: HlSpec[] = [];
 let regions = new Map<string, Region | null>();
 let regionErrors = new Map<string, string>();
+let axes: [string, string] = ["x", "y"];
+let clipExpr: Expr | null = null;
 
 function setHighlights(specs: HlSpec[]): void {
   hlSpecs = specs;
   regions = new Map();
   regionErrors = new Map();
-  for (const h of specs) {
+  const env = { constIndex, fnIndex, axes };
+  const all = clipExpr ? [...specs, { key: CLIP_KEY, fn: null, range: clipExpr }] : specs;
+  for (const h of all) {
     try {
-      regions.set(h.key, h.range ? compileRegion(h.range, { constIndex, fnIndex }, R, F) : null);
+      regions.set(h.key, h.range ? compileRegion(h.range, env, R, F) : null);
     } catch (e) {
       regionErrors.set(h.key, e instanceof CodegenError ? e.message : String(e));
     }
@@ -97,7 +106,7 @@ function fills(id: number, items: FillItem[], C: Float64Array, range: SampleRang
   const origin: [number, number] = [(range.x0 + range.x1) / 2, (range.y0 + range.y1) / 2];
   for (const it of items) {
     const err = regionErrors.get(it.key);
-    const spec = hlSpecs.find((h) => h.key === it.key);
+    const spec = it.key === CLIP_KEY ? { key: CLIP_KEY, fn: null, range: clipExpr } : hlSpecs.find((h) => h.key === it.key);
     if (err || !spec) {
       warnings.push({ source: it.key, code: "W-codegen", message: `계산 코드를 만들 수 없음 (${err ?? "정의 없음"})` });
       continue;
@@ -205,6 +214,10 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     setHighlights(hlSpecs);
   } else if (m.type === "highlights") {
     setHighlights(m.specs);
+  } else if (m.type === "scene") {
+    axes = m.axes;
+    clipExpr = m.clip;
+    setHighlights(hlSpecs);
   } else if (m.type === "fills") {
     const r = fills(m.id, m.items, m.C, m.range, m.quality);
     const transfer = r.results.flatMap((x) => (x.kind === "fill" ? [x.coords.buffer, x.rings.buffer, x.edge.buffer, x.edgeOffsets.buffer] : [x.mask.buffer]));

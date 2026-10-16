@@ -3,4 +3,4 @@
 /**
  * What a req points at, fixed at its history step.
  */
-export type ReqTarget = { "type": "Function", function: string, } | { "type": "Highlight", highlight: string, } | { "type": "Sub", function: string, address: string, };
+export type ReqTarget = { "type": "Function", function: string, } | { "type": "Highlight", highlight: string, } | { "type": "Sub", function: string, address: string, } | { "type": "Scene", scene: string, step: number | null, };

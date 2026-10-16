@@ -21,7 +21,12 @@ consts: Array<string>,
 /**
  * Functions, variables and styles this highlight refers to (cascade).
  */
-deps: Array<string>, source: HlSource, 
+deps: Array<string>, 
+/**
+ * Axis names the drawing uses: the target function's axes, or the axes a targetless
+ * range mentions (scene placement).
+ */
+axes: Array<string>, source: HlSource, 
 /**
  * `highlight(...)` as written.
  */

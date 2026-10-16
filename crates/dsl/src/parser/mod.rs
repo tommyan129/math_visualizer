@@ -2,6 +2,7 @@
 //! Errors are collected; an `Err(())` means "already reported, resynchronize".
 
 mod expr;
+mod scene;
 mod stmt;
 
 use crate::ast::Expr;

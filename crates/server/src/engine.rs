@@ -1,15 +1,16 @@
 //! The engine owns every workspace and the store, on one dedicated thread.
 //! All requests queue here, so at most one interpretation runs at a time.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use dsl::diag::Diagnostic;
-use dsl::interp::{Applied, Limits, Note, UserOp, apply, apply_user_op};
+use dsl::interp::{Applied, Limits, Note, UserOp, apply, apply_user_op, navigate, normalize};
 use dsl::span::LineIndex;
 use dsl::state::State;
-use model::protocol::{ReqView, Snapshot, WorkspaceInfo};
+use model::protocol::{Nav, ReqView, Snapshot, WorkspaceInfo};
 use tokio::sync::{broadcast, oneshot};
 
 use crate::keys;
@@ -22,6 +23,8 @@ const ENGINE_STACK: usize = 16 * 1024 * 1024;
 pub enum Event {
     Updated(Arc<Snapshot>),
     Workspaces(Vec<WorkspaceInfo>),
+    /// Claude made a new scene here: the browser opens this workspace.
+    Navigate(String),
 }
 
 #[derive(Debug)]
@@ -50,6 +53,7 @@ pub struct ApplyOk {
 pub struct WorkspaceView {
     pub info: WorkspaceInfo,
     pub state: State,
+    pub nav: Nav,
 }
 
 /// Which workspace a command addresses: by key (MCP) or by id (private listener).
@@ -78,6 +82,7 @@ enum Cmd {
     Create { name: String, reply: Reply<Result<WorkspaceInfo, String>> },
     ReplaceKey { workspace: String, reply: Reply<Result<String, String>> },
     Snapshot { workspace: String, reply: Reply<Option<Arc<Snapshot>>> },
+    Navigate { workspace: String, scene: String, step: Option<u32>, reply: Reply<Result<(), String>> },
     List { reply: Reply<Vec<WorkspaceInfo>> },
 }
 
@@ -95,6 +100,69 @@ struct Workspace {
     revision: u64,
     updated_ms: i64,
     last_notes: Vec<Note>,
+    nav: NavState,
+}
+
+/// Current scene and step per workspace (design.md: held by the server, not logged).
+#[derive(Debug, Clone, Default)]
+struct NavState {
+    scene: Option<String>,
+    /// Step each scene was left at.
+    steps: BTreeMap<String, u32>,
+    updated: BTreeSet<String>,
+}
+
+impl NavState {
+    fn step(&self) -> u32 {
+        self.scene.as_ref().and_then(|s| self.steps.get(s)).copied().unwrap_or(0)
+    }
+
+    fn view(&self) -> Nav {
+        Nav { scene: self.scene.clone(), step: self.step(), updated: self.updated.iter().cloned().collect() }
+    }
+
+    /// Navigation rules after a change (design.md "Claude가 장면을 바꿨을 때 화면 이동").
+    /// Returns true when a new Claude scene was made (the browser should come here).
+    fn follow(&mut self, notes: &[Note], state: &State) -> bool {
+        let mut jump = false;
+        for n in notes {
+            match n {
+                Note::SceneCreated { key } => {
+                    self.scene = Some(key.clone());
+                    self.steps.insert(key.clone(), 0);
+                    self.updated.remove(key);
+                    jump = true;
+                }
+                Note::SceneModified { key } | Note::SceneRefRemoved { scene: key, .. } | Note::DefaultSceneCreated { key } => {
+                    if self.scene.as_ref() != Some(key) {
+                        self.updated.insert(key.clone());
+                    }
+                }
+                Note::SceneDeleted { key } | Note::DefaultSceneRemoved { key } => {
+                    self.steps.remove(key);
+                    self.updated.remove(key);
+                }
+                _ => {}
+            }
+        }
+        // A step count that shrank: stay at the last step.
+        for (k, st) in self.steps.iter_mut() {
+            if let Some(s) = state.scenes.get(k) {
+                *st = (*st).min(s.step_count() as u32);
+            }
+        }
+        self.steps.retain(|k, _| state.scenes.contains_key(k));
+        self.updated.retain(|k| state.scenes.contains_key(k));
+        if self.scene.as_ref().is_none_or(|s| !state.scenes.contains_key(s)) {
+            // The most recently changed scene.
+            // The most recent change; within one request, the first scene it made.
+            self.scene = state.scenes.values().max_by_key(|s| (s.defined, std::cmp::Reverse(s.order))).map(|s| s.key.clone());
+            if let Some(s) = &self.scene {
+                self.updated.remove(s);
+            }
+        }
+        jump
+    }
 }
 
 impl Workspace {
@@ -103,7 +171,7 @@ impl Workspace {
     }
 
     fn snapshot(&self) -> Arc<Snapshot> {
-        Arc::new(Snapshot { workspace: self.id.clone(), revision: self.revision, state: self.state.clone(), notes: self.last_notes.clone() })
+        Arc::new(Snapshot { workspace: self.id.clone(), revision: self.revision, state: self.state.clone(), notes: self.last_notes.clone(), nav: self.nav.view() })
     }
 }
 
@@ -130,14 +198,11 @@ pub fn start(db: &Path, limits: Limits) -> Result<EngineHandle, String> {
     let loaded = store.load_all()?;
     let workspaces = loaded
         .into_iter()
-        .map(|l| Workspace {
-            id: l.row.id,
-            name: l.row.name,
-            key_hash: l.row.key_hash,
-            state: l.state,
-            revision: l.revision,
-            updated_ms: l.updated_ms,
-            last_notes: l.last_notes,
+        .map(|l| {
+            let state = normalize(&l.state, l.revision);
+            let mut nav = NavState::default();
+            nav.follow(&[], &state);
+            Workspace { id: l.row.id, name: l.row.name, key_hash: l.row.key_hash, state, revision: l.revision, updated_ms: l.updated_ms, last_notes: l.last_notes, nav }
         })
         .collect();
     let (events, _) = broadcast::channel(64);
@@ -167,7 +232,7 @@ impl Engine {
             Cmd::Resolve { key, reply } => {
                 let r = self.find_by_key(&key).map(|i| {
                     let w = &self.workspaces[i];
-                    WorkspaceView { info: w.info(), state: w.state.clone() }
+                    WorkspaceView { info: w.info(), state: w.state.clone(), nav: w.nav.view() }
                 });
                 let _ = reply.send(r);
             }
@@ -186,7 +251,35 @@ impl Engine {
             Cmd::List { reply } => {
                 let _ = reply.send(self.list());
             }
+            Cmd::Navigate { workspace, scene, step, reply } => {
+                let _ = reply.send(self.navigate(&workspace, &scene, step));
+            }
         }
+    }
+
+    /// Shows `scene`; on the current scene, walks to `step` and logs what that changed.
+    fn navigate(&mut self, workspace: &str, scene: &str, step: Option<u32>) -> Result<(), String> {
+        let i = self.index(workspace).ok_or("작업 공간이 없음")?;
+        let w = &mut self.workspaces[i];
+        let sc = w.state.scenes.get(scene).ok_or_else(|| format!("scene({scene})이 없음"))?;
+        let last = sc.step_count() as u32;
+        let same = w.nav.scene.as_deref() == Some(scene);
+        let from = w.nav.steps.get(scene).copied().unwrap_or(0).min(last);
+        let to = step.unwrap_or(from).min(last);
+        w.nav.scene = Some(scene.to_string());
+        w.nav.steps.insert(scene.to_string(), to);
+        w.nav.updated.remove(scene);
+        if same && from != to {
+            let seq = w.revision + 1;
+            let applied = navigate(&w.state, scene, from as usize, to as usize, seq)?;
+            if !applied.changes.is_empty() {
+                let label = format!("scene({scene}) step {to}");
+                self.commit(i, Actor::User, "op", &label, applied)?;
+                return Ok(());
+            }
+        }
+        let _ = self.events.send(Event::Updated(self.workspaces[i].snapshot()));
+        Ok(())
     }
 
     fn index(&self, id: &str) -> Option<usize> {
@@ -222,8 +315,12 @@ impl Engine {
         w.state = applied.state;
         w.revision = seq;
         w.updated_ms = time_ms;
+        let jump = w.nav.follow(&result.notes, &w.state);
         w.last_notes = result.notes;
         let _ = self.events.send(Event::Updated(w.snapshot()));
+        if jump {
+            let _ = self.events.send(Event::Navigate(w.id.clone()));
+        }
         let _ = self.events.send(Event::Workspaces(self.list()));
         Ok(seq)
     }
@@ -301,6 +398,7 @@ impl Engine {
             revision: 0,
             updated_ms: now,
             last_notes: vec![],
+            nav: NavState::default(),
         });
         let info = self.workspaces.last().unwrap().info();
         let _ = self.events.send(Event::Workspaces(self.list()));
@@ -359,6 +457,10 @@ impl EngineHandle {
 
     pub async fn list(&self) -> Vec<WorkspaceInfo> {
         self.call(|reply| Cmd::List { reply }).await
+    }
+
+    pub async fn navigate(&self, workspace: String, scene: String, step: Option<u32>) -> Result<(), String> {
+        self.call(|reply| Cmd::Navigate { workspace, scene, step, reply }).await
     }
 }
 
@@ -437,6 +539,56 @@ mod tests {
         let e = start(&db, Limits::default()).unwrap();
         let after = e.snapshot(id).await.unwrap();
         assert_eq!((after.revision, &after.state), (before.revision, &before.state));
+    }
+
+    #[tokio::test]
+    async fn navigation_follows_claude_and_logs_only_effects() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("t.db");
+        let e = start(&db, Limits::default()).unwrap();
+        let w = e.create("calc".into()).await.unwrap();
+        let k = e.replace_key(w.id.clone()).await.unwrap();
+        let mut events = e.subscribe();
+        e.apply(WsRef::Key(k.clone()), def("f(x; a) -> y: a*x")).await.unwrap();
+        // The first function makes the default scene, and nothing was shown: go there.
+        assert_eq!(e.snapshot(w.id.clone()).await.unwrap().nav.scene.as_deref(), Some("2D(x, y)"));
+        let sc = "scene(1):\n    space: 2D(x, y)\n    show: f\n    step:\n        set: a = 3\n    step:\n        note: \"끝\"\n";
+        e.apply(WsRef::Key(k.clone()), sc.into()).await.unwrap();
+        let snap = e.snapshot(w.id.clone()).await.unwrap();
+        assert_eq!((snap.nav.scene.as_deref(), snap.nav.step), (Some("1"), 0));
+        let mut jumped = false;
+        while let Ok(ev) = events.try_recv() {
+            jumped |= matches!(ev, Event::Navigate(id) if id == w.id);
+        }
+        assert!(jumped, "a new Claude scene moves the browser to its workspace");
+        // Step 1 sets a: logged. Step 2 changes nothing logged: no row.
+        let rev = snap.revision;
+        e.navigate(w.id.clone(), "1".into(), Some(1)).await.unwrap();
+        let s1 = e.snapshot(w.id.clone()).await.unwrap();
+        assert_eq!((s1.revision, s1.state.constants["a"].value, s1.nav.step), (rev + 1, 3.0, 1));
+        e.navigate(w.id.clone(), "1".into(), Some(2)).await.unwrap();
+        let s2 = e.snapshot(w.id.clone()).await.unwrap();
+        assert_eq!((s2.revision, s2.nav.step), (rev + 1, 2));
+        // Editing the current scene with fewer steps: stay at the last one.
+        e.apply(WsRef::Key(k.clone()), "scene(1):\n    space: 2D(x, y)\n    show: f\n    step:\n        set: a = 3\n".into()).await.unwrap();
+        assert_eq!(e.snapshot(w.id.clone()).await.unwrap().nav.step, 1);
+        // Another scene changed: only marked updated.
+        e.apply(WsRef::Key(k.clone()), def("g(t) -> y: t")).await.unwrap();
+        let s3 = e.snapshot(w.id.clone()).await.unwrap();
+        assert_eq!((s3.nav.scene.as_deref(), s3.nav.updated.clone()), (Some("1"), vec!["2D(t, y)".to_string()]));
+        e.navigate(w.id.clone(), "2D(t, y)".into(), None).await.unwrap();
+        assert!(e.snapshot(w.id.clone()).await.unwrap().nav.updated.is_empty());
+        // The current scene goes: move to the most recently changed one.
+        e.apply(WsRef::Key(k.clone()), "del g\n".into()).await.unwrap();
+        assert_eq!(e.snapshot(w.id.clone()).await.unwrap().nav.scene.as_deref(), Some("1"));
+        assert!(e.navigate(w.id.clone(), "9".into(), None).await.is_err());
+        // Restart: state survives (navigation itself is not stored).
+        let before = e.snapshot(w.id.clone()).await.unwrap();
+        drop(e);
+        let e = start(&db, Limits::default()).unwrap();
+        let after = e.snapshot(w.id.clone()).await.unwrap();
+        assert_eq!(after.state, before.state);
+        assert!(after.nav.scene.is_some());
     }
 
     #[tokio::test]

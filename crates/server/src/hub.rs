@@ -75,6 +75,14 @@ impl Hub {
                             let _ = a.tx.send(ServerMsg::Workspaces { list });
                         }
                     }
+                    Ok(Event::Navigate(workspace)) => {
+                        let inner = h.inner.lock().unwrap();
+                        if let Some(a) = &inner.active
+                            && a.workspace.as_deref() != Some(workspace.as_str())
+                        {
+                            let _ = a.tx.send(ServerMsg::Navigate { workspace });
+                        }
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(_) => break,
                 }
@@ -179,6 +187,10 @@ impl Hub {
                 Ok(out) => ServerResponse::Requests { items: out.items },
                 Err(e) => ServerResponse::Error { message: report::apply_err(&e) },
             },
+            ClientRequest::Navigate { workspace, scene, step } => match self.engine.navigate(workspace, scene, step).await {
+                Ok(()) => ServerResponse::Ok {},
+                Err(message) => ServerResponse::Error { message },
+            },
         }
     }
 
@@ -229,7 +241,7 @@ impl Hub {
     /// Asks the active tab for its current scene, view and warnings.
     pub async fn get_view(&self, workspace: &str) -> Browser {
         match self.ask(workspace, ServerRequest::GetView {}, VIEW_WAIT).await {
-            Ok(BrowserReply::View { workspace: w, scene, view, warnings }) if w == workspace => Browser::View { scene, view, warnings },
+            Ok(BrowserReply::View { workspace: w, view, warnings, .. }) if w == workspace => Browser::View { view, warnings },
             Ok(_) => Browser::OtherWorkspace,
             Err(b) => b,
         }

@@ -83,6 +83,28 @@ export function isDiscontinuity(f: Scalar, C: Float64Array, a: number, ya: numbe
   return Math.abs(yb - ya) >= initial * CONTINUOUS_RATIO;
 }
 
+/** A jump smaller than this on screen is never worth breaking the line for. */
+const MIN_JUMP_PX = 1.5;
+/** A segment this many times steeper than both neighbours is checked for a jump. */
+const STEEP_RATIO = 8;
+
+/**
+ * Should the segment (i-1, i) be checked for a discontinuity? Either it jumps a lot
+ * on screen, or it is a small jump that stands out against its neighbours' slopes
+ * (zoomed out, a real jump can be only a few px tall).
+ */
+function suspectJump(xs: number[], ys: number[], i: number, r: SampleRange, t: Tuning): boolean {
+  const dyPx = Math.abs(ys[i]! - ys[i - 1]!) * r.sy;
+  if (dyPx > t.jumpPx) return true;
+  if (dyPx < MIN_JUMP_PX) return false;
+  const slope = (j: number) => {
+    if (j < 1 || j >= xs.length) return 0;
+    const s = Math.abs(ys[j]! - ys[j - 1]!) / (xs[j]! - xs[j - 1]!);
+    return Number.isFinite(s) ? s : 0;
+  };
+  return slope(i) > STEEP_RATIO * Math.max(slope(i - 1), slope(i + 1));
+}
+
 export function sampleCurve(batch: Batch, scalar: Scalar, C: Float64Array, r: SampleRange, quality: Quality): Polyline {
   const t = TUNING[quality];
   const widthPx = (r.x1 - r.x0) * r.sx;
@@ -160,7 +182,7 @@ export function sampleCurve(batch: Batch, scalar: Scalar, C: Float64Array, r: Sa
     if (open) {
       const py = ys[i - 1]!;
       const offSide = (py > r.y1 && y > r.y1) || (py < r.y0 && y < r.y0);
-      if (!offSide && Math.abs(y - py) * r.sy > t.jumpPx && isDiscontinuity(scalar, C, xs[i - 1]!, py, xs[i]!, y)) open = false;
+      if (!offSide && suspectJump(xs, ys, i, r, t) && isDiscontinuity(scalar, C, xs[i - 1]!, py, xs[i]!, y)) open = false;
     }
     if (!open) {
       offsets.push(outX.length);

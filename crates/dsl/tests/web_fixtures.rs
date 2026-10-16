@@ -29,6 +29,7 @@ const DEFS: &[&str] = &[
     "lin(x) -> y: x",
     "quad(x) -> y: x^2",
     "poly(x; a, b) -> y: a*x^2 - b*x + 1",
+    "wave(t; a) -> y: a*sin(t)",
 ];
 
 /// Stage 2: highlights over the functions above.
@@ -42,11 +43,32 @@ H5 = highlight(lin; x < -1 or x > 1)
 H6 = highlight(; y < par(x) and not (x > a))
 ";
 
+/// Stage 3: a scene on another coordinate system with clip, view, steps and notes.
+const SCENES: &str = "\
+H7 = highlight(; 0 < t < 1 and y < wave(t))
+scene(1):
+    space: 2D(t, y)
+    show: wave
+    hide: H7
+    clip: y > -0.5
+    view: -2*\\pi <= t <= 2*\\pi and -2 <= y <= 2
+    step:
+        show: +H7
+        set: a = 2
+        note: \"{wave} 아래 $\\int$ {{넓이}}\"
+    step:
+        animate: a = 1 -> 3, 0.5s, loop
+        view: -1 <= t <= 1
+        note: + \"{wave(1) > 0}\"
+";
+
 #[test]
 fn write_web_fixtures() {
     let src = format!("define:\n{}", DEFS.iter().map(|d| format!("    {d}\n")).collect::<String>());
     let state = apply(&State::default(), &src, &Limits::default(), 1).unwrap_or_else(|d| panic!("{d:?}")).state;
     let state = apply(&state, HIGHLIGHTS, &Limits::default(), 2).unwrap_or_else(|d| panic!("{d:?}")).state;
+    let state = apply(&state, SCENES, &Limits::default(), 3).unwrap_or_else(|d| panic!("{d:?}")).state;
+    let state = dsl::interp::apply_user_op(&state, &dsl::interp::UserOp::Toggle { scene: "2D(x, y)".into(), target: "lin".into(), visible: false }, 4).unwrap().state;
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/state.json");
     std::fs::create_dir_all(out.parent().unwrap()).unwrap();
     std::fs::write(out, serde_json::to_string_pretty(&state).unwrap()).unwrap();

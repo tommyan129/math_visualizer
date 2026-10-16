@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 /// Bumped whenever a message or state-model shape changes incompatibly.
 /// A browser with a different version is told to reload.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Browser -> server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -52,12 +52,16 @@ pub enum ClientRequest {
     Apply { workspace: String, source: String },
     /// Requests with their change status (requests tab).
     GetRequests { workspace: String },
+    /// Show `scene`. Same scene and a `step`: walk to that step (a step overwrites only
+    /// what it mentions). Another scene: switch to it at `step` or where it was left.
+    Navigate { workspace: String, scene: String, step: Option<u32> },
 }
 
 /// Server -> browser.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type")]
 #[ts(export)]
+#[allow(clippy::large_enum_variant)]
 pub enum ServerMsg {
     Welcome { protocol: u32 },
     /// Sent instead of `Welcome` when the browser's protocol differs.
@@ -79,6 +83,8 @@ pub enum ServerMsg {
         id: u64,
         request: ServerRequest,
     },
+    /// A new Claude scene in `workspace`: open it (the snapshot then shows the scene).
+    Navigate { workspace: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -176,6 +182,17 @@ pub struct Snapshot {
     pub state: State,
     /// Applied-result notes of the latest entry (e.g. for an "updated" hint).
     pub notes: Vec<Note>,
+    pub nav: Nav,
+}
+
+/// Which scene and step the workspace shows. Held by the server (not logged).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Nav {
+    pub scene: Option<String>,
+    pub step: u32,
+    /// Scenes changed while not shown ("갱신됨" dot on the tab).
+    pub updated: Vec<String>,
 }
 
 /// Visible world rectangle.

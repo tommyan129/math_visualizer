@@ -62,6 +62,17 @@ pub enum Note {
         #[ts(type = "number")]
         number: u64,
     },
+    /// Claude scenes (`scene(n):` blocks). `key` is the number as text.
+    SceneCreated { key: String },
+    SceneModified { key: String },
+    SceneUnchanged { key: String },
+    SceneDeleted { key: String },
+    /// Default scene of a coordinate system created / removed with its functions.
+    DefaultSceneCreated { key: String },
+    DefaultSceneRemoved { key: String },
+    /// Cascade inside a Claude scene: the scene stays, the reference goes.
+    /// `place`: `show`, `clip`, `step 2 show`, `step 1 note` …
+    SceneRefRemoved { scene: String, target: String, place: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -118,11 +129,12 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
         }
         match stmt {
             Stmt::Define { defs, .. } => defs.iter().for_each(|d| cx.define(d)),
-            Stmt::Del { names, .. } => cx.del(names),
+            Stmt::Del { names, scenes, .. } => cx.del(names, scenes),
             Stmt::Constant { entries, .. } => entries.iter().for_each(|e| cx.declare_constant(e)),
             Stmt::Style { name, name_span, props, span } => cx.style(name, *name_span, props, *span),
             Stmt::Assign { name, name_span, value, span } => cx.assign(name, *name_span, value, *span),
-            Stmt::Req { slots, span } => cx.req(slots, *span),
+            Stmt::Req { slots, scene, span } => cx.req(slots, scene.as_ref(), *span),
+            Stmt::Scene(def) => cx.scene(def),
         }
     }
     cx.finish();
@@ -141,6 +153,17 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
     let mut new = cx.state;
     let changes = new.diff_from(state, seq);
     Ok(Applied { state: new, changes, notes: cx.notes })
+}
+
+/// Brings a restored state up to the current model: stage 1-2 scene shapes, default
+/// scenes for every coordinate system in use. Not logged (deterministic from the log).
+pub fn normalize(state: &State, seq: u64) -> State {
+    let mut s = state.clone();
+    s.migrate();
+    match apply(&s, "", &Limits::default(), seq) {
+        Ok(a) => a.state,
+        Err(_) => s,
+    }
 }
 
 struct Cx<'s> {
@@ -307,13 +330,17 @@ impl<'s> Cx<'s> {
             return None;
         }
         let input = &params.inputs.first()?.0;
-        if input.key != "x" || output.key != "y" {
+        if input.key == output.key {
             self.err_s(
                 def.name_span.to(def.output.as_ref().unwrap().span()),
                 code::AXES,
-                format!("1단계는 2D(x, y) 좌표계만 지원함 ({} -> {})", input.key, output.key),
-                format!("{}(x) -> y", def.name.key),
+                format!("입력 축과 출력 축이 같음 ({} -> {})", input.key, output.key),
+                format!("{}({}) -> y", def.name.key, input.key),
             );
+            return None;
+        }
+        if input.deriv > 0 || input.inverse || output.deriv > 0 || output.inverse || is_reserved(input) || is_reserved(output) {
+            self.err(def.name_span.to(def.output.as_ref().unwrap().span()), code::AXES, "좌표축 이름으로 쓸 수 없는 이름");
             return None;
         }
         Some((params, output, body))
@@ -543,7 +570,10 @@ impl<'s> Cx<'s> {
 
     // ----- del ----------------------------------------------------------
 
-    fn del(&mut self, names: &[(Ident, Span)]) {
+    fn del(&mut self, names: &[(Ident, Span)], scenes: &[(SceneRef, Span)]) {
+        for (r, span) in scenes {
+            self.del_scene(r, *span);
+        }
         for (name, span) in names {
             let key = &name.key;
             if self.failed.contains(key) {
@@ -576,8 +606,8 @@ impl<'s> Cx<'s> {
         }
     }
 
-    /// Drops constants no function uses, re-resolves highlights (cascade), and drops
-    /// toggle entries of deleted objects.
+    /// Drops constants no function uses, re-resolves highlights and scenes (cascade),
+    /// keeps default scenes in sync with the coordinate systems in use.
     fn finish(&mut self) {
         let used: HashSet<String> = self.state.functions.values().flat_map(|f| f.consts.iter().cloned()).collect();
         let orphans: Vec<String> = self.state.constants.keys().filter(|k| !used.contains(*k)).cloned().collect();
@@ -591,10 +621,8 @@ impl<'s> Cx<'s> {
         }
         if self.diags.is_empty() {
             self.refresh_highlights();
-        }
-        let (functions, highlights) = (&self.state.functions, &self.state.highlights);
-        for s in self.state.scenes.values_mut() {
-            s.hidden.retain(|k| functions.contains_key(k) || highlights.contains_key(k));
+            self.refresh_scenes();
+            self.sync_default_scenes();
         }
     }
 
@@ -772,7 +800,7 @@ impl<'s> Cx<'s> {
         }
         if sc.def_key.is_empty() {
             let axes = sc.inputs.join(", ");
-            self.err(span, code::UNDECLARED, format!("'{key}'가 선언되지 않음 (범위 칸에는 축 {axes}, 상수, 변수, 함수 호출을 씀)"));
+            self.err(span, code::UNDECLARED, format!("'{key}'가 선언되지 않음 (여기에는 축 {axes}, 상수, 변수, 함수 호출을 씀)"));
             return (NameKind::Unresolved, Ty::Unknown);
         }
         if *key == sc.output {
@@ -903,6 +931,8 @@ pub enum UserOp {
         number: u64,
         done: bool,
     },
+    /// The user's clip for a scene as DSL text; `None` = back to Claude's clip.
+    SetClip { scene: String, src: Option<String> },
 }
 
 impl UserOp {
@@ -913,6 +943,7 @@ impl UserOp {
             UserOp::SetValue { constant, value } => format!("slider {constant} = {}", fmt_num(*value)),
             UserOp::SetRange { constant, min, max } => format!("range {constant}: {} .. {}", fmt_num(*min), fmt_num(*max)),
             UserOp::SetRequestDone { number, done } => format!("req #{number} {}", if *done { "처리됨" } else { "대기" }),
+            UserOp::SetClip { scene, src } => format!("clip scene({scene}): {}", src.as_deref().unwrap_or("처음 값")),
         }
     }
 }
@@ -930,11 +961,19 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
             if !new.functions.contains_key(target) && !new.highlights.contains_key(target) {
                 return Err(format!("'{target}'라는 정의가 없음"));
             }
-            let s = new.scenes.get_mut(scene).ok_or_else(|| format!("scene '{scene}'이 없음"))?;
-            s.hidden.retain(|k| k != target);
-            if !visible {
-                s.hidden.push(target.clone());
+            let s = new.scenes.get_mut(scene).ok_or_else(|| format!("scene({scene})이 없음"))?;
+            if !s.members.contains(target) {
+                return Err(format!("'{target}'는 {}의 좌표계에 맞지 않음", s.label()));
             }
+            s.toggles.insert(target.clone(), *visible);
+        }
+        UserOp::SetClip { scene, src } => {
+            let clip = match src {
+                None => None,
+                Some(text) => Some(scene::user_clip(&new, scene, text)?),
+            };
+            let s = new.scenes.get_mut(scene).ok_or_else(|| format!("scene({scene})이 없음"))?;
+            s.user_clip = clip;
         }
         UserOp::SetRequestDone { number, done } => {
             let r = new.requests.get_mut(number).ok_or_else(|| format!("요청사항 #{number}이 없음"))?;
@@ -969,6 +1008,8 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
 }
 
 mod hl;
+mod scene;
 pub use hl::{address_resolves, unescape};
+pub use scene::navigate;
 #[cfg(test)]
 mod tests;

@@ -33,7 +33,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Skips to the start of the next line at the current indentation.
-    fn sync_line(&mut self) {
+    pub(super) fn sync_line(&mut self) {
         loop {
             match self.peek() {
                 Tok::Eof | Tok::Dedent => return,
@@ -52,7 +52,7 @@ impl<'a> Parser<'a> {
     }
 
     /// At `Indent`: skips through the matching `Dedent`. Returns the block span.
-    fn skip_block(&mut self) -> Span {
+    pub(super) fn skip_block(&mut self) -> Span {
         let start = self.peek_span();
         let mut depth = 0;
         loop {
@@ -71,7 +71,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_line_end(&mut self) -> PResult<()> {
+    pub(super) fn expect_line_end(&mut self) -> PResult<()> {
         match self.peek() {
             Tok::Newline => {
                 self.bump();
@@ -82,11 +82,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn unsupported<T>(&mut self, span: Span, what: &str, stage: u8) -> PResult<T> {
-        self.diag(Diagnostic::new(span, code::UNSUPPORTED, format!("{what}은(는) 아직 지원하지 않음 ({stage}단계 기능)")));
-        Err(())
-    }
-
     fn statement(&mut self) -> PResult<Stmt> {
         let span = self.peek_span();
         match self.peek() {
@@ -94,13 +89,16 @@ impl<'a> Parser<'a> {
             Tok::Kw(Keyword::Del) => self.del(),
             Tok::Kw(Keyword::Constant) => self.constant(),
             Tok::Kw(Keyword::Style) => self.style(),
-            Tok::Kw(Keyword::Scene) => self.unsupported(span, "scene", 3),
-            Tok::Kw(Keyword::Step) => self.unsupported(span, "step", 3),
+            Tok::Kw(Keyword::Scene) => self.scene(),
+            Tok::Kw(Keyword::Step) => {
+                self.diag(Diagnostic::new(span, code::SCENE, "step은 scene 블록 안에만 씀").suggest("scene(1):\n    space: 2D(x, y)\n    step:\n        show: +f"));
+                Err(())
+            }
             _ if self.line_has_assignment() => self.assign(),
             Tok::Ident if self.peek_text() == "req" && self.peek_at(1) == Tok::LParen => {
-                let slots = self.slots()?;
+                let (slots, scene) = self.slots_with_scene()?;
                 self.expect_line_end()?;
-                Ok(Stmt::Req { span: slots.span, slots })
+                Ok(Stmt::Req { span: slots.span, slots, scene })
             }
             Tok::Ident if self.peek_text() == "highlight" && self.peek_at(1) == Tok::LParen => {
                 let slots = self.slots()?;
@@ -161,12 +159,41 @@ impl<'a> Parser<'a> {
 
     /// `head(slot; slot; ...)`: `;`-separated, empty slots allowed.
     fn slots(&mut self) -> PResult<Slots> {
+        let (slots, scene) = self.slots_inner(false)?;
+        debug_assert!(scene.is_none());
+        Ok(slots)
+    }
+
+    /// `req(...)`: the first slot may be `scene(1)` or `scene(1).step(3)` (left `None` in `items`).
+    fn slots_with_scene(&mut self) -> PResult<(Slots, Option<ReqScene>)> {
+        self.slots_inner(true)
+    }
+
+    fn slots_inner(&mut self, scene_first: bool) -> PResult<(Slots, Option<ReqScene>)> {
         let head = self.bump().span;
         self.expect(Tok::LParen, "'('")?;
         let mut items = vec![];
         let mut spans = vec![];
+        let mut scene = None;
         loop {
-            if matches!(self.peek(), Tok::Semi | Tok::RParen) {
+            if scene_first && items.is_empty() && self.at(Tok::Kw(Keyword::Scene)) {
+                let (r, span) = self.scene_ref()?;
+                let mut end = span;
+                let step = if self.at(Tok::Dot) && self.peek_at(1) == Tok::Kw(Keyword::Step) {
+                    self.bump();
+                    self.bump();
+                    self.expect(Tok::LParen, "'('")?;
+                    let t = self.peek_span();
+                    let n = self.positive_int("step 번호")?;
+                    end = self.expect(Tok::RParen, "')'")?;
+                    Some((n, t))
+                } else {
+                    None
+                };
+                spans.push(span.to(end));
+                items.push(None);
+                scene = Some((r, step, span.to(end)));
+            } else if matches!(self.peek(), Tok::Semi | Tok::RParen) {
                 spans.push(self.peek_span());
                 items.push(None);
             } else {
@@ -182,7 +209,7 @@ impl<'a> Parser<'a> {
             }
         }
         let end = self.expect(Tok::RParen, "';' 또는 ')'")?;
-        Ok(Slots { items, spans, span: head.to(end) })
+        Ok((Slots { items, spans, span: head.to(end) }, scene))
     }
 
     /// `constant:` with one indented entry per line.
@@ -204,7 +231,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Runs `line` for each line of an indented block (already past `Indent`), with recovery.
-    fn block_lines(&mut self, mut line: impl FnMut(&mut Self) -> PResult<()>) {
+    pub(super) fn block_lines(&mut self, mut line: impl FnMut(&mut Self) -> PResult<()>) {
         loop {
             match self.peek() {
                 Tok::Dedent => {
@@ -323,7 +350,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Define { defs, span })
     }
 
-    fn name_list(&mut self) -> PResult<Vec<(Ident, Span)>> {
+    pub(super) fn name_list(&mut self) -> PResult<Vec<(Ident, Span)>> {
         let mut v = vec![self.name()?];
         while self.eat(Tok::Comma) {
             v.push(self.name()?);
@@ -410,10 +437,21 @@ impl<'a> Parser<'a> {
 
     fn del(&mut self) -> PResult<Stmt> {
         let start = self.bump().span;
-        let names = self.name_list()?;
+        let mut names = vec![];
+        let mut scenes = vec![];
+        loop {
+            if self.at(Tok::Kw(Keyword::Scene)) {
+                scenes.push(self.scene_ref()?);
+            } else {
+                names.push(self.name()?);
+            }
+            if !self.eat(Tok::Comma) {
+                break;
+            }
+        }
         let span = start.to(self.prev_span());
         self.expect_line_end()?;
-        Ok(Stmt::Del { names, span })
+        Ok(Stmt::Del { names, scenes, span })
     }
 }
 
@@ -508,11 +546,6 @@ mod tests {
         assert_eq!(d[1].suggestion.as_deref(), Some("define:\n    f(x) -> y: ..."));
     }
 
-    #[test]
-    fn unsupported_statements() {
-        assert_eq!(errs("scene(1):\n    space: 2D(x, y)\n"), vec![code::UNSUPPORTED]);
-        assert_eq!(errs("step:\n    show: +f\n"), vec![code::UNSUPPORTED]);
-    }
 
     #[test]
     fn constant_block() {

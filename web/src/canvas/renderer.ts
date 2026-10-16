@@ -2,7 +2,7 @@
 // It knows nothing about definitions; a WebGL2 renderer can replace it later.
 
 import { texImage } from "../math/mathjax";
-import { cssColor, POINT_HOLE, type Batch, type Style } from "./primitives";
+import { cssColor, POINT_HOLE, type Batch, type ClipMask, type Style } from "./primitives";
 import type { View } from "./view";
 
 const HALO = "#212329";
@@ -11,6 +11,9 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   /** Image batches turned into bitmaps once per id + version. */
   private images = new Map<string, { version: number; pixels: Uint8ClampedArray; canvas: HTMLCanvasElement }>();
+  /** Offscreen layer for clipped batches, and the clip mask bitmap. */
+  private layer: HTMLCanvasElement | null = null;
+  private maskBitmap: { pixels: Uint8ClampedArray; canvas: HTMLCanvasElement } | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -26,15 +29,57 @@ export class Renderer {
     this.canvas.style.height = `${height}px`;
   }
 
-  draw(view: View, batches: Batch[], styles: Style[]): void {
-    const ctx = this.ctx;
+  /**
+   * Draws in layer then seq order. With a `mask`, clipped batches go to an offscreen
+   * layer that is cut by the mask and composited after layer 0 (grid and axes).
+   */
+  draw(view: View, batches: Batch[], styles: Style[], mask: ClipMask | null = null): void {
+    const main = this.ctx;
     const dpr = window.devicePixelRatio || 1;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, view.width, view.height);
+    main.setTransform(dpr, 0, 0, dpr, 0, 0);
+    main.clearRect(0, 0, view.width, view.height);
     const ordered = [...batches].sort((a, b) => a.layer - b.layer || a.seq - b.seq);
-    for (const b of ordered) {
+    if (!mask) {
+      for (const b of ordered) this.batch(view, b, styles);
+    } else {
+      for (const b of ordered) if (b.layer === 0 && !b.clip) this.batch(view, b, styles);
+      const layer = (this.layer ??= document.createElement("canvas"));
+      if (layer.width !== this.canvas.width || layer.height !== this.canvas.height) {
+        layer.width = this.canvas.width;
+        layer.height = this.canvas.height;
+      }
+      const lc = layer.getContext("2d")!;
+      lc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      lc.clearRect(0, 0, view.width, view.height);
+      this.ctx = lc;
+      for (const b of ordered) if (b.clip) this.batch(view, b, styles);
+      // Keep only what lies inside the mask.
+      if (this.maskBitmap?.pixels !== mask.pixels) {
+        const canvas = this.maskBitmap?.canvas ?? document.createElement("canvas");
+        canvas.width = mask.width;
+        canvas.height = mask.height;
+        canvas.getContext("2d")!.putImageData(new ImageData(mask.pixels as Uint8ClampedArray<ArrayBuffer>, mask.width, mask.height), 0, 0);
+        this.maskBitmap = { pixels: mask.pixels, canvas };
+      }
+      lc.globalCompositeOperation = "destination-in";
+      lc.imageSmoothingEnabled = false;
+      const r = mask.rect;
+      lc.drawImage(this.maskBitmap.canvas, view.sx(r.x0), view.sy(r.y1), (r.x1 - r.x0) * view.scale, (r.y1 - r.y0) * view.scale);
+      lc.globalCompositeOperation = "source-over";
+      this.ctx = main;
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.drawImage(layer, 0, 0);
+      main.setTransform(dpr, 0, 0, dpr, 0, 0);
+      for (const b of ordered) if (b.layer !== 0 && !b.clip) this.batch(view, b, styles);
+    }
+    const live = new Set(batches.filter((b) => b.kind === "image").map((b) => b.id));
+    for (const k of [...this.images.keys()]) if (!live.has(k)) this.images.delete(k);
+  }
+
+  private batch(view: View, b: Batch, styles: Style[]): void {
+    {
       const st = styles[b.style];
-      if (!st) continue;
+      if (!st) return;
       switch (b.kind) {
         case "polyline":
           this.polyline(view, b, st);
@@ -53,8 +98,6 @@ export class Renderer {
           break;
       }
     }
-    const live = new Set(batches.filter((b) => b.kind === "image").map((b) => b.id));
-    for (const k of [...this.images.keys()]) if (!live.has(k)) this.images.delete(k);
   }
 
   /** The drawn canvas (snapshot). */

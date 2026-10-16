@@ -6,17 +6,22 @@
 
 import type { Function as Fn } from "../generated/Function";
 import type { Highlight } from "../generated/Highlight";
+import type { Nav } from "../generated/Nav";
+import type { Scene } from "../generated/Scene";
 import type { State } from "../generated/State";
+import type { ViewSpec } from "../generated/ViewSpec";
 import type { ViewBox } from "../generated/ViewBox";
 import type { Warning } from "../generated/Warning";
 import { identTex } from "../math/latex";
 import { setImageReadyHandler } from "../math/mathjax";
-import type { FnSpec } from "../worker/codegen";
+import { compileConst, type FnSpec } from "../worker/codegen";
+import { makeRuntime } from "../worker/numeric";
 import type { Quality, SampleRange } from "../worker/sample";
-import type { CurveResult, FillItem, FillResult, FromWorker, HlSpec, RasterResult, ToWorker } from "../worker/worker";
+import { CLIP_KEY, type CurveResult, type FillItem, type FillResult, type FromWorker, type HlSpec, type RasterResult, type ToWorker } from "../worker/worker";
 import type { RasterRect } from "../worker/fill";
 import { maskPixels, resolveHighlights, sortedHighlights } from "./highlight";
-import { POINT_HOLE, POINT_NORMAL, rgba, type Batch, type LabelPlacement, type Style } from "./primitives";
+import { POINT_HOLE, POINT_NORMAL, rgba, type Batch, type ClipMask, type LabelPlacement, type Style } from "./primitives";
+import { activeClip, sceneAxes, visibleAt } from "./scene";
 import { Renderer } from "./renderer";
 import { buildSpace, spaceStyles } from "./space";
 import { View } from "./view";
@@ -63,6 +68,31 @@ export interface PlotCallbacks {
   rendered(revision: number, warnings: Warning[]): void;
 }
 
+interface Cam {
+  cx: number;
+  cy: number;
+  scale: number;
+}
+
+const CONST_R = makeRuntime();
+
+/** Camera for a `view` spec at the given canvas size; null if a bound is not a number. */
+export function fitView(spec: ViewSpec, width: number, height: number): Cam | null {
+  const ev = (r: { lo: import("../generated/Expr").Expr; hi: import("../generated/Expr").Expr } | null) => {
+    if (!r) return null;
+    try {
+      const a = compileConst(r.lo, CONST_R)(), b = compileConst(r.hi, CONST_R)();
+      return Number.isFinite(a) && Number.isFinite(b) && b > a ? [a, b] as const : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const h = ev(spec.h), v = ev(spec.v);
+  if (h === undefined || v === undefined || (!h && !v) || width <= 0 || height <= 0) return null;
+  const sx = h ? width / (h[1] - h[0]) : Infinity, sy = v ? height / (v[1] - v[0]) : Infinity;
+  return { cx: h ? (h[0] + h[1]) / 2 : 0, cy: v ? (v[0] + v[1]) / 2 : 0, scale: Math.min(sx, sy) };
+}
+
 export class Plot {
   readonly view = new View();
   private renderer: Renderer;
@@ -71,8 +101,28 @@ export class Plot {
   private cursor: HTMLElement;
 
   private state: State | null = null;
+  /** Functions of the current scene (sampled and drawn); `allFns` go to the worker. */
   private fns: Fn[] = [];
+  private allFns: Fn[] = [];
+  private members = new Set<string>();
+  /** Functions and highlights not shown in the current scene and step. */
   private hidden = new Set<string>();
+  private scene: Scene | null = null;
+  private sceneKey: string | null = null;
+  private step = 0;
+  private axes: [string, string] = ["x", "y"];
+  private axisTex: [string, string] = ["x", "y"];
+  /** Camera per scene, kept when leaving (view applies on first entry only). */
+  private cams = new Map<string, Cam>();
+  /** Per scene: the `view` source last applied; a different one moves the camera again. */
+  private appliedView = new Map<string, string>();
+  /** Camera to set once the canvas has a size. */
+  private pendingCam: (() => Cam | "reset") | null = null;
+  private clipKey = "";
+  private clipGeom: { mask: ClipMask; bits: Uint8Array; scale: number; quality: Quality; stamp: string } | null = null;
+  /** Scene waiting for its first-screen check, and the warnings it produced. */
+  private entryCheck: string | null = null;
+  private entryWarnings: Warning[] = [];
   private constKeys: string[] = [];
   private overrides = new Map<string, number>();
 
@@ -106,6 +156,7 @@ export class Plot {
       const r = host.getBoundingClientRect();
       this.view.resize(r.width, r.height);
       this.renderer.resize(r.width, r.height);
+      if (this.pendingCam && r.width > 0) this.setCam(this.pendingCam);
       this.draw();
       this.afterViewChange(false);
     }).observe(host);
@@ -115,19 +166,34 @@ export class Plot {
   // ----- model -----------------------------------------------------------
 
   /** New snapshot. Recomputes functions whose version or constants changed. */
-  setState(state: State, revision: number): void {
+  setState(state: State, revision: number, nav: Nav): void {
     const prev = this.state;
     this.state = state;
-    this.fns = Object.values(state.functions)
+    const scene = (nav.scene && state.scenes[nav.scene]) || null;
+    this.enterScene(scene);
+    this.scene = scene;
+    this.step = scene ? Math.min(nav.step, scene.steps.length - 1) : 0;
+    [this.axes, this.axisTex] = sceneAxes(scene);
+    this.allFns = Object.values(state.functions)
       .map((f) => f!)
       .sort((a, b) => a.order - b.order);
-    this.hidden = new Set(Object.values(state.scenes).flatMap((s) => s!.hidden));
+    this.members = new Set(scene?.members ?? []);
+    this.fns = this.allFns.filter((f) => this.members.has(f.key));
+    this.hidden = new Set([...Object.keys(state.functions), ...Object.keys(state.highlights)].filter((k) => !scene || !visibleAt(scene, this.step, k)));
+    this.applyViewRule();
     this.constKeys = Object.keys(state.constants).sort();
-    for (const k of [...this.curves.keys()]) if (!state.functions[k]) this.curves.delete(k);
+    for (const k of [...this.curves.keys()]) if (!this.members.has(k)) this.curves.delete(k);
     for (const k of [...this.warningsByKey.keys()]) if (!state.functions[k]) this.warningsByKey.delete(k);
 
-    const specs: FnSpec[] = this.fns.map((f) => ({ key: f.key, version: f.version, body: f.body, consts: f.consts, calls: f.calls }));
+    const specs: FnSpec[] = this.allFns.map((f) => ({ key: f.key, version: f.version, body: f.body, consts: f.consts, calls: f.calls }));
     this.post({ type: "functions", fns: specs, constKeys: this.constKeys });
+    const clip = activeClip(scene);
+    const clipKey = JSON.stringify([this.axes, clip?.expr ?? null]);
+    if (clipKey !== this.clipKey) {
+      this.clipKey = clipKey;
+      this.clipGeom = null;
+      this.post({ type: "scene", axes: this.axes, clip: clip?.expr ?? null });
+    }
 
     const changedConsts = new Set(
       this.constKeys.filter((k) => !prev || prev.constants[k]?.version !== state.constants[k]!.version),
@@ -139,18 +205,116 @@ export class Plot {
       })
       .map((f) => f.key);
     this.setHighlights(state, changedConsts);
+    if (clip && (!this.clipGeom || clip.consts.some((k) => changedConsts.has(k)) || this.clipGeom.stamp !== this.clipStamp())) this.requestHighlights([CLIP_KEY], "fine");
     if (dirty.length === 0) {
       this.draw();
       this.cb.rendered(revision, this.warnings());
+      this.checkEntry();
       return;
     }
     const id = this.request(dirty, "fine");
     this.waitRendered = { id, revision };
   }
 
-  /** Highlights drawn on the canvas (function fills and targetless regions). */
+  // ----- scene -----------------------------------------------------------
+
+  private cam(): Cam {
+    return { cx: this.view.cx, cy: this.view.cy, scale: this.view.scale };
+  }
+
+  private setCam(c: Cam | "reset" | (() => Cam | "reset")): void {
+    if (this.view.width === 0) {
+      this.pendingCam = typeof c === "function" ? c : () => c;
+      return;
+    }
+    this.pendingCam = null;
+    const cam = typeof c === "function" ? c() : c;
+    if (cam === "reset") this.view.reset();
+    else Object.assign(this.view, cam);
+  }
+
+  /** Camera for the current step's view (default range without one). */
+  private stepCam(): Cam | "reset" {
+    const spec = this.scene?.steps[this.step]?.view ?? null;
+    return (spec && fitView(spec, this.view.width, this.view.height)) ?? "reset";
+  }
+
+  /** Scene switch: keep the old camera, restore the new scene's (first entry: its view). */
+  private enterScene(scene: Scene | null): void {
+    const key = scene?.key ?? null;
+    if (key === this.sceneKey) return;
+    if (this.sceneKey) this.cams.set(this.sceneKey, this.cam());
+    this.sceneKey = key;
+    this.entryWarnings = [];
+    this.entryCheck = null;
+    if (!key) return;
+    const cam = this.cams.get(key);
+    if (cam) {
+      this.setCam(cam);
+    } else {
+      // First entry: the view is applied by `applyViewRule`; check the first screen.
+      this.entryCheck = key;
+    }
+    this.curves.clear();
+    this.hlGeom.clear();
+  }
+
+  /** The view of the current step differs from the one last applied: move the camera. */
+  private applyViewRule(): void {
+    if (!this.scene) return;
+    const src = this.scene.steps[this.step]?.view?.src ?? "";
+    if (this.appliedView.get(this.scene.key) === src) return;
+    this.appliedView.set(this.scene.key, src);
+    // Fitted now, or after the first resize.
+    this.setCam(() => this.stepCam());
+  }
+
+  /** First screen of a scene: functions with no visible point; nothing visible inside a clip. */
+  private checkEntry(): void {
+    if (!this.entryCheck || this.entryCheck !== this.sceneKey || !this.state) return;
+    const clip = activeClip(this.scene);
+    if (clip && this.clipGeom?.quality !== "fine") return;
+    const shown = this.fns.filter((f) => !this.hidden.has(f.key));
+    if (shown.some((f) => this.curves.get(f.key)?.quality !== "fine")) return;
+    this.entryCheck = null;
+    const b = this.view.box();
+    const out: Warning[] = [];
+    let any = false;
+    for (const f of shown) {
+      const r = this.curves.get(f.key)!.result;
+      let seen = false;
+      for (let i = 0; i < r.coords.length && !seen; i += 2) {
+        const x = r.origin[0] + r.coords[i]!, y = r.origin[1] + r.coords[i + 1]!;
+        seen = x >= b.x_min && x <= b.x_max && y >= b.y_min && y <= b.y_max && this.inClip(x, y);
+      }
+      any ||= seen;
+      if (!seen) out.push({ source: f.key, code: "W-offscreen", message: "처음 화면에 보이는 점 없음" });
+    }
+    if (clip && !any && shown.length > 0) out.push({ source: null, code: "W-empty-screen", message: "처음 화면이 비어 있음 (clip 범위 확인)" });
+    this.entryWarnings = out;
+    this.cb.rendered(-1, this.warnings());
+  }
+
+  /** Inside the scene clip (true without one, or before its mask arrives). */
+  private inClip(x: number, y: number): boolean {
+    const g = this.clipGeom;
+    if (!activeClip(this.scene) || !g) return true;
+    const r = g.mask.rect;
+    if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) return false;
+    const i = Math.min(g.mask.width - 1, Math.floor(((x - r.x0) / (r.x1 - r.x0)) * g.mask.width));
+    const j = Math.min(g.mask.height - 1, Math.floor(((r.y1 - y) / (r.y1 - r.y0)) * g.mask.height));
+    return g.bits[j * g.mask.width + i] === 1;
+  }
+
+  private clipStamp(): string {
+    const clip = activeClip(this.scene);
+    const fv = (k: string) => this.state?.functions[k]?.version ?? -1;
+    return clip ? `${this.clipKey}|${Object.keys(this.state?.functions ?? {}).map(fv).join(",")}` : "";
+  }
+
+  /** Highlights drawn on the canvas (function fills and targetless regions) in this scene. */
   private drawable(): Highlight[] {
-    return this.hls.filter((h) => h.target.type !== "Sub");
+    return this.hls.filter((h) => h.target.type !== "Sub" && this.members.has(h.key));
   }
 
   /** Changes when anything the geometry depends on changed (except constant values). */
@@ -191,6 +355,14 @@ export class Plot {
     const coarse = quality === "coarse";
     const items: FillItem[] = [];
     for (const k of keys) {
+      if (k === CLIP_KEY) {
+        if (!activeClip(this.scene)) continue;
+        this.hlLatest.set(k, id);
+        const r = this.rasterRect();
+        const f = coarse ? 0.35 : 1;
+        items.push({ key: k, kind: "raster", rect: r.rect, width: Math.max(1, Math.round(r.width * f)), height: Math.max(1, Math.round(r.height * f)) });
+        continue;
+      }
       const h = this.state.highlights[k];
       if (!h || h.target.type === "Sub") continue;
       this.hlLatest.set(k, id);
@@ -210,6 +382,11 @@ export class Plot {
     if (r.quality === "coarse") this.hlCoarseInFlight = false;
     for (const res of r.results) {
       if (this.hlLatest.get(res.key) !== r.id) continue;
+      if (res.key === CLIP_KEY && res.kind === "raster") {
+        const mask: ClipMask = { id: CLIP_KEY, rect: res.rect, width: res.width, height: res.height, pixels: maskPixels(res.mask, "#ffffff", 1) };
+        this.clipGeom = { mask, bits: res.mask, scale: this.view.scale, quality: r.quality, stamp: this.clipStamp() };
+        continue;
+      }
       const h = this.state?.highlights[res.key];
       if (!h) continue;
       const result = res.kind === "raster" ? { ...res, pixels: maskPixels(res.mask, h.style.color, h.style.opacity) } : res;
@@ -223,12 +400,20 @@ export class Plot {
       }
     }
     this.draw();
+    this.checkEntry();
   }
 
   /** Highlights whose geometry no longer covers the view (or is too coarse for the zoom). */
   private staleHighlights(): string[] {
     const b = this.view.box();
-    return this.drawable()
+    const out: string[] = [];
+    if (activeClip(this.scene)) {
+      const g = this.clipGeom;
+      const r = g?.mask.rect;
+      const drift = g ? Math.max(this.view.scale / g.scale, g.scale / this.view.scale) : Infinity;
+      if (!g || !r || b.x_min < r.x0 || b.x_max > r.x1 || b.y_min < r.y0 || b.y_max > r.y1 || drift > RASTER_DRIFT) out.push(CLIP_KEY);
+    }
+    return out.concat(this.drawable()
       .filter((h) => {
         const g = this.hlGeom.get(h.key);
         if (!g) return true;
@@ -240,7 +425,7 @@ export class Plot {
         const r = g.range;
         return b.x_min < r.x0 || b.x_max > r.x1 || b.y_min < r.y0 || b.y_max > r.y1 || drift > ZOOM_DRIFT;
       })
-      .map((h) => h.key);
+      .map((h) => h.key));
   }
 
   /** Slider: local value while dragging (`final` = released). */
@@ -268,12 +453,29 @@ export class Plot {
     this.overrides.delete(key);
   }
 
+  /** Redraw what uses `key` at the state's value (after a local animation ended). */
+  releaseConstant(key: string): void {
+    this.overrides.delete(key);
+    this.request(this.fns.filter((f) => f.consts.includes(key)).map((f) => f.key), "fine");
+    this.requestHighlights(this.drawable().filter((h) => h.consts.includes(key)).map((h) => h.key), "fine");
+  }
+
   warnings(): Warning[] {
-    return [...this.warningsByKey.values()].flat();
+    return [...[...this.warningsByKey.values()].flat(), ...this.entryWarnings];
   }
 
   warningsFor(key: string): Warning[] {
-    return this.warningsByKey.get(key) ?? [];
+    return [...(this.warningsByKey.get(key) ?? []), ...this.entryWarnings.filter((w) => w.source === key)];
+  }
+
+  /** Scene-wide warnings (no definition). */
+  sceneWarnings(): Warning[] {
+    return this.entryWarnings.filter((w) => w.source === null);
+  }
+
+  /** Current axis names, for the cursor and `get_state`. */
+  axisNames(): [string, string] {
+    return this.axes;
   }
 
   box(): ViewBox {
@@ -297,8 +499,9 @@ export class Plot {
     return { data: url.slice(url.indexOf(",") + 1), width: out.width, height: out.height };
   }
 
+  /** Back to the current step's view (or the default range). */
   resetView(): void {
-    this.view.reset();
+    this.setCam(this.stepCam());
     this.draw();
     this.afterViewChange(true);
   }
@@ -360,11 +563,14 @@ export class Plot {
       this.waitRendered = null;
       this.cb.rendered(rev, this.warnings());
     }
+    if (r.quality === "fine") this.checkEntry();
   }
 
   /** After pan/zoom: resample if the view left the computed area or the zoom drifted. */
   private afterViewChange(interacting: boolean): void {
     if (!this.state) return;
+    // The first-screen check is about the first screen only.
+    if (interacting && this.entryWarnings.length > 0 && !this.entryCheck) this.entryWarnings = [];
     const staleHl = this.staleHighlights();
     if (staleHl.length > 0 && interacting && !this.hlCoarseInFlight) {
       this.hlCoarseInFlight = true;
@@ -419,7 +625,7 @@ export class Plot {
   private draw(): void {
     if (this.view.width === 0) return;
     const styles: Style[] = [...spaceStyles];
-    const batches: Batch[] = buildSpace(this.view);
+    const batches: Batch[] = buildSpace(this.view, this.axisTex);
     this.drawHighlights(batches, styles);
     let seq = 0;
     const placed: Rect[] = [];
@@ -429,7 +635,7 @@ export class Plot {
       const color = colorOf(f);
       const style = styles.length;
       styles.push({ color: rgba(color), width: 2.5, size: 7 });
-      const base = { id: f.key, version: f.version, source: { def: f.key }, seq: seq++, style, origin: [c.result.origin[0], c.result.origin[1], 0] as [number, number, number], dim: 2 as const };
+      const base = { id: f.key, version: f.version, source: { def: f.key }, seq: seq++, style, origin: [c.result.origin[0], c.result.origin[1], 0] as [number, number, number], dim: 2 as const, clip: true };
       if (c.result.kind === "points") {
         batches.push({ ...base, layer: 3, kind: "points", coords: c.result.coords, pointKind: new Uint8Array(c.result.coords.length / 2).fill(POINT_NORMAL) });
       } else {
@@ -454,6 +660,7 @@ export class Plot {
       }
     }
     const hit = this.hoverAt ? this.nearestPoint(this.hoverAt.px, this.hoverAt.py) : null;
+    this.canvas.classList.toggle("snap", !!hit);
     if (hit) {
       const style = styles.length;
       styles.push({ color: rgba(hit.color), width: 2.5, size: 11 });
@@ -478,7 +685,7 @@ export class Plot {
         placement: [{ align: right ? "left" : "right", baseline: "bottom", dx: right ? 12 : -12, dy: -10, halo: true }],
       });
     }
-    this.renderer.draw(this.view, batches, styles);
+    this.renderer.draw(this.view, batches, styles, activeClip(this.scene) && this.clipGeom ? this.clipGeom.mask : null);
   }
 
   private drawHighlights(batches: Batch[], styles: Style[]): void {
@@ -491,18 +698,18 @@ export class Plot {
       const r = g.result;
       const source = { def: h.key };
       if (r.kind === "raster") {
-        batches.push({ id: `hl-${h.key}`, version: h.version, source, layer: 1, seq: seq++, style: 0, origin: [r.rect.x0, r.rect.y1, 0], dim: 2, kind: "image", size: [r.rect.x1 - r.rect.x0, r.rect.y1 - r.rect.y0], width: r.width, height: r.height, pixels: r.pixels });
+        batches.push({ id: `hl-${h.key}`, version: h.version, source, layer: 1, seq: seq++, style: 0, origin: [r.rect.x0, r.rect.y1, 0], dim: 2, kind: "image", size: [r.rect.x1 - r.rect.x0, r.rect.y1 - r.rect.y0], width: r.width, height: r.height, pixels: r.pixels, clip: true });
         continue;
       }
       const fill = styles.length;
       styles.push({ color: rgba(h.style.color, h.style.opacity), width: 0, size: 0 });
       const origin: [number, number, number] = [r.origin[0], r.origin[1], 0];
       const rings = r.rings.length - 1;
-      batches.push({ id: `hl-${h.key}`, version: h.version, source, layer: 1, seq: seq++, style: fill, origin, dim: 2, kind: "polygon", coords: r.coords, ringOffsets: r.rings, polyOffsets: Uint32Array.from({ length: rings + 1 }, (_, i) => i) });
+      batches.push({ id: `hl-${h.key}`, version: h.version, source, layer: 1, seq: seq++, style: fill, origin, dim: 2, kind: "polygon", coords: r.coords, ringOffsets: r.rings, polyOffsets: Uint32Array.from({ length: rings + 1 }, (_, i) => i), clip: true });
       if (h.style.width > 0) {
         const edge = styles.length;
         styles.push({ color: rgba(h.style.color, EDGE_ALPHA), width: h.style.width, size: 0 });
-        batches.push({ id: `hl-edge-${h.key}`, version: h.version, source, layer: 1, seq: seq++, style: edge, origin, dim: 2, kind: "polyline", coords: r.edge, offsets: r.edgeOffsets });
+        batches.push({ id: `hl-edge-${h.key}`, version: h.version, source, layer: 1, seq: seq++, style: edge, origin, dim: 2, kind: "polyline", coords: r.edge, offsets: r.edgeOffsets, clip: true });
       }
     }
   }
@@ -529,7 +736,7 @@ export class Plot {
       const X = (i: number) => ox + r.coords[2 * i]!, Y = (i: number) => oy + r.coords[2 * i + 1]!;
       const consider = (x: number, y: number) => {
         const dx = v.sx(x) - px, dy = v.sy(y) - py, d = dx * dx + dy * dy;
-        if (d < bestD) {
+        if (d < bestD && this.inClip(x, y)) {
           bestD = d;
           best = { key: f.key, color: colorOf(f), x, y };
         }
@@ -563,7 +770,7 @@ export class Plot {
     if (n === 0) return null;
     const sx = (i: number) => v.sx(ox + c.coords[2 * i]!);
     const sy = (i: number) => v.sy(oy + c.coords[2 * i + 1]!);
-    const inside = (px: number, py: number) => px > 40 && px < v.width - 70 && py > 30 && py < v.height - 40;
+    const inside = (px: number, py: number) => px > 40 && px < v.width - 70 && py > 30 && py < v.height - 40 && this.inClip(v.wx(px), v.wy(py));
     const w = 14 * chars + 10, hgt = 26, gap = 10;
     let fallback: { x: number; y: number; place: LabelPlacement } | null = null;
     for (const frac of [0.85, 0.7, 0.93, 0.55, 0.4, 0.25, 0.12]) {
@@ -657,6 +864,7 @@ export class Plot {
     const d = this.decimals();
     const fmt = (v: number) => v.toFixed(d).replace("-", "−");
     this.cursor.hidden = false;
-    this.cursor.textContent = `x ${fmt(this.view.wx(px))} · y ${fmt(this.view.wy(py))}`;
+    const [h, v] = this.axes.map((a) => a.replace(/^\\/, ""));
+    this.cursor.textContent = `${h} ${fmt(this.view.wx(px))} · ${v} ${fmt(this.view.wy(py))}`;
   }
 }

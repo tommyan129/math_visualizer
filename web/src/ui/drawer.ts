@@ -57,6 +57,11 @@ export class Drawer {
     this.render();
   }
 
+  /** Body height in px (splitter). */
+  setHeight(px: number): void {
+    this.body.style.height = `${px}px`;
+  }
+
   private setOpen(v: boolean): void {
     this.openState = v;
     this.render();

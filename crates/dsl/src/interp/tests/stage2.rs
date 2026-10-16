@@ -216,10 +216,11 @@ fn highlight_cascade_on_function_and_style_delete() {
     assert_eq!(deleted, [("H1", Some("g")), ("H2", Some("f")), ("H3", Some("f"))]);
     let a = run(&s, "del up\n").unwrap();
     assert_eq!(a.state.highlights.keys().collect::<Vec<_>>(), ["H2", "H3"]);
-    // Toggle entries of deleted highlights go too.
-    let t = apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), target: "H3".into(), visible: false }, 3).unwrap().state;
-    assert_eq!(t.scenes[DEFAULT_SCENE].hidden, ["H3"]);
-    assert!(apply_ok(&t, "del H3\n").scenes[DEFAULT_SCENE].hidden.is_empty());
+    // Highlights start off in the default scene; toggle entries of deleted highlights go too.
+    assert!(!s.scenes[DEFAULT_SCENE].visible("H3", 0));
+    let t = apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), target: "H3".into(), visible: true }, 3).unwrap().state;
+    assert!(t.scenes[DEFAULT_SCENE].visible("H3", 0));
+    assert!(apply_ok(&t, "del H3\n").scenes[DEFAULT_SCENE].toggles.is_empty());
 }
 
 #[test]
