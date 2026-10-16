@@ -375,7 +375,9 @@ impl<'a> Parser<'a> {
             let inputs = if matches!(self.peek(), Tok::Semi | Tok::RParen) { vec![] } else { self.name_list()? };
             let consts = if self.eat(Tok::Semi) { self.name_list()? } else { vec![] };
             let close = self.expect(Tok::RParen, "')'")?;
-            if inputs.is_empty() {
+            // `v(; a)`: a vector, matrix, span or arrow with constants has no inputs
+            // (checked against the body by the interpreter).
+            if inputs.is_empty() && consts.is_empty() {
                 self.diag(Diagnostic::new(open.to(close), code::SYNTAX, "입력 변수가 없음").suggest(format!("{}(x)", name.key)));
             }
             Some(Params { inputs, consts, span: open.to(close) })
@@ -510,6 +512,18 @@ mod tests {
         assert!(matches!(d[3].output, Some(Output::Matrix(_))));
         assert!(d[4].params.is_none());
         assert!(matches!(d[5].body, DefBody::Block(_)));
+    }
+
+    #[test]
+    fn stage4_definition_shapes() {
+        let d = defs("define:\n    v(; a): [1, a]\n    A: [[1, 2],\n        [3, 4]]\n    S(; a): span(v, [0, 1])\n    p: arrow(v; [1, 2])\n");
+        assert_eq!(d.len(), 4);
+        let p = d[0].params.as_ref().unwrap();
+        assert!(p.inputs.is_empty() && p.consts.len() == 1);
+        assert!(d[1].params.is_none() && matches!(&d[1].body, DefBody::Expr(e) if matches!(e.kind, ExprKind::List { .. })));
+        assert!(matches!(&d[3].body, DefBody::Expr(e) if matches!(&e.kind, ExprKind::Call { callee, args, .. } if callee.key == "arrow" && args.len() == 2)));
+        // `v()` has neither inputs nor constants.
+        assert_eq!(errs("define:\n    v(): [1, 2]\n"), vec![code::SYNTAX]);
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use dsl::interp::{Note, ObjKind, fmt_num};
 use dsl::state::{BASE_STYLES, Constant, Highlight, NoteSeg, Request, Scene, State};
-use model::protocol::{ReqStatus, ReqView, ViewBox, Warning};
+use model::protocol::{ReqStatus, ReqView, SpanDim, ViewBox, Warning};
 
 use crate::engine::{ApplyError, ApplyOk, KeyError, RequestsOut, WorkspaceView};
 
@@ -15,8 +15,8 @@ pub enum Browser {
     OtherWorkspace,
     /// Connected but no answer in time.
     Timeout,
-    Rendered { warnings: Vec<Warning> },
-    View { view: ViewBox, warnings: Vec<Warning> },
+    Rendered { warnings: Vec<Warning>, spans: Vec<SpanDim> },
+    View { view: ViewBox, warnings: Vec<Warning>, spans: Vec<SpanDim> },
 }
 
 pub fn key_error(e: &KeyError) -> String {
@@ -50,6 +50,16 @@ fn highlight_text(h: &Highlight) -> String {
     format!("{} = {}{auto}", h.key, h.src)
 }
 
+/// `직선 (1차원)` for a span drawn as a line.
+fn span_dim_word(dim: u32) -> &'static str {
+    match dim {
+        0 => "점 (0차원, 원점)",
+        1 => "직선 (1차원)",
+        2 => "평면 (2차원)",
+        _ => "공간 (3차원)",
+    }
+}
+
 fn warnings_text(w: &[Warning]) -> String {
     if w.is_empty() {
         return "경고 없음".into();
@@ -69,7 +79,15 @@ pub fn browser_line(b: &Browser) -> String {
         Browser::NotConnected => "브라우저: 미연결 (화면 확인은 연결 후 get_state로)".into(),
         Browser::OtherWorkspace => "브라우저: 다른 작업 공간을 보고 있음 (화면 확인은 get_state로)".into(),
         Browser::Timeout => "브라우저: 응답 없음 (렌더 결과는 get_state로)".into(),
-        Browser::Rendered { warnings } | Browser::View { warnings, .. } => format!("브라우저: {}", warnings_text(warnings)),
+        // `get_state` marks each span in the definition list instead.
+        Browser::View { warnings, .. } => format!("브라우저: {}", warnings_text(warnings)),
+        Browser::Rendered { warnings, spans } => {
+            let mut t = format!("브라우저: {}", warnings_text(warnings));
+            if !spans.is_empty() {
+                t.push_str(&format!("\nspan: {}", spans.iter().map(|d| format!("{} {}", d.key, span_dim_word(d.dim))).collect::<Vec<_>>().join(", ")));
+            }
+            t
+        }
     }
 }
 
@@ -216,15 +234,30 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
             .collect();
         lines.push(format!("다른 scene: {}", items.join(", ")));
     }
+    let spans: &[SpanDim] = match browser {
+        Browser::View { spans, .. } | Browser::Rendered { spans, .. } => spans,
+        _ => &[],
+    };
     let mark = |key: &str| -> String {
         let Some(sc) = cur else { return String::new() };
+        let f = s.functions.get(key);
+        if f.is_some_and(|f| !f.kind.is_drawn()) {
+            // Vectors, matrices, matrix functions: used by others, never drawn.
+            return String::new();
+        }
         if !sc.members.iter().any(|m| m == key) {
-            let system = match (s.function_system(key), s.highlights.get(key)) {
-                (Some(sys), _) => sys,
-                (None, Some(h)) => h.axes.join(", "),
+            let system = match (s.function_system(key), s.highlights.get(key), f.and_then(|f| f.vector_dim())) {
+                (Some(sys), _, _) => sys,
+                (None, Some(h), _) => h.axes.join(", "),
+                (None, None, Some(n)) => format!("축 {n}개"),
                 _ => String::new(),
             };
             return format!(" [다른 좌표계 {system}]");
+        }
+        if let Some(d) = spans.iter().find(|d| d.key == key)
+            && sc.visible(key, step)
+        {
+            return format!(" [{}]", span_dim_word(d.dim));
         }
         if sc.steps.get(step).is_some_and(|st| st.concealed.iter().any(|c| c == key)) {
             return " [공개 전]".into();
@@ -340,7 +373,7 @@ mod tests {
     fn apply_text_lists_changes_and_automatic_actions_only() {
         let (state, notes) = applied(&["define:\n    f(x; a) -> y: a*x\n    g(x; a) -> y: f(x)\n", "define:\n    f(x; a, b) -> y: a*x + b\n"]);
         let ok = ApplyOk { workspace: "w1".into(), revision: 2, notes, state };
-        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![] });
+        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![] });
         assert_eq!(
             text,
             "적용됨 · rev 2\n수정: f(x; a, b) -> y\n자동: 상수 생성 b = 1 (-10..10)\n자동: g(x; a, b) -> y ← 상수 b 추가 (f가 b를 씀)\n브라우저: 경고 없음"
@@ -371,11 +404,27 @@ mod tests {
         let b = Browser::View {
             view: ViewBox { x_min: -10.0, x_max: 10.0, y_min: -6.25, y_max: 6.25 },
             warnings: vec![Warning { source: Some("f".into()), code: "W-sum-terms".into(), message: "항이 너무 많은 점은 그리지 않음".into() }],
+            spans: vec![],
         };
         assert_eq!(
             state_text(&w, &b),
             "작업 공간: calc · rev 1\nscene: scene(2D(x, y)) (기본)\nview: -10 <= x <= 10 and -6.25 <= y <= 6.25\n정의:\n  f(x; n) -> y: sum(x^k; 0 <= k <= n)\n상수: n = 5 (정수, 0..20)\n브라우저: 경고 1개\n  f: 항이 너무 많은 점은 그리지 않음 [W-sum-terms]"
         );
+    }
+
+    #[test]
+    fn span_dimension_and_linear_algebra_text() {
+        let (state, notes) = applied(&["define:\n    v(; a): [1, a]\n    w: [0, 1]\n    u: [1, 2, 3]\n    S(; a): span(v, w)\n    T: span(u)\n    p(; a): arrow(v; w)\n    R(t) -> matrix: [[cos(t), 0], [0, 1]]\n"]);
+        let ok = ApplyOk { workspace: "w1".into(), revision: 1, notes, state: state.clone() };
+        let lines = apply_lines(&ok);
+        assert!(lines.contains(&"추가: v(; a)".to_string()), "{lines:?}");
+        assert!(lines.contains(&"추가: R(t) -> matrix".to_string()), "{lines:?}");
+        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 1 }] });
+        assert!(r.ends_with("브라우저: 경고 없음\nspan: S 직선 (1차원)"), "{r}");
+        let w = view_of(state, "2D(x, y)", 0);
+        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }] };
+        let t = state_text(&w, &b);
+        assert!(t.contains("  v(; a): [1, a]\n  w: [0, 1]\n  u: [1, 2, 3]\n  S(; a): span(v, w) [평면 (2차원)]\n  T: span(u) [다른 좌표계 축 3개]\n  p(; a): arrow(v; w)\n  R(t) -> matrix: [[cos(t), 0], [0, 1]]"), "{t}");
     }
 
     #[test]

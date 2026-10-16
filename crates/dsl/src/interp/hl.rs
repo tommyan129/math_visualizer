@@ -469,12 +469,12 @@ impl<'s> Cx<'s> {
                 let fs: Vec<Option<Ident>> = args
                     .iter()
                     .map(|a| match &a.kind {
-                        ExprKind::Name { name, .. } if self.state.functions.contains_key(&name.key) => Some(name.clone()),
+                        ExprKind::Name { name, .. } if self.state.functions.get(&name.key).is_some_and(|f| f.kind == DefKind::Curve) => Some(name.clone()),
                         _ => None,
                     })
                     .collect();
                 if args.len() != 2 || fs.iter().any(|f| f.is_none()) {
-                    self.err_s(span, code::TYPE, "between의 인자는 함수 이름 두 개", "between(f, g)");
+                    self.err_s(span, code::TYPE, "between의 인자는 곡선 함수 이름 두 개", "between(f, g)");
                     return;
                 }
                 if !grid {
@@ -488,7 +488,7 @@ impl<'s> Cx<'s> {
                     return;
                 }
                 let func = &self.state.functions[&f.key];
-                let (input, output) = (func.inputs[0].clone(), func.output.clone());
+                let (input, output) = func.curve_axes().map(|(i, o)| (i.clone(), o.clone())).unwrap();
                 let node = |kind| Expr { id: 0, ty: Ty::Unknown, span, kind };
                 let name = |k: &Ident| node(ExprKind::Name { name: k.clone(), kind: NameKind::Unresolved });
                 let call = |f: &Ident| node(ExprKind::Call { callee: f.clone(), kind: NameKind::Unresolved, args: vec![name(&input)] });
@@ -800,6 +800,13 @@ impl<'s> Cx<'s> {
                 }
             },
         };
+        if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &target
+            && let Some(f) = self.state.functions.get(function).filter(|f| f.kind != DefKind::Curve)
+        {
+            let span = src.target.as_ref().map_or(at, |t| t.span);
+            self.err(span, code::TARGET, format!("{} '{function}'는 강조 대상이 될 수 없음 (곡선 함수나 그 부분식)", f.kind.word()));
+            return None;
+        }
         let range = match (&target, &src.range) {
             (HlTarget::Grid {}, None) => {
                 self.err_s(at, code::SLOTS, "대상이 없으면 범위 칸에 칠할 영역이 필요함", "H1 = highlight(; between(f, g) and 0 <= x <= 2)");
@@ -817,6 +824,7 @@ impl<'s> Cx<'s> {
             }
             (HlTarget::Function { function }, Some(r)) => {
                 let input = self.state.functions[function].inputs[0].key.clone();
+                debug_assert!(self.state.functions[function].kind == DefKind::Curve);
                 Some(self.resolve_range(r, &[input.as_str()], false, &mut deps, &mut consts)?)
             }
         };
@@ -825,7 +833,8 @@ impl<'s> Cx<'s> {
                 deps.insert(function.clone());
                 let f = &self.state.functions[function];
                 consts.extend(f.consts.iter().cloned());
-                vec![f.inputs[0].key.clone(), f.output.key.clone()]
+                let (i, o) = f.curve_axes().unwrap();
+                vec![i.key.clone(), o.key.clone()]
             }
             HlTarget::Grid {} => {
                 let mut used = vec![];
@@ -843,7 +852,7 @@ impl<'s> Cx<'s> {
         };
         let fits_some = || {
             let mut systems: Vec<[String; 2]> = vec![["x".into(), "y".into()]];
-            systems.extend(self.state.functions.values().map(|f| [f.inputs[0].key.clone(), f.output.key.clone()]));
+            systems.extend(self.state.functions.values().filter_map(|f| f.curve_axes()).map(|(i, o)| [i.key.clone(), o.key.clone()]));
             systems.iter().any(|s| axes.iter().all(|a| s.contains(a)))
         };
         if axes.len() > 2 || !fits_some() {
@@ -995,7 +1004,7 @@ impl<'s> Cx<'s> {
                 }
             }
         }
-        let fa = function.as_ref().and_then(|f| self.state.functions.get(f)).map(|f| [f.inputs[0].key.clone(), f.output.key.clone()]);
+        let fa = function.as_ref().and_then(|f| self.state.functions.get(f)).and_then(|f| f.curve_axes()).map(|(i, o)| [i.key.clone(), o.key.clone()]);
         let fa = fa.unwrap_or_else(|| ["x".to_string(), "y".to_string()]);
         let axes: &[&str] = &[fa[0].as_str(), fa[1].as_str()];
         let range = match slots.get(1) {
@@ -1066,8 +1075,8 @@ impl<'s> Cx<'s> {
     /// Axis names of every coordinate system in use, plus `x`, `y`.
     pub(super) fn axis_names(&self) -> Vec<String> {
         let mut v = vec!["x".to_string(), "y".to_string()];
-        for f in self.state.functions.values() {
-            for a in [&f.inputs[0].key, &f.output.key] {
+        for (i, o) in self.state.functions.values().filter_map(|f| f.curve_axes()) {
+            for a in [&i.key, &o.key] {
                 if !v.contains(a) {
                     v.push(a.clone());
                 }

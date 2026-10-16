@@ -219,6 +219,16 @@ impl Scope {
     }
 }
 
+/// A definition head after `check_shape`.
+struct Shape<'d> {
+    kind: DefKind,
+    inputs: &'d [(Ident, Span)],
+    consts: &'d [(Ident, Span)],
+    /// Output axis of a curve.
+    output: Option<&'d Ident>,
+    body: &'d Expr,
+}
+
 #[derive(Default)]
 struct DefInfo {
     callees: BTreeSet<String>,
@@ -270,8 +280,10 @@ impl<'s> Cx<'s> {
 
     // ----- define -------------------------------------------------------
 
-    /// Checks the stage-1 shape `f(x; a, ...) -> y: expr`. Reports and returns None otherwise.
-    fn check_shape<'d>(&mut self, def: &'d Def) -> Option<(&'d Params, &'d Ident, &'d Expr)> {
+    /// Classifies a definition and checks its head (design.md "정의", "행렬·벡터"):
+    /// `f(x; a) -> y`, `R(\theta) -> matrix`, `A: [[..]]` / `v(; a): [..]`,
+    /// `S: span(..)`, `p: arrow(..)`. Reports and returns None otherwise.
+    fn check_shape<'d>(&mut self, def: &'d Def) -> Option<Shape<'d>> {
         if def.name.deriv > 0 {
             self.unsupported(def.name_span, "도함수 이름 (f@n)", 5);
             return None;
@@ -280,10 +292,6 @@ impl<'s> Cx<'s> {
             self.unsupported(def.name_span, "역함수 이름 (~f)", 5);
             return None;
         }
-        let Some(params) = &def.params else {
-            self.unsupported(def.span, "괄호 없는 정의 (상수 행렬·벡터, span)", 4);
-            return None;
-        };
         let body = match &def.body {
             DefBody::Expr(e) => e,
             DefBody::Equation { .. } => {
@@ -299,8 +307,20 @@ impl<'s> Cx<'s> {
                 return None;
             }
         };
-        let output = match &def.output {
-            Some(Output::Axis(o, _)) => o,
+        let inputs: &[(Ident, Span)] = def.params.as_ref().map_or(&[], |p| &p.inputs);
+        let consts: &[(Ident, Span)] = def.params.as_ref().map_or(&[], |p| &p.consts);
+        let head = def.params.as_ref().map_or(def.name_span, |p| def.name_span.to(p.span));
+        let body_src = &self.src[body.span.range()];
+        let drawn_call = match &body.kind {
+            ExprKind::Call { callee, .. } if callee.key == "span" => Some(DefKind::Span),
+            ExprKind::Call { callee, .. } if callee.key == "arrow" => Some(DefKind::Arrow),
+            _ => None,
+        };
+        let const_sig = |key: &str| if consts.is_empty() { key.to_string() } else { format!("{key}(; {})", consts.iter().map(|(c, _)| c.key.as_str()).collect::<Vec<_>>().join(", ")) };
+
+        let (kind, output) = match &def.output {
+            Some(Output::Axis(o, _)) => (DefKind::Curve, Some(o)),
+            Some(Output::Matrix(_)) => (DefKind::Matrix, None),
             Some(Output::Tuple(_, span)) => {
                 self.unsupported(*span, "매개변수 함수 출력 (x, y)", 5);
                 return None;
@@ -309,46 +329,71 @@ impl<'s> Cx<'s> {
                 self.unsupported(*span, "극좌표 함수", 5);
                 return None;
             }
-            Some(Output::Matrix(span)) => {
-                self.unsupported(*span, "행렬 값 함수", 4);
+            None => {
+                let kind = drawn_call.unwrap_or(DefKind::Value);
+                if !inputs.is_empty() {
+                    let list = inputs.iter().map(|(i, _)| i.key.as_str()).collect::<Vec<_>>().join(", ");
+                    if kind == DefKind::Value && !matches!(body.kind, ExprKind::List { .. }) {
+                        // A function written without its output axis.
+                        let all = def.params.as_ref().map_or(String::new(), |p| self.src[p.span.range()].to_string());
+                        self.err_s(head, code::ARROW, "'->' 출력 축이 필요함", format!("{}{all} -> y: {body_src}", def.name.key));
+                    } else {
+                        self.err_s(
+                            head,
+                            code::SYNTAX,
+                            format!("{}에는 입력 변수({list})가 없음 (상수는 ';' 뒤에)", kind.word()),
+                            format!("{}: {body_src}", const_sig(&def.name.key)),
+                        );
+                    }
+                    return None;
+                }
+                (kind, None)
+            }
+        };
+        if matches!(kind, DefKind::Curve | DefKind::Matrix) && inputs.is_empty() {
+            let out = def.output.as_ref().map_or(String::new(), |o| format!(" -> {}", &self.src[o.span().range()]));
+            let sug = if kind == DefKind::Matrix { format!("{}: {body_src}", const_sig(&def.name.key)) } else { format!("{}(x{}){out}: {body_src}", def.name.key, consts.iter().map(|(c, _)| format!("; {}", c.key)).collect::<String>()) };
+            let msg = if kind == DefKind::Matrix { "입력 변수가 없음 (상수 행렬·벡터는 '-> matrix' 없이 씀)" } else { "입력 변수가 없음" };
+            self.err_s(head, code::SYNTAX, msg, sug);
+            return None;
+        }
+        if let (Some(k), DefKind::Curve | DefKind::Matrix) = (drawn_call, kind) {
+            self.err_s(body.span, code::TYPE, format!("{}은(는) 함수 값이 될 수 없음 (그리는 정의)", k.word()), format!("{}: {body_src}", const_sig(&def.name.key)));
+            return None;
+        }
+        if kind == DefKind::Curve {
+            if inputs.len() > 1 {
+                self.unsupported(def.params.as_ref().unwrap().span, "다변수 함수", 6);
                 return None;
             }
-            None => {
-                let inputs = params.inputs.iter().map(|(i, _)| i.key.as_str()).collect::<Vec<_>>().join(", ");
-                let body_src = &self.src[body.span.range()];
+            let input = &inputs[0].0;
+            let output = output.unwrap();
+            if input.key == output.key {
                 self.err_s(
-                    def.name_span.to(params.span),
-                    code::ARROW,
-                    "'->' 출력 축이 필요함",
-                    format!("{}({inputs}) -> y: {body_src}", def.name.key),
+                    def.name_span.to(def.output.as_ref().unwrap().span()),
+                    code::AXES,
+                    format!("입력 축과 출력 축이 같음 ({} -> {})", input.key, output.key),
+                    format!("{}({}) -> y", def.name.key, input.key),
                 );
                 return None;
             }
-        };
-        if params.inputs.len() > 1 {
-            self.unsupported(params.span, "다변수 함수", 6);
+            if output.deriv > 0 || output.inverse || is_reserved(output) {
+                self.err(def.name_span.to(def.output.as_ref().unwrap().span()), code::AXES, "좌표축 이름으로 쓸 수 없는 이름");
+                return None;
+            }
+        }
+        if let Some((i, s)) = inputs.iter().find(|(i, _)| i.deriv > 0 || i.inverse || is_reserved(i)) {
+            let what = if kind == DefKind::Curve { "좌표축" } else { "입력 변수" };
+            self.err(*s, code::AXES, format!("'{}'는 {what} 이름으로 쓸 수 없음", i.key));
             return None;
         }
-        let input = &params.inputs.first()?.0;
-        if input.key == output.key {
-            self.err_s(
-                def.name_span.to(def.output.as_ref().unwrap().span()),
-                code::AXES,
-                format!("입력 축과 출력 축이 같음 ({} -> {})", input.key, output.key),
-                format!("{}({}) -> y", def.name.key, input.key),
-            );
-            return None;
-        }
-        if input.deriv > 0 || input.inverse || output.deriv > 0 || output.inverse || is_reserved(input) || is_reserved(output) {
-            self.err(def.name_span.to(def.output.as_ref().unwrap().span()), code::AXES, "좌표축 이름으로 쓸 수 없는 이름");
-            return None;
-        }
-        Some((params, output, body))
+        Some(Shape { kind, inputs, consts, output, body })
     }
 
-    fn check_names(&mut self, def: &Def, params: &Params, output: &Ident) {
+    fn check_names(&mut self, def: &Def, shape: &Shape) {
         let key = &def.name.key;
-        let input = &params.inputs[0].0.key;
+        let is_input = |k: &str| shape.inputs.iter().any(|(i, _)| i.key == k);
+        let output = shape.output.map(|o| o.key.as_str());
         if let Some(kind) = self.state.kind_of(key).filter(|k| !matches!(*k, "함수" | "상수")) {
             self.err_s(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 이미 {kind} 이름임"), format!("del {key} 후 정의하거나 다른 이름"));
         } else if names::is_builtin(key) || is_stage2_word(key) {
@@ -357,11 +402,18 @@ impl<'s> Cx<'s> {
             self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 예약어라 이름으로 쓸 수 없음"));
         } else if self.state.constants.contains_key(key) {
             self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 이미 상수 이름임"));
-        } else if key == input || *key == output.key {
-            self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 축 이름이라 함수 이름으로 쓸 수 없음"));
+        } else if is_input(key) || output == Some(key.as_str()) {
+            self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 축 이름이라 정의 이름으로 쓸 수 없음"));
         }
         let mut seen: Vec<&str> = vec![];
-        for (c, span) in &params.consts {
+        for (i, span) in shape.inputs {
+            if seen.contains(&i.key.as_str()) {
+                self.err(*span, code::DUPLICATE, format!("입력 변수 '{}'를 두 번 적음", i.key));
+            }
+            seen.push(&i.key);
+        }
+        let mut seen: Vec<&str> = vec![];
+        for (c, span) in shape.consts {
             let ck = c.key.as_str();
             if seen.contains(&ck) {
                 self.err(*span, code::DUPLICATE, format!("상수 '{ck}'를 두 번 적음"));
@@ -374,10 +426,10 @@ impl<'s> Cx<'s> {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 기본 함수 이름이라 상수로 쓸 수 없음"));
             } else if is_reserved(c) {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 예약어라 상수로 쓸 수 없음"));
-            } else if ck == input || ck == output.key {
+            } else if is_input(ck) || output == Some(ck) {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 축 이름이라 상수로 쓸 수 없음"));
             } else if ck == key || self.is_function_name(ck) {
-                self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 이미 함수 이름임"));
+                self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 이미 정의 이름임"));
             } else if let Some(kind) = self.state.kind_of(ck).filter(|k| *k != "상수") {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 이미 {kind} 이름이라 상수로 쓸 수 없음"));
             }
@@ -387,37 +439,56 @@ impl<'s> Cx<'s> {
     fn define(&mut self, def: &Def) {
         let before = self.diags.len();
         let key = def.name.key.clone();
-        let Some((params, output, body)) = self.check_shape(def) else {
+        let Some(shape) = self.check_shape(def) else {
             self.failed.insert(key);
             return;
         };
-        self.check_names(def, params, output);
+        self.check_names(def, &shape);
 
         let mut scope = Scope {
             def_key: key.clone(),
-            inputs: vec![params.inputs[0].0.key.clone()],
-            output: output.key.clone(),
-            consts: params.consts.iter().map(|(c, _)| c.key.clone()).collect(),
+            inputs: shape.inputs.iter().map(|(i, _)| i.key.clone()).collect(),
+            output: shape.output.map_or(String::new(), |o| o.key.clone()),
+            consts: shape.consts.iter().map(|(c, _)| c.key.clone()).collect(),
             free_consts: false,
             indices: vec![],
         };
         let mut info = DefInfo::default();
-        let mut body = body.clone();
+        let mut body = shape.body.clone();
         let body_src = self.src[body.span.range()].to_string();
-        match self.resolve(&mut body, &mut scope, &mut info) {
-            Ty::Region => self.err(body.span, code::TYPE, "부등식은 함수 값이 될 수 없음"),
-            Ty::Scalar | Ty::Unknown => {}
-            _ => self.err(body.span, code::TYPE, "함수 값은 숫자여야 함"),
+        let ty = match shape.kind {
+            DefKind::Span | DefKind::Arrow => self.resolve_drawn(&mut body, shape.kind, &mut scope, &mut info),
+            _ => self.resolve(&mut body, &mut scope, &mut info),
+        };
+        match (shape.kind, &ty) {
+            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow, _) => {}
+            (_, Ty::Region) => self.err(body.span, code::TYPE, "부등식은 정의 값이 될 수 없음"),
+            (DefKind::Curve, Ty::Scalar) => {}
+            (DefKind::Curve, t) if t.is_array() => {
+                self.err_s(body.span, code::TYPE, format!("함수 값은 숫자여야 함 (이 식은 {})", t.describe()), format!("{}({}) -> matrix: {body_src}", key, scope.inputs.join(", ")))
+            }
+            (DefKind::Matrix | DefKind::Value, t) if t.is_array() => {}
+            (DefKind::Matrix, Ty::Scalar) => {
+                let sig = scope.signature_with(&[]);
+                self.err_s(body.span, code::TYPE, "'-> matrix' 정의의 값은 벡터·행렬이어야 함", format!("{sig} -> y: {body_src}"))
+            }
+            (DefKind::Value, Ty::Scalar) => self.err_s(
+                body.span,
+                code::TYPE,
+                "괄호 없는 정의는 벡터·행렬·span·arrow만 씀 (숫자 하나는 슬라이더 상수나 함수로)",
+                format!("constant:\n    {key}: default={body_src}"),
+            ),
+            _ => self.err(body.span, code::TYPE, "정의 값은 숫자, 벡터, 행렬이어야 함"),
         }
 
-        // Cycles through other functions (direct self-calls are reported during resolution).
+        // Cycles through other definitions (direct self-references are reported during resolution).
         for c in &info.callees {
             if c != &key && self.reaches(c, &key) {
                 self.err(def.name_span, code::CYCLE, format!("'{key}'와 '{c}'가 서로를 부름 (순환 참조)"));
             }
         }
 
-        // Referenced-function constants: every constant a callee uses must be declared here.
+        // Referenced-definition constants: every constant a callee uses must be declared here.
         let mut missing: Vec<(String, String)> = vec![];
         for c in &info.callees {
             if let Some(f) = self.state.functions.get(c) {
@@ -431,7 +502,7 @@ impl<'s> Cx<'s> {
         if !missing.is_empty() {
             let list = missing.iter().map(|(k, via)| format!("{via}의 {k}")).collect::<Vec<_>>().join(", ");
             let extra: Vec<String> = missing.iter().map(|(k, _)| k.clone()).collect();
-            self.err_s(def.name_span, code::MISSING_CONST, format!("부르는 함수가 쓰는 상수를 적지 않음 ({list})"), scope.signature_with(&extra));
+            self.err_s(def.name_span, code::MISSING_CONST, format!("참조하는 정의가 쓰는 상수를 적지 않음 ({list})"), scope.signature_with(&extra));
         }
 
         for c in &info.int_consts {
@@ -463,8 +534,10 @@ impl<'s> Cx<'s> {
         let function = Function {
             key: key.clone(),
             name: def.name.clone(),
-            inputs: vec![params.inputs[0].0.clone()],
-            output: output.clone(),
+            kind: shape.kind,
+            inputs: shape.inputs.iter().map(|(i, _)| i.clone()).collect(),
+            output: shape.output.cloned(),
+            ty,
             consts: scope.consts.clone(),
             body,
             body_src,
@@ -479,7 +552,7 @@ impl<'s> Cx<'s> {
             Some(_) => Note::FunctionModified { key: key.clone() },
         });
 
-        for (c, _) in &params.consts {
+        for (c, _) in shape.consts {
             let integer = info.int_consts.contains(&c.key);
             match self.state.constants.get_mut(&c.key) {
                 None => {
@@ -636,8 +709,256 @@ impl<'s> Cx<'s> {
         match ty {
             Ty::Scalar | Ty::Unknown => {}
             Ty::Region => self.err(span, code::TYPE, "부등식에는 산술 연산을 할 수 없음"),
-            _ => self.err(span, code::TYPE, "숫자가 와야 함"),
+            t => self.err(span, code::TYPE, format!("숫자가 와야 함 (이 식은 {})", t.describe())),
         }
+    }
+
+    /// Sum terms: all numbers, or all vectors / matrices of one size.
+    fn same_shape(&mut self, tys: &[(Ty, Span)], verb: &str) -> Ty {
+        let first = tys.iter().find(|(t, _)| t.is_array()).cloned();
+        let Some((want, wspan)) = first else {
+            for (t, s) in tys {
+                self.expect_scalar(t, *s);
+            }
+            return if tys.iter().any(|(t, _)| *t == Ty::Unknown) { Ty::Unknown } else { Ty::Scalar };
+        };
+        let mut ok = true;
+        for (t, s) in tys {
+            match t {
+                Ty::Unknown => ok = false,
+                t if *t == want => {}
+                Ty::Scalar => {
+                    self.err(*s, code::SHAPE, format!("{}와 숫자는 {verb} 수 없음", want.describe()));
+                    ok = false;
+                }
+                t if t.is_array() => {
+                    self.err(wspan.to(*s), code::SHAPE, format!("크기가 다름: {}와 {}", want.describe(), t.describe()));
+                    ok = false;
+                }
+                t => {
+                    self.expect_scalar(t, *s);
+                    ok = false;
+                }
+            }
+        }
+        if ok { want } else { Ty::Unknown }
+    }
+
+    /// `[1, 2]` → vector(2); `[[1, 2], [3, 4]]` → 2×2 (rows of one length).
+    fn list_ty(&mut self, items: &[Expr], tys: &[Ty], span: Span) -> Ty {
+        if items.is_empty() {
+            self.err(span, code::SHAPE, "빈 벡터는 쓸 수 없음");
+            return Ty::Unknown;
+        }
+        let is_row = |e: &Expr| matches!(e.kind, ExprKind::List { .. });
+        let rows = items.iter().filter(|e| is_row(e)).count();
+        if rows > 0 && rows < items.len() {
+            self.err_s(span, code::SHAPE, "숫자와 [..] 행이 섞여 있음", "벡터 [1, 2] 또는 행렬 [[1, 2], [3, 4]]");
+            return Ty::Unknown;
+        }
+        if rows == 0 {
+            let mut ok = true;
+            for (e, t) in items.iter().zip(tys) {
+                match t {
+                    Ty::Scalar => {}
+                    Ty::Unknown => ok = false,
+                    t if t.is_array() => {
+                        self.err_s(e.span, code::SHAPE, format!("벡터의 원소는 숫자여야 함 (이 식은 {})", t.describe()), "행렬은 [[1, 2], [3, 4]]처럼 행을 [..]로 씀");
+                        return Ty::Unknown;
+                    }
+                    t => {
+                        self.expect_scalar(t, e.span);
+                        ok = false;
+                    }
+                }
+            }
+            if items.len() as u32 > names::MAX_DIM {
+                self.err(span, code::LIMIT, format!("벡터가 너무 김 ({}개, 상한 {})", items.len(), names::MAX_DIM));
+                return Ty::Unknown;
+            }
+            return if ok { Ty::Vector { n: items.len() as u32 } } else { Ty::Unknown };
+        }
+        // Rows: each resolved as a vector (a row of length 1 is a 1×1 matrix `[5]`... a vector of length 1).
+        let mut lens = vec![];
+        for (e, t) in items.iter().zip(tys) {
+            match t {
+                Ty::Vector { n } => lens.push(*n),
+                Ty::Unknown => return Ty::Unknown,
+                _ => {
+                    self.err(e.span, code::SHAPE, "행렬은 두 겹까지만 씀 ([[1, 2], [3, 4]])");
+                    return Ty::Unknown;
+                }
+            }
+        }
+        if let Some(i) = lens.iter().position(|n| *n != lens[0]) {
+            self.err_s(
+                items[i].span,
+                code::SHAPE,
+                format!("행 길이가 다름 (1행 {}개, {}행 {}개)", lens[0], i + 1, lens[i]),
+                "모든 행의 원소 개수를 같게",
+            );
+            return Ty::Unknown;
+        }
+        if items.len() as u32 > names::MAX_DIM {
+            self.err(span, code::LIMIT, format!("행렬 행이 너무 많음 ({}개, 상한 {})", items.len(), names::MAX_DIM));
+            return Ty::Unknown;
+        }
+        Ty::of_dims(items.len() as u32, lens[0])
+    }
+
+    /// `v_[i]` / `A_[i, j]`: number of indices and literal indices checked statically.
+    fn index_ty(&mut self, base: &Expr, bt: &Ty, indices: &[Expr], span: Span) {
+        let b = self.src[base.span.range()].to_string();
+        let sizes: Vec<u32> = match bt {
+            Ty::Unknown => return,
+            Ty::Vector { n } => vec![*n],
+            Ty::Matrix { m, n } => vec![*m, *n],
+            t => {
+                self.err(span, code::TYPE, format!("원소 번호는 벡터·행렬에만 씀 (이 식은 {})", t.describe()));
+                return;
+            }
+        };
+        if indices.len() != sizes.len() {
+            let sug = if sizes.len() == 1 { format!("{b}_[1]") } else { format!("{b}_[1, 2]") };
+            self.err_s(span, code::INDEX, format!("{}의 원소 번호는 {}개 (준 개수 {}개)", bt.describe(), sizes.len(), indices.len()), sug);
+            return;
+        }
+        for (k, (i, n)) in indices.iter().zip(&sizes).enumerate() {
+            let what = if sizes.len() == 1 { "번호" } else if k == 0 { "행 번호" } else { "열 번호" };
+            match &i.kind {
+                ExprKind::Num { text, int: true } => {
+                    let v: u64 = text.parse().unwrap_or(u64::MAX);
+                    if v == 0 || v > *n as u64 {
+                        self.err(i.span, code::INDEX, format!("{what} {text}는 범위 밖 ({}, 번호는 1부터 {n})", bt.describe()));
+                    }
+                }
+                ExprKind::Num { text, .. } => self.err(i.span, code::INDEX, format!("{what} {text}는 정수가 아님")),
+                _ => {}
+            }
+        }
+    }
+
+    /// `matmul`, `pow`, `inv`, `transpose`, `det`, `tr` by operand sizes. `span` / `arrow`
+    /// here are nested in an expression, which is not allowed.
+    fn linalg_call(&mut self, key: &str, tys: &[(Ty, Span)], args: &[Expr], span: Span) -> Ty {
+        let text = |e: &Expr| self.src[e.span.range()].to_string();
+        if matches!(key, "span" | "arrow") {
+            let call = &self.src[span.range()];
+            let name = if key == "span" { "S" } else { "p" };
+            self.err_s(span, code::TYPE, format!("{key}은(는) 식 안에 쓸 수 없음 (정의 하나로 씀)"), format!("define:\n    {name}: {call}"));
+            return Ty::Unknown;
+        }
+        let arity = names::LINALG.iter().find(|(n, _)| *n == key).unwrap().1;
+        if !arity.contains(&tys.len()) {
+            self.err(span, code::ARITY, format!("{key}는 인자 {}개를 받음 ({}개 줌)", arity[0], tys.len()));
+            return Ty::Unknown;
+        }
+        if tys.iter().any(|(t, _)| *t == Ty::Unknown) {
+            return Ty::Unknown;
+        }
+        let (a, aspan) = &tys[0];
+        let square = |t: &Ty| matches!(t, Ty::Matrix { m, n } if m == n);
+        match key {
+            "matmul" => {
+                let (b, bspan) = &tys[1];
+                for (t, s, e) in [(a, *aspan, &args[0]), (b, *bspan, &args[1])] {
+                    if !t.is_array() {
+                        let other = if std::ptr::eq(e, &args[0]) { text(&args[1]) } else { text(&args[0]) };
+                        self.err_s(s, code::TYPE, format!("matmul은 행렬·벡터끼리 곱함 (이 식은 {}; 숫자 곱은 '*')", t.describe()), format!("{}*{other}", text(e)));
+                        return Ty::Unknown;
+                    }
+                }
+                let ((m, k), (k2, n)) = (a.dims().unwrap(), b.dims().unwrap());
+                if k != k2 {
+                    self.err(span, code::SHAPE, format!("matmul 크기가 맞지 않음: {} · {} (왼쪽 열 {k} ≠ 오른쪽 행 {k2})", a.describe(), b.describe()));
+                    return Ty::Unknown;
+                }
+                Ty::of_dims(m, n)
+            }
+            "transpose" => match a.dims() {
+                Some((m, n)) => Ty::of_dims(n, m),
+                None => {
+                    self.err(*aspan, code::TYPE, format!("transpose는 행렬·벡터에 씀 (이 식은 {})", a.describe()));
+                    Ty::Unknown
+                }
+            },
+            "pow" | "inv" | "det" | "tr" => {
+                if !square(a) {
+                    if *a == Ty::Scalar {
+                        let sug = match key {
+                            "pow" => format!("{}^{}", text(&args[0]), text(&args[1])),
+                            "inv" => format!("1/{}", text(&args[0])),
+                            _ => text(&args[0]),
+                        };
+                        self.err_s(*aspan, code::TYPE, format!("{key}는 정사각 행렬에 씀 (이 식은 숫자)"), sug);
+                    } else {
+                        self.err(*aspan, code::SHAPE, format!("{key}는 정사각 행렬에만 씀 (이 식은 {})", a.describe()));
+                    }
+                    return Ty::Unknown;
+                }
+                if key == "pow" {
+                    let (et, es) = &tys[1];
+                    self.expect_scalar(et, *es);
+                    if let ExprKind::Num { text, int: false } = &args[1].kind {
+                        self.err(*es, code::TYPE, format!("pow의 지수는 정수여야 함 ({text})"));
+                    }
+                }
+                if matches!(key, "det" | "tr") { Ty::Scalar } else { a.clone() }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Body of `S: span(v, w, ...)` / `p: arrow(v)` / `arrow(v; P)`: vectors of one length
+    /// with 2 or 3 entries (the axis count of the scenes it can go in). Returns that vector type.
+    fn resolve_drawn(&mut self, body: &mut Expr, kind: DefKind, sc: &mut Scope, info: &mut DefInfo) -> Ty {
+        let span = body.span;
+        let ExprKind::Call { callee, kind: nk, args } = &mut body.kind else { unreachable!() };
+        *nk = NameKind::Builtin;
+        let name = callee.key.clone();
+        if kind == DefKind::Span && args.is_empty() {
+            self.err_s(span, code::ARITY, "span에는 벡터가 하나 이상 필요함", "span(v, w)");
+            return Ty::Unknown;
+        }
+        let mut tys = vec![];
+        for a in args.iter_mut() {
+            let t = self.resolve(a, sc, info);
+            tys.push((t, a.span));
+        }
+        let mut n_seen: Option<(u32, Span)> = None;
+        let mut ok = true;
+        for (i, (t, s)) in tys.iter().enumerate() {
+            let what = if kind == DefKind::Arrow && i == 1 { "시작점" } else { "벡터" };
+            match t {
+                Ty::Unknown => ok = false,
+                Ty::Vector { n } => match n_seen {
+                    None => n_seen = Some((*n, *s)),
+                    Some((m, ms)) if m != *n => {
+                        self.err(ms.to(*s), code::SHAPE, format!("{name}의 벡터 길이가 다름 ({m}과 {n})"));
+                        ok = false;
+                    }
+                    _ => {}
+                },
+                t => {
+                    let sug = if *t == Ty::Scalar { "[x, y] 모양의 벡터" } else { "열벡터 [1, 2]" };
+                    self.err_s(*s, code::SHAPE, format!("{name}의 {what}는 벡터여야 함 (이 식은 {})", t.describe()), sug);
+                    ok = false;
+                }
+            }
+        }
+        let ty = match n_seen {
+            Some((n, s)) if ok => {
+                if !(2..=3).contains(&n) {
+                    self.err(s, code::SHAPE, format!("{name}의 벡터 길이는 2 또는 3 (좌표축 개수) — 이 벡터는 {n}"));
+                    Ty::Unknown
+                } else {
+                    Ty::Vector { n }
+                }
+            }
+            _ => Ty::Unknown,
+        };
+        body.ty = ty.clone();
+        ty
     }
 
     fn resolve_inner(&mut self, e: &mut Expr, sc: &mut Scope, info: &mut DefInfo) -> Ty {
@@ -663,26 +984,98 @@ impl<'s> Cx<'s> {
                     let t = self.resolve(a, sc, info);
                     arg_tys.push((t, a.span));
                 }
-                for (t, s) in &arg_tys {
-                    self.expect_scalar(t, *s);
+                if names::is_linalg(&callee.key) {
+                    *kind = NameKind::Builtin;
+                    self.linalg_call(&callee.key, &arg_tys, args, span)
+                } else {
+                    for (t, s) in &arg_tys {
+                        self.expect_scalar(t, *s);
+                    }
+                    let (k, t) = self.resolve_call(callee, args.len(), span, sc, info);
+                    *kind = k;
+                    t
                 }
-                let (k, t) = self.resolve_call(callee, args.len(), span, sc, info);
-                *kind = k;
-                t
             }
             ExprKind::Sum { terms } => {
+                let mut tys = vec![];
                 for t in terms.iter_mut() {
                     let ty = self.resolve(&mut t.expr, sc, info);
-                    self.expect_scalar(&ty, t.expr.span);
+                    tys.push((ty, t.expr.span));
                 }
-                Ty::Scalar
+                self.same_shape(&tys, "더할")
             }
             ExprKind::Paren { inner } => self.resolve(inner, sc, info),
-            ExprKind::Product { .. } | ExprKind::Div { .. } | ExprKind::Pow { .. } | ExprKind::Neg { .. } | ExprKind::Factorial { .. } => {
-                for c in e.children_mut() {
-                    let ty = self.resolve(c, sc, info);
-                    self.expect_scalar(&ty, c.span);
+            ExprKind::Neg { arg } => {
+                let t = self.resolve(arg, sc, info);
+                if !t.is_array() {
+                    self.expect_scalar(&t, arg.span);
                 }
+                if t.is_array() || t == Ty::Unknown { t } else { Ty::Scalar }
+            }
+            ExprKind::Product { factors } => {
+                let mut arrays: Vec<(Ty, Span)> = vec![];
+                let mut unknown = false;
+                for f in factors.iter_mut() {
+                    let t = self.resolve(f, sc, info);
+                    if t.is_array() {
+                        arrays.push((t, f.span));
+                    } else {
+                        unknown |= t == Ty::Unknown;
+                        self.expect_scalar(&t, f.span);
+                    }
+                }
+                match arrays.len() {
+                    _ if unknown && arrays.len() < 2 => Ty::Unknown,
+                    0 => Ty::Scalar,
+                    1 => arrays.pop().unwrap().0,
+                    _ => {
+                        let (a, b) = (&self.src[arrays[0].1.range()], &self.src[arrays[1].1.range()]);
+                        let sug = format!("matmul({a}, {b})");
+                        self.err_s(arrays[0].1.to(arrays[1].1), code::MATRIX_OP, "행렬·벡터끼리 '*'는 쓸 수 없음 (원소끼리 곱인지 행렬 곱인지 모호함)", sug);
+                        Ty::Unknown
+                    }
+                }
+            }
+            ExprKind::Div { num, den } => {
+                let nt = self.resolve(num, sc, info);
+                let dt = self.resolve(den, sc, info);
+                if !nt.is_array() {
+                    self.expect_scalar(&nt, num.span);
+                }
+                if dt.is_array() {
+                    let (a, b) = (&self.src[num.span.range()], &self.src[den.span.range()]);
+                    self.err_s(den.span, code::MATRIX_OP, "행렬·벡터로 나눌 수 없음", format!("matmul({a}, inv({b}))"));
+                    Ty::Unknown
+                } else {
+                    self.expect_scalar(&dt, den.span);
+                    match (nt, dt) {
+                        (Ty::Unknown, _) | (_, Ty::Unknown) => Ty::Unknown,
+                        (nt, _) if nt.is_array() => nt,
+                        _ => Ty::Scalar,
+                    }
+                }
+            }
+            ExprKind::Pow { base, exp } => {
+                let bt = self.resolve(base, sc, info);
+                let et = self.resolve(exp, sc, info);
+                self.expect_scalar(&et, exp.span);
+                if bt.is_array() {
+                    let (b, x) = (&self.src[base.span.range()], &self.src[exp.span.range()]);
+                    let x = x.trim_start_matches('{').trim_end_matches('}');
+                    let x = x.strip_prefix('(').and_then(|x| x.strip_suffix(')')).unwrap_or(x);
+                    match bt {
+                        Ty::Matrix { m, n } if m == n => self.err_s(span, code::MATRIX_OP, "행렬에 '^'는 쓸 수 없음 (거듭제곱은 pow)", format!("pow({b}, {x})")),
+                        _ => self.err(span, code::MATRIX_OP, format!("{}에 '^'는 쓸 수 없음 (pow는 정사각 행렬만)", bt.describe())),
+                    }
+                    Ty::Unknown
+                } else {
+                    self.expect_scalar(&bt, base.span);
+                    Ty::Scalar
+                }
+            }
+            ExprKind::Factorial { arg } => {
+                let t = self.resolve(arg, sc, info);
+                self.expect_scalar(&t, arg.span);
                 Ty::Scalar
             }
             ExprKind::BigOp { body, index, lo, hi, .. } => {
@@ -734,13 +1127,22 @@ impl<'s> Cx<'s> {
                 self.unsupported(span, "튜플 (매개변수 함수 출력)", 5);
                 Ty::Unknown
             }
-            ExprKind::List { .. } => {
-                self.unsupported(span, "행렬·벡터 값", 4);
-                Ty::Unknown
+            ExprKind::List { items } => {
+                let mut tys = vec![];
+                for i in items.iter_mut() {
+                    let t = self.resolve(i, sc, info);
+                    tys.push(t);
+                }
+                self.list_ty(items, &tys, span)
             }
-            ExprKind::Index { .. } => {
-                self.unsupported(span, "원소 꺼내기 A_[i, j]", 4);
-                Ty::Unknown
+            ExprKind::Index { base, indices } => {
+                let bt = self.resolve(base, sc, info);
+                for i in indices.iter_mut() {
+                    let t = self.resolve(i, sc, info);
+                    self.expect_scalar(&t, i.span);
+                }
+                self.index_ty(base, &bt, indices, span);
+                Ty::Scalar
             }
             ExprKind::Address { .. } => {
                 self.err(span, code::TYPE, "부분식 주소는 highlight·req의 대상 칸에만 쓸 수 있음");
@@ -786,10 +1188,28 @@ impl<'s> Cx<'s> {
                 }
             };
         }
+        if let Some(f) = self.state.functions.get(key).filter(|f| f.kind == DefKind::Value)
+            && *key != sc.def_key
+        {
+            info.callees.insert(key.clone());
+            return (NameKind::Value, f.ty.clone());
+        }
+        if self.failed.contains(key) && !self.state.functions.contains_key(key) {
+            // Its definition failed in this request (already reported).
+            return (NameKind::Unresolved, Ty::Unknown);
+        }
         if !info.reported.insert(key.clone()) {
             return (NameKind::Unresolved, Ty::Unknown);
         }
-        if (!sc.def_key.is_empty() && *key == sc.def_key) || self.is_function_name(key) || names::is_builtin(key) {
+        if !sc.def_key.is_empty() && *key == sc.def_key {
+            self.err(span, code::CYCLE, format!("'{key}'가 자기 자신을 참조함"));
+            return (NameKind::Unresolved, Ty::Unknown);
+        }
+        if let Some(f) = self.state.functions.get(key).filter(|f| matches!(f.kind, DefKind::Span | DefKind::Arrow)) {
+            self.err(span, code::TYPE, format!("{} '{key}'는 그리는 정의라 식에 쓸 수 없음", f.kind.word()));
+            return (NameKind::Unresolved, Ty::Unknown);
+        }
+        if self.is_function_name(key) || names::is_builtin(key) {
             self.err_s(span, code::NOT_VALUE, format!("함수 '{key}'는 불러서 써야 함"), format!("{key}({})", sc.input()));
             return (NameKind::Unresolved, Ty::Unknown);
         }
@@ -842,13 +1262,24 @@ impl<'s> Cx<'s> {
             self.err(span, code::CYCLE, format!("'{key}'가 자기 자신을 부름 (재귀는 쓸 수 없음)"));
             return (NameKind::Function, Ty::Unknown);
         }
-        if let Some(f) = self.state.functions.get(key) {
+        if let Some(f) = self.state.functions.get(key).cloned() {
+            match f.kind {
+                DefKind::Curve | DefKind::Matrix => {}
+                DefKind::Value => {
+                    self.err_s(span, code::NOT_FUNCTION, format!("'{key}'는 {}라 부를 수 없음", f.ty.describe()), key.clone());
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
+                DefKind::Span | DefKind::Arrow => {
+                    self.err(span, code::TYPE, format!("{} '{key}'는 그리는 정의라 식에 쓸 수 없음", f.kind.word()));
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
+            }
             if f.inputs.len() != argc {
                 let n = f.inputs.len();
                 self.err(span, code::ARITY, format!("{key}는 인자 {n}개를 받음 ({argc}개 줌)"));
             }
             info.callees.insert(key.clone());
-            return (NameKind::Function, Ty::Scalar);
+            return (NameKind::Function, f.ty.clone());
         }
         if self.failed.contains(key) {
             return (NameKind::Function, Ty::Unknown);

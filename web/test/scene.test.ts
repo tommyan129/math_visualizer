@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
 import { activeClip, concealedAt, sceneAxes, sortedScenes, visibleAt } from "../src/canvas/scene";
-import { compile, compileConst, compileRegion, type Scalar } from "../src/worker/codegen";
+import { compile, compileConst, compileRegion, type Scalar, specOf } from "../src/worker/codegen";
 import { makeRuntime } from "../src/worker/numeric";
 import { rasterRegion } from "../src/worker/fill";
 
@@ -16,7 +16,7 @@ const constKeys = Object.keys(state.constants).sort();
 const constIndex = new Map(constKeys.map((k, i) => [k, i]));
 const fnIndex = new Map(fns.map((f, i) => [f.key, i]));
 const F: Scalar[] = [];
-fns.forEach((f, i) => (F[i] = compile({ key: f.key, version: f.version, body: f.body, consts: f.consts, calls: f.calls }, { constIndex, fnIndex }, R, F, false).scalar));
+fns.forEach((f, i) => (F[i] = compile(specOf(f), { constIndex, fnIndex }, R, F, false).table));
 const C = Float64Array.from(constKeys.map((k) => state.constants[k]!.value));
 const sc = state.scenes["1"]!;
 
@@ -24,7 +24,8 @@ describe("scene model", () => {
   it("default scenes per coordinate system, Claude scenes after them", () => {
     expect(sortedScenes(Object.values(state.scenes).map((s) => s!)).map((s) => s.key)).toEqual(["2D(x, y)", "2D(t, y)", "1"]);
     expect(sceneAxes(sc)[0]).toEqual(["t", "y"]);
-    expect(sc.members).toEqual(["wave", "H7"]);
+    // Length-2 spans and arrows fit every 2D system.
+    expect(sc.members).toEqual(["wave", "Sp", "Sl", "Sz", "Ar", "H7"]);
   });
 
   it("visibility: user override, else the step's state", () => {

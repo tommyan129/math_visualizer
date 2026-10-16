@@ -1,5 +1,680 @@
 {
   "functions": {
+    "Ar": {
+      "key": "Ar",
+      "name": {
+        "key": "Ar",
+        "base": "Ar",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Arrow",
+      "inputs": [],
+      "output": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [
+        "a"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Call",
+        "callee": {
+          "key": "arrow",
+          "base": "arrow",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "Name",
+            "name": {
+              "key": "vv",
+              "base": "vv",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Value"
+          },
+          {
+            "id": 2,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              },
+              {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "arrow(vv; [1, 1])",
+      "calls": [
+        "vv"
+      ],
+      "color": 34,
+      "order": 38,
+      "version": 1
+    },
+    "M2": {
+      "key": "M2",
+      "name": {
+        "key": "M2",
+        "base": "M2",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Value",
+      "inputs": [],
+      "output": null,
+      "ty": {
+        "type": "Matrix",
+        "m": 2,
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Matrix",
+          "m": 2,
+          "n": 2
+        },
+        "type": "List",
+        "items": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              },
+              {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "2",
+                "int": true
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "3",
+                "int": true
+              },
+              {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "4",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "[[1, 2], [3, 4]]",
+      "calls": [],
+      "color": 25,
+      "order": 28,
+      "version": 1
+    },
+    "Rot": {
+      "key": "Rot",
+      "name": {
+        "key": "Rot",
+        "base": "Rot",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Matrix",
+      "inputs": [
+        {
+          "key": "\\theta",
+          "base": "\\theta",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "ty": {
+        "type": "Matrix",
+        "m": 2,
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Matrix",
+          "m": 2,
+          "n": 2
+        },
+        "type": "List",
+        "items": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "cos",
+                  "base": "cos",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 3,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "\\theta",
+                      "base": "\\theta",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                ]
+              },
+              {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Neg",
+                "arg": {
+                  "id": 5,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Call",
+                  "callee": {
+                    "key": "sin",
+                    "base": "sin",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Builtin",
+                  "args": [
+                    {
+                      "id": 6,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "\\theta",
+                        "base": "\\theta",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": 7,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 8,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "sin",
+                  "base": "sin",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 9,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "\\theta",
+                      "base": "\\theta",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                ]
+              },
+              {
+                "id": 10,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "cos",
+                  "base": "cos",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 11,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "\\theta",
+                      "base": "\\theta",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "[[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]",
+      "calls": [],
+      "color": 27,
+      "order": 30,
+      "version": 1
+    },
+    "Sl": {
+      "key": "Sl",
+      "name": {
+        "key": "Sl",
+        "base": "Sl",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Span",
+      "inputs": [],
+      "output": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Call",
+        "callee": {
+          "key": "span",
+          "base": "span",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              },
+              {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "2",
+                "int": true
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "2",
+                "int": true
+              },
+              {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "4",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "span([1, 2], [2, 4])",
+      "calls": [],
+      "color": 32,
+      "order": 36,
+      "version": 1
+    },
+    "Sp": {
+      "key": "Sp",
+      "name": {
+        "key": "Sp",
+        "base": "Sp",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Span",
+      "inputs": [],
+      "output": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [
+        "a"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Call",
+        "callee": {
+          "key": "span",
+          "base": "span",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "Name",
+            "name": {
+              "key": "vv",
+              "base": "vv",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Value"
+          },
+          {
+            "id": 2,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              },
+              {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "span(vv, [0, 1])",
+      "calls": [
+        "vv"
+      ],
+      "color": 31,
+      "order": 35,
+      "version": 1
+    },
+    "Sz": {
+      "key": "Sz",
+      "name": {
+        "key": "Sz",
+        "base": "Sz",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Span",
+      "inputs": [],
+      "output": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Call",
+        "callee": {
+          "key": "span",
+          "base": "span",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              },
+              {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "span([0, 0])",
+      "calls": [],
+      "color": 33,
+      "order": 37,
+      "version": 1
+    },
     "big": {
       "key": "big",
       "name": {
@@ -11,6 +686,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -30,6 +706,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -95,6 +774,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -114,6 +794,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [
         "a"
@@ -252,6 +935,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -271,6 +955,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -346,6 +1033,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -365,6 +1053,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -433,6 +1124,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -452,6 +1144,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -504,6 +1199,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -523,6 +1219,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -566,6 +1265,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -585,6 +1285,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -640,6 +1343,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -659,6 +1363,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -714,6 +1421,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -733,6 +1441,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -808,6 +1519,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -827,6 +1539,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -913,77 +1628,6 @@
       "order": 8,
       "version": 1
     },
-    "inv": {
-      "key": "inv",
-      "name": {
-        "key": "inv",
-        "base": "inv",
-        "accent": null,
-        "sub": null,
-        "sup": null,
-        "deriv": 0,
-        "inverse": false
-      },
-      "inputs": [
-        {
-          "key": "x",
-          "base": "x",
-          "accent": null,
-          "sub": null,
-          "sup": null,
-          "deriv": 0,
-          "inverse": false
-        }
-      ],
-      "output": {
-        "key": "y",
-        "base": "y",
-        "accent": null,
-        "sub": null,
-        "sup": null,
-        "deriv": 0,
-        "inverse": false
-      },
-      "consts": [],
-      "body": {
-        "id": 0,
-        "ty": {
-          "type": "Scalar"
-        },
-        "type": "Div",
-        "num": {
-          "id": 1,
-          "ty": {
-            "type": "Scalar"
-          },
-          "type": "Num",
-          "text": "1",
-          "int": true
-        },
-        "den": {
-          "id": 2,
-          "ty": {
-            "type": "Scalar"
-          },
-          "type": "Name",
-          "name": {
-            "key": "x",
-            "base": "x",
-            "accent": null,
-            "sub": null,
-            "sup": null,
-            "deriv": 0,
-            "inverse": false
-          },
-          "kind": "Input"
-        }
-      },
-      "body_src": "1/x",
-      "calls": [],
-      "color": 0,
-      "order": 0,
-      "version": 1
-    },
     "lg": {
       "key": "lg",
       "name": {
@@ -995,6 +1639,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1014,6 +1659,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1184,6 +1832,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1203,6 +1852,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1228,17 +1880,18 @@
       "order": 23,
       "version": 1
     },
-    "md": {
-      "key": "md",
+    "linalg": {
+      "key": "linalg",
       "name": {
-        "key": "md",
-        "base": "md",
+        "key": "linalg",
+        "base": "linalg",
         "accent": null,
         "sub": null,
         "sup": null,
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1258,6 +1911,431 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Sum",
+        "terms": [
+          {
+            "id": 1,
+            "sign": "Plus",
+            "expr": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Product",
+              "factors": [
+                {
+                  "id": 3,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Call",
+                  "callee": {
+                    "key": "det",
+                    "base": "det",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Builtin",
+                  "args": [
+                    {
+                      "id": 4,
+                      "ty": {
+                        "type": "Matrix",
+                        "m": 2,
+                        "n": 2
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "M2",
+                        "base": "M2",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Value"
+                    }
+                  ]
+                },
+                {
+                  "id": 5,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              ]
+            }
+          },
+          {
+            "id": 6,
+            "sign": "Plus",
+            "expr": {
+              "id": 7,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "tr",
+                "base": "tr",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 8,
+                  "ty": {
+                    "type": "Matrix",
+                    "m": 2,
+                    "n": 2
+                  },
+                  "type": "Call",
+                  "callee": {
+                    "key": "inv",
+                    "base": "inv",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Builtin",
+                  "args": [
+                    {
+                      "id": 9,
+                      "ty": {
+                        "type": "Matrix",
+                        "m": 2,
+                        "n": 2
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "M2",
+                        "base": "M2",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Value"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": 10,
+            "sign": "Plus",
+            "expr": {
+              "id": 11,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Index",
+              "base": {
+                "id": 12,
+                "ty": {
+                  "type": "Matrix",
+                  "m": 2,
+                  "n": 2
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "pow",
+                  "base": "pow",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 13,
+                    "ty": {
+                      "type": "Matrix",
+                      "m": 2,
+                      "n": 2
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "M2",
+                      "base": "M2",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Value"
+                  },
+                  {
+                    "id": 14,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "2",
+                    "int": true
+                  }
+                ]
+              },
+              "indices": [
+                {
+                  "id": 15,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "1",
+                  "int": true
+                },
+                {
+                  "id": 16,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              ]
+            }
+          },
+          {
+            "id": 17,
+            "sign": "Plus",
+            "expr": {
+              "id": 18,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Index",
+              "base": {
+                "id": 19,
+                "ty": {
+                  "type": "Matrix",
+                  "m": 2,
+                  "n": 2
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "transpose",
+                  "base": "transpose",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 20,
+                    "ty": {
+                      "type": "Matrix",
+                      "m": 2,
+                      "n": 2
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "M2",
+                      "base": "M2",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Value"
+                  }
+                ]
+              },
+              "indices": [
+                {
+                  "id": 21,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "1",
+                  "int": true
+                },
+                {
+                  "id": 22,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              ]
+            }
+          },
+          {
+            "id": 23,
+            "sign": "Plus",
+            "expr": {
+              "id": 24,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Index",
+              "base": {
+                "id": 25,
+                "ty": {
+                  "type": "Matrix",
+                  "m": 2,
+                  "n": 2
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "pow",
+                  "base": "pow",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 26,
+                    "ty": {
+                      "type": "Matrix",
+                      "m": 2,
+                      "n": 2
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "M2",
+                      "base": "M2",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Value"
+                  },
+                  {
+                    "id": 27,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Neg",
+                    "arg": {
+                      "id": 28,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Num",
+                      "text": "1",
+                      "int": true
+                    }
+                  }
+                ]
+              },
+              "indices": [
+                {
+                  "id": 29,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "1",
+                  "int": true
+                },
+                {
+                  "id": 30,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "1",
+                  "int": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "det(M2)*x + tr(inv(M2)) + pow(M2, 2)_[1, 2] + transpose(M2)_[1, 2] + pow(M2, -1)_[1, 1]",
+      "calls": [
+        "M2"
+      ],
+      "color": 29,
+      "order": 32,
+      "version": 1
+    },
+    "md": {
+      "key": "md",
+      "name": {
+        "key": "md",
+        "base": "md",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1322,6 +2400,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1341,6 +2420,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1433,17 +2515,18 @@
       "order": 5,
       "version": 1
     },
-    "par": {
-      "key": "par",
+    "outer": {
+      "key": "outer",
       "name": {
-        "key": "par",
-        "base": "par",
+        "key": "outer",
+        "base": "outer",
         "accent": null,
         "sub": null,
         "sup": null,
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1463,6 +2546,266 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [
+        "k"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Sum",
+        "terms": [
+          {
+            "id": 1,
+            "sign": "Plus",
+            "expr": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Index",
+              "base": {
+                "id": 3,
+                "ty": {
+                  "type": "Matrix",
+                  "m": 2,
+                  "n": 2
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "matmul",
+                  "base": "matmul",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 4,
+                    "ty": {
+                      "type": "Vector",
+                      "n": 2
+                    },
+                    "type": "List",
+                    "items": [
+                      {
+                        "id": 5,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Num",
+                        "text": "1",
+                        "int": true
+                      },
+                      {
+                        "id": 6,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    ]
+                  },
+                  {
+                    "id": 7,
+                    "ty": {
+                      "type": "Matrix",
+                      "m": 1,
+                      "n": 2
+                    },
+                    "type": "Call",
+                    "callee": {
+                      "key": "transpose",
+                      "base": "transpose",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Builtin",
+                    "args": [
+                      {
+                        "id": 8,
+                        "ty": {
+                          "type": "Vector",
+                          "n": 2
+                        },
+                        "type": "List",
+                        "items": [
+                          {
+                            "id": 9,
+                            "ty": {
+                              "type": "Scalar"
+                            },
+                            "type": "Num",
+                            "text": "2",
+                            "int": true
+                          },
+                          {
+                            "id": 10,
+                            "ty": {
+                              "type": "Scalar"
+                            },
+                            "type": "Num",
+                            "text": "3",
+                            "int": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "indices": [
+                {
+                  "id": 11,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                },
+                {
+                  "id": 12,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              ]
+            }
+          },
+          {
+            "id": 13,
+            "sign": "Plus",
+            "expr": {
+              "id": 14,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Index",
+              "base": {
+                "id": 15,
+                "ty": {
+                  "type": "Vector",
+                  "n": 3
+                },
+                "type": "List",
+                "items": [
+                  {
+                    "id": 16,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "1",
+                    "int": true
+                  },
+                  {
+                    "id": 17,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "2",
+                    "int": true
+                  },
+                  {
+                    "id": 18,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "3",
+                    "int": true
+                  }
+                ]
+              },
+              "indices": [
+                {
+                  "id": 19,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "k",
+                    "base": "k",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Constant"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "matmul([1, x], transpose([2, 3]))_[2, 2] + [1, 2, 3]_[k]",
+      "calls": [],
+      "color": 30,
+      "order": 33,
+      "version": 1
+    },
+    "par": {
+      "key": "par",
+      "name": {
+        "key": "par",
+        "base": "par",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [
         "a"
@@ -1543,6 +2886,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1562,6 +2906,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [
         "a",
@@ -1716,6 +3063,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1735,6 +3083,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1776,17 +3127,18 @@
       "order": 24,
       "version": 1
     },
-    "rnd": {
-      "key": "rnd",
+    "recip": {
+      "key": "recip",
       "name": {
-        "key": "rnd",
-        "base": "rnd",
+        "key": "recip",
+        "base": "recip",
         "accent": null,
         "sub": null,
         "sup": null,
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1806,6 +3158,84 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Div",
+        "num": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "1",
+          "int": true
+        },
+        "den": {
+          "id": 2,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Input"
+        }
+      },
+      "body_src": "1/x",
+      "calls": [],
+      "color": 0,
+      "order": 0,
+      "version": 1
+    },
+    "rnd": {
+      "key": "rnd",
+      "name": {
+        "key": "rnd",
+        "base": "rnd",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1850,17 +3280,18 @@
       "order": 10,
       "version": 1
     },
-    "sq": {
-      "key": "sq",
+    "rotx": {
+      "key": "rotx",
       "name": {
-        "key": "sq",
-        "base": "sq",
+        "key": "rotx",
+        "base": "rotx",
         "accent": null,
         "sub": null,
         "sup": null,
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1880,6 +3311,167 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [
+        "b"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Index",
+        "base": {
+          "id": 1,
+          "ty": {
+            "type": "Vector",
+            "n": 2
+          },
+          "type": "Call",
+          "callee": {
+            "key": "matmul",
+            "base": "matmul",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Builtin",
+          "args": [
+            {
+              "id": 2,
+              "ty": {
+                "type": "Matrix",
+                "m": 2,
+                "n": 2
+              },
+              "type": "Call",
+              "callee": {
+                "key": "Rot",
+                "base": "Rot",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Function",
+              "args": [
+                {
+                  "id": 3,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "b",
+                    "base": "b",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Constant"
+                }
+              ]
+            },
+            {
+              "id": 4,
+              "ty": {
+                "type": "Vector",
+                "n": 2
+              },
+              "type": "List",
+              "items": [
+                {
+                  "id": 5,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                },
+                {
+                  "id": 6,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "1",
+                  "int": true
+                }
+              ]
+            }
+          ]
+        },
+        "indices": [
+          {
+            "id": 7,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "2",
+            "int": true
+          }
+        ]
+      },
+      "body_src": "matmul(Rot(b), [x, 1])_[2]",
+      "calls": [
+        "Rot"
+      ],
+      "color": 28,
+      "order": 31,
+      "version": 1
+    },
+    "sq": {
+      "key": "sq",
+      "name": {
+        "key": "sq",
+        "base": "sq",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -1935,6 +3527,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -1954,6 +3547,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -2008,6 +3604,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -2027,6 +3624,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [
         "n"
@@ -2165,6 +3765,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -2184,6 +3785,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -2239,6 +3843,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "x",
@@ -2258,6 +3863,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [],
       "body": {
@@ -2330,6 +3938,69 @@
       "order": 9,
       "version": 1
     },
+    "vv": {
+      "key": "vv",
+      "name": {
+        "key": "vv",
+        "base": "vv",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Value",
+      "inputs": [],
+      "output": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [
+        "a"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "List",
+        "items": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "1",
+            "int": true
+          },
+          {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "a",
+              "base": "a",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Constant"
+          }
+        ]
+      },
+      "body_src": "[1, a]",
+      "calls": [],
+      "color": 26,
+      "order": 29,
+      "version": 1
+    },
     "wave": {
       "key": "wave",
       "name": {
@@ -2341,6 +4012,7 @@
         "deriv": 0,
         "inverse": false
       },
+      "kind": "Curve",
       "inputs": [
         {
           "key": "t",
@@ -2360,6 +4032,9 @@
         "sup": null,
         "deriv": 0,
         "inverse": false
+      },
+      "ty": {
+        "type": "Scalar"
       },
       "consts": [
         "a"
@@ -2476,6 +4151,27 @@
       "order": 26,
       "version": 1
     },
+    "k": {
+      "key": "k",
+      "name": {
+        "key": "k",
+        "base": "k",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "value": 1.0,
+      "min": -10.0,
+      "max": 10.0,
+      "step": 0.1,
+      "integer": false,
+      "declared": false,
+      "kind_fixed": false,
+      "order": 34,
+      "version": 1
+    },
     "n": {
       "key": "n",
       "name": {
@@ -2524,6 +4220,10 @@
       ],
       "members": [
         "wave",
+        "Sp",
+        "Sl",
+        "Sz",
+        "Ar",
         "H7"
       ],
       "clip": {
@@ -3503,7 +5203,7 @@
       "defined": 3,
       "toggles": {},
       "user_clip": null,
-      "order": 38,
+      "order": 49,
       "version": 3
     },
     "2D(t, y)": {
@@ -3531,6 +5231,10 @@
       ],
       "members": [
         "wave",
+        "Sp",
+        "Sl",
+        "Sz",
+        "Ar",
         "H7"
       ],
       "clip": null,
@@ -3538,6 +5242,10 @@
       "steps": [
         {
           "visible": {
+            "Ar": true,
+            "Sl": true,
+            "Sp": true,
+            "Sz": true,
             "wave": true
           },
           "concealed": [],
@@ -3557,7 +5265,7 @@
       "defined": 1,
       "toggles": {},
       "user_clip": null,
-      "order": 29,
+      "order": 40,
       "version": 3
     },
     "2D(x, y)": {
@@ -3584,7 +5292,7 @@
         }
       ],
       "members": [
-        "inv",
+        "recip",
         "cbrt",
         "cbrt2",
         "half",
@@ -3608,6 +5316,13 @@
         "lin",
         "quad",
         "poly",
+        "rotx",
+        "linalg",
+        "outer",
+        "Sp",
+        "Sl",
+        "Sz",
+        "Ar",
         "H1",
         "H2",
         "H3",
@@ -3620,6 +5335,10 @@
       "steps": [
         {
           "visible": {
+            "Ar": true,
+            "Sl": true,
+            "Sp": true,
+            "Sz": true,
             "big": true,
             "callpar": true,
             "cbrt": true,
@@ -3630,15 +5349,18 @@
             "gm": true,
             "half": true,
             "harm": true,
-            "inv": true,
             "lg": true,
             "lin": true,
+            "linalg": true,
             "md": true,
             "negsq": true,
+            "outer": true,
             "par": true,
             "poly": true,
             "quad": true,
+            "recip": true,
             "rnd": true,
+            "rotx": true,
             "sq": true,
             "steep": true,
             "taylor": true,
@@ -3664,7 +5386,7 @@
         "lin": false
       },
       "user_clip": null,
-      "order": 28,
+      "order": 39,
       "version": 4
     }
   },
@@ -3821,7 +5543,7 @@
       },
       "src": "highlight(quad; R1; blue; \"넓이\")",
       "auto_color": "#5fd38a",
-      "order": 31,
+      "order": 42,
       "version": 2
     },
     "H2": {
@@ -4273,7 +5995,7 @@
       },
       "src": "highlight(; between(lin, quad) and 0 <= x <= 2; green)",
       "auto_color": "#ffa057",
-      "order": 32,
+      "order": 43,
       "version": 2
     },
     "H3": {
@@ -4426,7 +6148,7 @@
       },
       "src": "highlight(poly.(-b*x).coef;; orange)",
       "auto_color": "#c08cff",
-      "order": 33,
+      "order": 44,
       "version": 2
     },
     "H4": {
@@ -4568,7 +6290,7 @@
       },
       "src": "highlight(poly.(-b*x);; red)",
       "auto_color": "#6ea8ff",
-      "order": 34,
+      "order": 45,
       "version": 2
     },
     "H5": {
@@ -4809,7 +6531,7 @@
       },
       "src": "highlight(lin; x < -1 or x > 1)",
       "auto_color": "#f2cc60",
-      "order": 35,
+      "order": 46,
       "version": 2
     },
     "H6": {
@@ -5119,7 +6841,7 @@
       },
       "src": "highlight(; y < par(x) and not (x > a))",
       "auto_color": "#ff6b6b",
-      "order": 36,
+      "order": 47,
       "version": 2
     },
     "H7": {
@@ -5409,7 +7131,7 @@
       },
       "src": "highlight(; 0 < t < 1 and y < wave(t))",
       "auto_color": "#5fd38a",
-      "order": 37,
+      "order": 48,
       "version": 3
     }
   },
@@ -5477,14 +7199,14 @@
         ]
       },
       "src": "0 <= x <= 2",
-      "order": 30,
+      "order": 41,
       "version": 2
     }
   },
   "requests": {},
   "counters": {
-    "next_order": 39,
-    "next_color": 25,
+    "next_order": 50,
+    "next_color": 35,
     "next_hl_color": 7,
     "next_request": 0
   }

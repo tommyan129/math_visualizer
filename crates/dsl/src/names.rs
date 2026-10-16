@@ -39,6 +39,26 @@ pub const BUILTINS: &[(&str, &[usize])] = &[
     ("gamma", &[1]),
 ];
 
+/// Linear-algebra builtins (stage 4), typed by shape. `span` / `arrow` are only the
+/// body of a definition (`S: span(v, w)`, `p: arrow(v; P)`).
+pub const LINALG: &[(&str, &[usize])] = &[
+    ("matmul", &[2]),
+    ("pow", &[2]),
+    ("inv", &[1]),
+    ("transpose", &[1]),
+    ("det", &[1]),
+    ("tr", &[1]),
+    ("span", &[]),
+    ("arrow", &[1, 2]),
+];
+
+/// Largest number of rows or columns in a matrix literal (resource bound).
+pub const MAX_DIM: u32 = 32;
+
+pub fn is_linalg(name: &str) -> bool {
+    LINALG.iter().any(|(n, _)| *n == name)
+}
+
 /// Handled by the parser as `sum(body; range)` / `prod(body; range)`.
 pub const BIG_OPS: &[&str] = &["sum", "prod"];
 
@@ -47,7 +67,7 @@ pub fn builtin_arity(name: &str) -> Option<&'static [usize]> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    builtin_arity(name).is_some() || BIG_OPS.contains(&name)
+    builtin_arity(name).is_some() || BIG_OPS.contains(&name) || is_linalg(name)
 }
 
 /// Replacement for a LaTeX command that is not a name (structure commands, operators).

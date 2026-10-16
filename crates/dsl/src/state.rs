@@ -6,25 +6,68 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::ast::{Expr, Ident};
+use crate::ast::{Expr, Ident, Ty};
 
 /// Key of the default scene of the `2D(x, y)` system.
 pub const DEFAULT_SCENE: &str = "2D(x, y)";
+
+/// What a `define:` entry is. Everything lives in `State::functions` so references,
+/// cascade, constants and req work the same for all of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum DefKind {
+    /// `f(x) -> y`: drawn as a curve.
+    #[default]
+    Curve,
+    /// `R(\theta) -> matrix`: vector- or matrix-valued, not drawn.
+    Matrix,
+    /// `A: [[1, 2], [3, 4]]`, `v(; a): [1, a]`: a named vector or matrix, not drawn.
+    Value,
+    /// `S: span(v, w)`: drawn as a point, line or plane through the origin.
+    Span,
+    /// `a: arrow(v)`, `arrow(v; P)`: drawn as an arrow.
+    Arrow,
+}
+
+impl DefKind {
+    /// Shown in a scene (toggle list) at all.
+    pub fn is_drawn(self) -> bool {
+        matches!(self, DefKind::Curve | DefKind::Span | DefKind::Arrow)
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            DefKind::Curve => "함수",
+            DefKind::Matrix => "행렬 값 함수",
+            DefKind::Value => "벡터·행렬",
+            DefKind::Span => "span",
+            DefKind::Arrow => "arrow",
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Function {
     pub key: String,
     pub name: Ident,
+    #[serde(default)]
+    pub kind: DefKind,
+    /// Empty for `Value`, `Span`, `Arrow`.
     pub inputs: Vec<Ident>,
-    pub output: Ident,
+    /// Output axis of a curve; `None` for every other kind.
+    pub output: Option<Ident>,
+    /// Value type of the body: scalar for a curve, vector / matrix for `Matrix` and
+    /// `Value`; for `Span` / `Arrow` the vector type of their arguments.
+    #[serde(default = "scalar_ty")]
+    pub ty: Ty,
     /// Constant keys in signature order (after `;`). Complete: includes every
     /// constant used by functions this one calls (design.md "참조한 함수의 상수").
     pub consts: Vec<String>,
     pub body: Expr,
     /// Body as written, for DSL-notation responses.
     pub body_src: String,
-    /// Direct callees (user functions only).
+    /// Direct references to other definitions: called functions and named vectors / matrices.
     pub calls: Vec<String>,
     /// Data color index, fixed at creation.
     pub color: u32,
@@ -36,12 +79,37 @@ pub struct Function {
     pub version: u64,
 }
 
+fn scalar_ty() -> Ty {
+    Ty::Scalar
+}
+
 impl Function {
-    /// `f(x; a, b) -> y`
+    /// `f(x; a, b) -> y`, `R(\theta) -> matrix`, `v(; a)`, `S`.
     pub fn signature(&self) -> String {
         let inputs = self.inputs.iter().map(|i| i.key.as_str()).collect::<Vec<_>>().join(", ");
         let consts = if self.consts.is_empty() { String::new() } else { format!("; {}", self.consts.join(", ")) };
-        format!("{}({inputs}{consts}) -> {}", self.key, self.output.key)
+        match (&self.kind, &self.output) {
+            (DefKind::Curve, Some(o)) => format!("{}({inputs}{consts}) -> {}", self.key, o.key),
+            (DefKind::Matrix, _) => format!("{}({inputs}{consts}) -> matrix", self.key),
+            _ if self.consts.is_empty() => self.key.clone(),
+            _ => format!("{}({inputs}{consts})", self.key),
+        }
+    }
+
+    /// `(input, output)` of a curve.
+    pub fn curve_axes(&self) -> Option<(&Ident, &Ident)> {
+        match (self.kind, self.inputs.first(), &self.output) {
+            (DefKind::Curve, Some(i), Some(o)) => Some((i, o)),
+            _ => None,
+        }
+    }
+
+    /// Number of axes a span / arrow needs (its vector length).
+    pub fn vector_dim(&self) -> Option<u32> {
+        match (self.kind, &self.ty) {
+            (DefKind::Span | DefKind::Arrow, Ty::Vector { n }) => Some(*n),
+            _ => None,
+        }
     }
 
     /// Full definition line in DSL notation.
@@ -549,10 +617,11 @@ impl State {
         }
     }
 
-    /// Coordinate system of a function: `2D(input, output)`.
+    /// Coordinate system of a curve: `2D(input, output)`. Spans and arrows fit any
+    /// system with as many axes as their vectors have; other kinds are not drawn.
     pub fn function_system(&self, key: &str) -> Option<String> {
-        let f = self.functions.get(key)?;
-        Some(system_key(&[f.inputs.first().map_or("x", |i| i.key.as_str()), f.output.key.as_str()]))
+        let (i, o) = self.functions.get(key)?.curve_axes()?;
+        Some(system_key(&[i.key.as_str(), o.key.as_str()]))
     }
 
     /// Stage 1-2 states: the always-present default scene with `hidden` lists. Moves

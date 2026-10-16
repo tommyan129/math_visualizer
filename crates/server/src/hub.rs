@@ -25,6 +25,7 @@ struct Rendered {
     workspace: String,
     revision: u64,
     warnings: Vec<Warning>,
+    spans: Vec<SpanDim>,
 }
 
 struct Active {
@@ -143,10 +144,10 @@ impl Hub {
                     let _ = tx.send(reply);
                 }
             }
-            ClientMsg::Rendered { workspace, revision, warnings } => {
+            ClientMsg::Rendered { workspace, revision, warnings, spans } => {
                 let inner = self.inner.lock().unwrap();
                 if let Some(a) = inner.active.as_ref().filter(|a| a.conn == c.id) {
-                    a.rendered.send_replace(Some(Rendered { workspace, revision, warnings }));
+                    a.rendered.send_replace(Some(Rendered { workspace, revision, warnings, spans }));
                 }
             }
         }
@@ -206,7 +207,10 @@ impl Hub {
         };
         let done = tokio::time::timeout(APPLY_WAIT, rx.wait_for(|r| r.as_ref().is_some_and(|r| r.workspace == workspace && r.revision >= revision))).await;
         match done {
-            Ok(Ok(r)) => Browser::Rendered { warnings: r.as_ref().map(|r| r.warnings.clone()).unwrap_or_default() },
+            Ok(Ok(r)) => Browser::Rendered {
+                warnings: r.as_ref().map(|r| r.warnings.clone()).unwrap_or_default(),
+                spans: r.as_ref().map(|r| r.spans.clone()).unwrap_or_default(),
+            },
             // Tab closed or taken over while waiting.
             Ok(Err(_)) => Browser::NotConnected,
             Err(_) => Browser::Timeout,
@@ -241,7 +245,7 @@ impl Hub {
     /// Asks the active tab for its current scene, view and warnings.
     pub async fn get_view(&self, workspace: &str) -> Browser {
         match self.ask(workspace, ServerRequest::GetView {}, VIEW_WAIT).await {
-            Ok(BrowserReply::View { workspace: w, view, warnings, .. }) if w == workspace => Browser::View { view, warnings },
+            Ok(BrowserReply::View { workspace: w, view, warnings, spans, .. }) if w == workspace => Browser::View { view, warnings, spans },
             Ok(_) => Browser::OtherWorkspace,
             Err(b) => b,
         }

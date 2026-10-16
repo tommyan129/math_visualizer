@@ -37,6 +37,101 @@ export interface Runtime {
   sign: (x: number) => number;
   floor: (x: number) => number;
   ceil: (x: number) => number;
+  // Vectors and matrices (stage 4): row-major number arrays, sizes from the static types.
+  madd(a: number[], b: number[]): number[];
+  msub(a: number[], b: number[]): number[];
+  mscale(s: number, a: number[]): number[];
+  /** (m×k) · (k×n). */
+  matmul(a: number[], b: number[], m: number, k: number, n: number): number[];
+  transpose(a: number[], m: number, n: number): number[];
+  inv(a: number[], n: number): number[];
+  det(a: number[], n: number): number;
+  tr(a: number[], n: number): number;
+  /** Integer power of an n×n matrix (negative: of the inverse). */
+  mpow(a: number[], n: number, p: number): number[];
+  /** 1-based element; NaN outside or for a non-integer index. */
+  at(a: number[], len: number, i: number): number;
+  at2(a: number[], m: number, n: number, i: number, j: number): number;
+}
+
+const nanArray = (len: number) => new Array<number>(len).fill(NaN);
+
+/** Gauss-Jordan with partial pivoting. Singular (pivot ~ 0 relative to the scale) → NaN. */
+function inverse(a: number[], n: number): number[] {
+  const w = 2 * n;
+  const m = new Array<number>(n * w);
+  let scale = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const v = a[i * n + j]!;
+      m[i * w + j] = v;
+      scale = Math.max(scale, Math.abs(v));
+      m[i * w + n + j] = i === j ? 1 : 0;
+    }
+  }
+  if (!Number.isFinite(scale)) return nanArray(n * n);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(m[r * w + c]!) > Math.abs(m[p * w + c]!)) p = r;
+    const pv = m[p * w + c]!;
+    if (!(Math.abs(pv) > 1e-12 * scale)) return nanArray(n * n);
+    if (p !== c) {
+      for (let j = 0; j < w; j++) {
+        const t = m[c * w + j]!;
+        m[c * w + j] = m[p * w + j]!;
+        m[p * w + j] = t;
+      }
+    }
+    for (let j = 0; j < w; j++) m[c * w + j]! /= pv;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = m[r * w + c]!;
+      if (f === 0) continue;
+      for (let j = 0; j < w; j++) m[r * w + j]! -= f * m[c * w + j]!;
+    }
+  }
+  const out = new Array<number>(n * n);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out[i * n + j] = m[i * w + n + j]!;
+  return out;
+}
+
+/** LU with partial pivoting. */
+function determinant(a: number[], n: number): number {
+  const m = a.slice();
+  let d = 1;
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(m[r * n + c]!) > Math.abs(m[p * n + c]!)) p = r;
+    const pv = m[p * n + c]!;
+    if (pv === 0) return 0;
+    if (Number.isNaN(pv)) return NaN;
+    if (p !== c) {
+      for (let j = 0; j < n; j++) {
+        const t = m[c * n + j]!;
+        m[c * n + j] = m[p * n + j]!;
+        m[p * n + j] = t;
+      }
+      d = -d;
+    }
+    d *= pv;
+    for (let r = c + 1; r < n; r++) {
+      const f = m[r * n + c]! / pv;
+      for (let j = c; j < n; j++) m[r * n + j]! -= f * m[c * n + j]!;
+    }
+  }
+  return d;
+}
+
+function matmul(a: number[], b: number[], m: number, k: number, n: number): number[] {
+  const out = new Array<number>(m * n);
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < n; j++) {
+      let s = 0;
+      for (let t = 0; t < k; t++) s += a[i * k + t]! * b[t * n + j]!;
+      out[i * n + j] = s;
+    }
+  }
+  return out;
 }
 
 // Lanczos approximation (g = 7, n = 9).
@@ -135,6 +230,41 @@ export function makeRuntime(): Runtime {
     sign: Math.sign,
     floor: Math.floor,
     ceil: Math.ceil,
+    madd: (a, b) => a.map((v, i) => v + b[i]!),
+    msub: (a, b) => a.map((v, i) => v - b[i]!),
+    mscale: (s, a) => a.map((v) => s * v),
+    matmul,
+    transpose(a, m, n) {
+      const out = new Array<number>(m * n);
+      for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) out[j * m + i] = a[i * n + j]!;
+      return out;
+    },
+    inv: inverse,
+    det: determinant,
+    tr(a, n) {
+      let s = 0;
+      for (let i = 0; i < n; i++) s += a[i * n + i]!;
+      return s;
+    },
+    mpow(a, n, p) {
+      if (!Number.isInteger(p)) return nanArray(n * n);
+      let base = p < 0 ? inverse(a, n) : a;
+      let e = Math.abs(p);
+      let out = new Array<number>(n * n).fill(0);
+      for (let i = 0; i < n; i++) out[i * n + i] = 1;
+      while (e > 0) {
+        if (e % 2 === 1) out = matmul(out, base, n, n, n);
+        e = Math.floor(e / 2);
+        if (e > 0) base = matmul(base, base, n, n, n);
+      }
+      return out;
+    },
+    at(a, len, i) {
+      return Number.isInteger(i) && i >= 1 && i <= len ? a[i - 1]! : NaN;
+    },
+    at2(a, m, n, i, j) {
+      return Number.isInteger(i) && Number.isInteger(j) && i >= 1 && i <= m && j >= 1 && j <= n ? a[(i - 1) * n + (j - 1)]! : NaN;
+    },
   };
   rt.sum = bigOp(rt, 0, (a, v) => a + v);
   rt.prod = bigOp(rt, 1, (a, v) => a * v);

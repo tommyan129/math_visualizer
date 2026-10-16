@@ -55,7 +55,7 @@ const client = new Client(wsUrl, {
   serverRequest(r) {
     if (r.type === "GetView") {
       if (!openId) return { type: "Error", message: "열린 작업 공간 없음" };
-      return { type: "View", workspace: openId, scene: nav().scene ?? "", view: plot.box(), warnings: plot.warnings() };
+      return { type: "View", workspace: openId, scene: nav().scene ?? "", view: plot.box(), warnings: plot.warnings(), spans: plot.spanDims() };
     }
     if (r.type === "Snapshot") {
       if (!openId) return { type: "Error", message: "열린 작업 공간 없음" };
@@ -280,7 +280,7 @@ document.getElementById("app")!.replaceWith(
 const plot = new Plot(card, {
   rendered(revision: number, warnings: Warning[]) {
     // -1: the first-screen check finished after the render was reported.
-    if (openId && revision >= 0) client.send({ type: "Rendered", workspace: openId, revision, warnings });
+    if (openId && revision >= 0) client.send({ type: "Rendered", workspace: openId, revision, warnings, spans: plot.spanDims() });
     render();
   },
 });
@@ -313,7 +313,7 @@ function render(): void {
     updated: new Set(n.updated),
     select: (k) => void goScene(k),
   });
-  panel.render({ state, scene, step: n.step, hasKey: ws?.has_key ?? false, warnings: (k) => plot.warningsFor(k), sceneWarnings: plot.sceneWarnings() });
+  panel.render({ state, scene, step: n.step, hasKey: ws?.has_key ?? false, warnings: (k) => plot.warningsFor(k), sceneWarnings: plot.sceneWarnings(), spanDim: (k) => plot.spanDims().find((d) => d.key === k)?.dim });
   stepbar.render(state, scene, n.step);
   splitNote.hidden = !stepbar.visible;
   empty.textContent = !ws ? "작업 공간을 만들거나 고르면 그래프가 여기에 그려짐" : "";

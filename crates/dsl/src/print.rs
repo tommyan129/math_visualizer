@@ -76,6 +76,7 @@ fn print(e: &Expr) -> String {
         ExprKind::Neg { arg } => format!("-{}", wrap(arg, 8)),
         ExprKind::Factorial { arg } => format!("{}!", wrap(arg, 10)),
         ExprKind::Paren { inner } => format!("({})", expr_dsl(inner)),
+        ExprKind::Call { callee, args, .. } if callee.key == "arrow" => format!("arrow({})", args.iter().map(expr_dsl).collect::<Vec<_>>().join("; ")),
         ExprKind::Call { callee, args, .. } => format!("{}({})", callee.key, args.iter().map(expr_dsl).collect::<Vec<_>>().join(", ")),
         ExprKind::BigOp { op, body, index, lo, lo_strict, hi, hi_strict } => {
             let head = match op {
@@ -145,6 +146,10 @@ mod tests {
             "\"메모\"",
             "f.(b*x).coef",
             "a - (-b)",
+            "[[1, 2], [3, 4]]",
+            "matmul(R(t), [1, 0])_[2]",
+            "A_[1, 2] + 2*transpose(v)_[1, 1]",
+            "arrow(v; [1, f(c)])",
         ] {
             assert_eq!(round(s), s);
         }

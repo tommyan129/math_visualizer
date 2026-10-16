@@ -36,12 +36,22 @@ export interface PanelView {
   hasKey: boolean;
   warnings(key: string): Warning[];
   sceneWarnings: Warning[];
+  /** How a span is drawn now: 0 point, 1 line, 2 plane; undefined before it is drawn. */
+  spanDim(key: string): number | undefined;
 }
+
+const SPAN_DIM = ["점 (원점)", "직선", "평면"];
+
+/** Vectors, matrices and matrix functions: listed in every scene, never toggled. */
+const drawn = (f: Fn) => f.kind === "Curve" || f.kind === "Span" || f.kind === "Arrow";
 
 function hexAlpha(hex: string, a: number): string {
   const n = parseInt(hex.replace("#", ""), 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
+
+/** Width of the slider thumb (`.rng::-webkit-slider-thumb`). */
+const THUMB_PX = 18;
 
 function decimals(step: number): number {
   return Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
@@ -75,7 +85,7 @@ class ConstantCard {
     this.c = c;
     const id = `c-${c.order}`;
     this.val = h("input", { class: "val", "aria-label": `${c.key} 값`, inputmode: "decimal" });
-    this.rng = h("input", { class: "rng", type: "range", id });
+    this.rng = h("input", { class: "rng", type: "range", id, title: "Shift를 누른 채 끌면 한 칸(step)씩" });
     this.fill = h("div", { class: "fill" });
     this.min = h("input", { class: "end", "aria-label": `${c.key} 최솟값`, inputmode: "decimal" });
     this.max = h("input", { class: "end max", "aria-label": `${c.key} 최댓값`, inputmode: "decimal" });
@@ -97,6 +107,7 @@ class ConstantCard {
       this.actions.drag(this.c.key, v);
     });
     this.rng.addEventListener("change", () => void this.commit(Number(this.rng.value)));
+    this.pointerDrag();
     this.val.addEventListener("change", () => {
       const v = parse(this.val.value);
       if (!Number.isFinite(v)) return this.fail("숫자가 아님");
@@ -112,6 +123,59 @@ class ConstantCard {
     this.max.addEventListener("change", range);
     for (const i of [this.val, this.min, this.max]) i.addEventListener("keydown", (e) => e.key === "Enter" && i.blur());
     this.update(c);
+  }
+
+  /**
+   * Mouse / touch drag, replacing the native one (keyboard stays native). The drag is
+   * relative: normally 1px follows the cursor, with Shift held 1px is one step, so
+   * every step value can be reached (a native slider moves 2–3 steps per pixel).
+   */
+  private pointerDrag(): void {
+    let raw = 0, lastX = 0, start = 0, sent = 0;
+    const pxRate = (shift: boolean) => {
+      const c = this.c;
+      return shift ? c.step : (c.max - c.min) / Math.max(1, this.rng.getBoundingClientRect().width - THUMB_PX);
+    };
+    const emit = () => {
+      const c = this.c;
+      raw = Math.min(c.max, Math.max(c.min, raw));
+      const v = Math.min(c.max, Number((c.min + Math.round((raw - c.min) / c.step) * c.step).toFixed(12)));
+      if (v === sent) return;
+      sent = v;
+      this.rng.value = String(v);
+      this.show(v);
+      this.actions.drag(this.c.key, v);
+    };
+    this.rng.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      this.rng.focus();
+      this.rng.setPointerCapture(e.pointerId);
+      this.dragging = true;
+      start = sent = Number(this.rng.value);
+      raw = start;
+      lastX = e.clientX;
+      // Plain click on the track jumps to the cursor; Shift keeps the value.
+      if (!e.shiftKey) {
+        const r = this.rng.getBoundingClientRect();
+        raw = this.c.min + (e.clientX - r.left - THUMB_PX / 2) * pxRate(false);
+        emit();
+      }
+    });
+    this.rng.addEventListener("pointermove", (e) => {
+      if (!this.rng.hasPointerCapture(e.pointerId)) return;
+      raw += (e.clientX - lastX) * pxRate(e.shiftKey);
+      lastX = e.clientX;
+      emit();
+    });
+    const end = (e: PointerEvent) => {
+      if (!this.rng.hasPointerCapture(e.pointerId)) return;
+      this.rng.releasePointerCapture(e.pointerId);
+      if (sent !== start) void this.commit(sent);
+      else this.dragging = false;
+    };
+    this.rng.addEventListener("pointerup", end);
+    this.rng.addEventListener("pointercancel", end);
   }
 
   private async commit(v: number): Promise<void> {
@@ -183,7 +247,7 @@ export class Panel {
   private sceneWarn = h("div", { class: "scene-warn" });
   private others = h("div", { class: "hint others" });
   private clipSrc = "";
-  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [] };
+  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [], spanDim: () => undefined };
 
   constructor(private actions: PanelActions) {
     this.clipBox.append(this.clipInput, this.clipReset);
@@ -327,26 +391,35 @@ export class Panel {
 
   private renderDefs(state: State | null, warnings: (key: string) => Warning[]): void {
     const all = state ? Object.values(state.functions).map((f) => f!).sort((a, b) => a.order - b.order) : [];
-    const fns = all.filter((f) => this.listed(f.key));
+    const fns = all.filter((f) => !drawn(f) || this.listed(f.key));
     const hidden = new Set(state ? [...Object.keys(state.functions), ...Object.keys(state.highlights)].filter((k) => !this.shown(k)) : []);
-    const elsewhere = state ? [...Object.keys(state.functions), ...Object.keys(state.highlights)].filter((k) => !this.v.scene?.members.includes(k)).length : 0;
+    const elsewhere = state ? [...all.filter(drawn).map((f) => f.key), ...Object.keys(state.highlights)].filter((k) => !this.v.scene?.members.includes(k)).length : 0;
     this.others.textContent = elsewhere > 0 ? `다른 좌표계 정의 ${elsewhere}개` : "";
     this.others.hidden = elsewhere === 0 || !this.v.scene;
     // Re-render only when something visible changed (MathJax output is cached anyway).
     const nodes = state ? resolveHighlights(state, hidden).nodeColors : new Map<string, Map<number, string>>();
-    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])]])]);
+    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])], this.v.spanDim(f.key)])]);
     if (key === this.defKey) return;
     this.defKey = key;
     const colors = new Map(all.map((f) => [f.key, colorOf(f)]));
     this.defs.replaceChildren();
     if (state && all.length === 0) this.defs.append(h("div", { class: "hint" }, "아직 정의가 없음. Claude가 apply로 보내면 여기에 나타남."));
-    for (const f of fns) this.defs.append(this.defEl(f, { colors, nodes: nodes.get(f.key) }, !hidden.has(f.key), warnings(f.key)));
+    for (const f of fns) this.defs.append(this.defEl(f, { colors, nodes: nodes.get(f.key) }, !drawn(f) || !hidden.has(f.key), warnings(f.key)));
   }
 
   private defEl(f: Fn, ctx: LatexCtx, visible: boolean, warns: Warning[]): HTMLElement {
     const id = `d-${f.order}`;
-    const box = h("input", { type: "checkbox", id, checked: visible, "aria-label": `${f.key} 보이기` });
-    box.addEventListener("change", () => this.actions.toggle(f.key, box.checked));
+    let box: HTMLElement;
+    if (drawn(f)) {
+      const input = h("input", { type: "checkbox", id, checked: visible, "aria-label": `${f.key} 보이기` });
+      input.addEventListener("change", () => this.actions.toggle(f.key, input.checked));
+      box = input;
+    } else {
+      // Keeps the math aligned with the toggled rows.
+      box = h("span", { class: "nobox", title: "다른 정의에서 쓰는 값 (그리지 않음)" });
+    }
+    const dim = f.kind === "Span" && visible ? this.v.spanDim(f.key) : undefined;
+    const badge = dim !== undefined ? h("span", { class: "span-dim" }, `${SPAN_DIM[dim] ?? `${dim}차원`} · ${dim}차원`) : null;
     let math: Node;
     try {
       math = texElement(definitionTex(f.name, f.inputs, f.body, ctx));
@@ -357,7 +430,7 @@ export class Panel {
       "div",
       { class: `def${visible ? "" : " off"}`, title: `${f.key}: ${f.body_src}` },
       box,
-      h("div", { class: "body-col" }, h("label", { class: "math", for: id }, math), ...warns.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message))),
+      h("div", { class: "body-col" }, h("label", { class: "math", for: id }, math), badge, ...warns.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message))),
     );
   }
 
@@ -377,6 +450,8 @@ export class Panel {
       nodes.push(card.el);
     }
     if (state && cs.length === 0) nodes.push(h("div", { class: "hint" }, "상수 없음"));
-    this.consts.replaceChildren(...nodes);
+    // Re-inserting a card being dragged would end the drag (pointer capture is lost).
+    const same = nodes.length === this.consts.children.length && nodes.every((n, i) => this.consts.children[i] === n);
+    if (!same) this.consts.replaceChildren(...nodes);
   }
 }

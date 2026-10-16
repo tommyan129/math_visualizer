@@ -96,6 +96,9 @@ export class Renderer {
         case "image":
           this.image(view, b);
           break;
+        case "arrows":
+          this.arrows(view, b, st);
+          break;
       }
     }
   }
@@ -161,6 +164,37 @@ export class Renderer {
       }
     }
     ctx.stroke();
+  }
+
+  private arrows(view: View, b: Extract<Batch, { kind: "arrows" }>, st: Style): void {
+    const ctx = this.ctx;
+    const [ox, oy] = b.origin;
+    const color = cssColor(st.color);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = st.width;
+    ctx.lineCap = "round";
+    ctx.setLineDash([]);
+    for (let i = 0; i + 3 < b.coords.length; i += 4) {
+      const x0 = view.sx(ox + b.coords[i]!), y0 = view.sy(oy + b.coords[i + 1]!);
+      const x1 = view.sx(ox + b.coords[i + 2]!), y1 = view.sy(oy + b.coords[i + 3]!);
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      if (len < 0.5) continue;
+      const ux = (x1 - x0) / len, uy = (y1 - y0) / len;
+      // Short arrows keep a proportionate head.
+      const head = Math.min(st.size, len * 0.5), half = head * 0.45;
+      const bx = x1 - ux * head, by = y1 - uy * head;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(bx + ux * 0.5, by + uy * 0.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(bx - uy * half, by + ux * half);
+      ctx.lineTo(bx + uy * half, by - ux * half);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   private points(view: View, b: Extract<Batch, { kind: "points" }>, st: Style): void {

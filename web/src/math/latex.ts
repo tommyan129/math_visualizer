@@ -35,7 +35,57 @@ const BUILTIN_TEX: Record<string, string> = {
   gamma: "\\Gamma",
 };
 
-const BUILTIN_NAMES = new Set([...Object.keys(BUILTIN_TEX), "sqrt", "abs", "floor", "ceil", "log", "mod", "deg"]);
+const LINALG = new Set(["matmul", "pow", "inv", "transpose", "det", "tr", "span", "arrow"]);
+const BUILTIN_NAMES = new Set([...Object.keys(BUILTIN_TEX), "sqrt", "abs", "floor", "ceil", "log", "mod", "deg", ...LINALG]);
+
+/** Operands that need no parentheses before a superscript or in a product. */
+const ATOMS = new Set(["Num", "Name", "List", "Paren", "Index"]);
+
+/** `A_[1, 2]` → a₁₂: a single uppercase letter becomes lowercase (entries of A are aᵢⱼ). */
+function elementTex(e: Extract<Expr, { type: "Index" }>, go: (c: Expr, s?: boolean) => string): string {
+  const parts = e.indices.map((i) => go(unparen(i), true));
+  const simple = e.indices.every((i) => (i.type === "Num" && i.text.length === 1) || (i.type === "Name" && i.name.base.length === 1 && !i.name.sub));
+  const sub = simple ? parts.join("") : parts.join(",");
+  const b = e.base;
+  if (b.type === "Name" && b.name.sub === null && b.name.sup === null && b.name.accent === null) {
+    const base = /^[A-Z]$/.test(b.name.base) ? b.name.base.toLowerCase() : b.name.base;
+    return `${baseTex(base)}_{${sub}}`;
+  }
+  return `${paren(go(b))}_{${sub}}`;
+}
+
+function matrixTex(e: Extract<Expr, { type: "List" }>, go: (c: Expr, s?: boolean) => string): string {
+  const rows = e.items.every((r) => r.type === "List") ? e.items.map((r) => (r.type === "List" ? r.items : [])) : e.items.map((x) => [x]);
+  return `\\begin{pmatrix}${rows.map((r) => r.map((x) => go(x, false)).join(" & ")).join(" \\\\ ")}\\end{pmatrix}`;
+}
+
+/** `matmul(A, B)` → AB, `transpose(A)` → Aᵀ, `inv(A)` → A⁻¹, `pow(A, n)` → Aⁿ. */
+function linalgTex(e: Extract<Expr, { type: "Call" }>, go: (c: Expr, s?: boolean) => string): string | null {
+  const a = e.args.map(unparen);
+  const atom = (x: Expr) => (ATOMS.has(x.type) || (x.type === "Call" && x.kind === "Function") ? go(x) : paren(go(x)));
+  // Superscript forms (Aᵀ, A⁻¹, Aⁿ) and nested products need no parentheses as a factor.
+  const factor = (x: Expr) => (x.type === "Call" && x.kind === "Builtin" && ["matmul", "transpose", "inv", "pow"].includes(x.callee.key) ? go(x) : atom(x));
+  const sup = (x: Expr, s: string) => `{${atom(x)}}^{${s}}`;
+  switch (e.callee.key) {
+    case "matmul":
+      return a.length === 2 ? `${factor(a[0]!)}${factor(a[1]!)}` : null;
+    case "transpose":
+      return a[0] ? sup(a[0], "\\mathsf{T}") : null;
+    case "inv":
+      return a[0] ? sup(a[0], "-1") : null;
+    case "pow":
+      return a.length === 2 ? sup(a[0]!, go(a[1]!, true)) : null;
+    case "det":
+      return a[0] ? `\\det${paren(go(a[0]))}` : null;
+    case "tr":
+      return a[0] ? `\\operatorname{tr}${paren(go(a[0]))}` : null;
+    case "span":
+      return `\\operatorname{span}${paren(a.map((x) => go(x)).join(", "))}`;
+    case "arrow":
+      return `\\operatorname{arrow}${paren(a.map((x) => go(x)).join(";\\, "))}`;
+  }
+  return null;
+}
 
 const SAFE_SUP = /^[A-Za-z0-9*+\-'(), ]*$/;
 const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힣]/;
@@ -96,7 +146,11 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
     case "Num":
       return numTex(e.text);
     case "Name":
-      return identTex(e.name, e.kind === "Function" ? ctx.colors.get(e.name.key) : undefined);
+      return identTex(e.name, e.kind === "Function" || e.kind === "Value" ? ctx.colors.get(e.name.key) : undefined);
+    case "List":
+      return matrixTex(e, go);
+    case "Index":
+      return elementTex(e, go);
     case "Sum":
       return e.terms
         .map((t, i) => {
@@ -159,6 +213,8 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
       const args = e.args.map((a) => go(unparen(a)));
       // Slot ASTs kept as written are unresolved; builtins are known by name.
       if (e.kind === "Builtin" || (e.kind === "Unresolved" && BUILTIN_NAMES.has(key))) {
+        const la = LINALG.has(key) ? linalgTex(e, go) : null;
+        if (la) return la;
         switch (key) {
           case "sqrt":
             return `\\sqrt{${args[0]}}`;
@@ -209,8 +265,12 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
   }
 }
 
-/** `f(x) = body` as shown in the definition list (constants are not shown in the head). */
+/**
+ * `f(x) = body` as shown in the definition list (constants are not shown in the head).
+ * Without inputs (vectors, matrices, span, arrow): `v = body`.
+ */
 export function definitionTex(name: Ident, inputs: Ident[], body: Expr, ctx: LatexCtx): string {
-  const head = `${identTex(name, ctx.colors.get(name.key))}${paren(inputs.map((i) => identTex(i)).join(", "))}`;
+  const n = identTex(name, ctx.colors.get(name.key));
+  const head = inputs.length ? `${n}${paren(inputs.map((i) => identTex(i)).join(", "))}` : n;
   return `${head} = ${exprTex(body, ctx)}`;
 }

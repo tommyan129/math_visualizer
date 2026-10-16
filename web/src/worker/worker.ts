@@ -2,8 +2,9 @@
 // Transferable typed arrays. Layer, order and style are attached on the main thread.
 
 import type { Expr } from "../generated/Expr";
-import { CodegenError, compile, compileRegion, type Compiled, type FnSpec, type Region, type Scalar } from "./codegen";
+import { CodegenError, compile, compileRegion, type Compiled, type FnSpec, type Region, type Scalar, type Vec } from "./codegen";
 import { computeFill, rasterRegion, type FillRule, type RasterRect } from "./fill";
+import { clipLine, spanShape } from "./linalg";
 import { makeRuntime } from "./numeric";
 import { sampleCurve, sampleDiscrete, type Quality, type SampleRange } from "./sample";
 
@@ -32,7 +33,13 @@ export type ToWorker =
 
 export interface CurveResult {
   key: string;
-  kind: "polyline" | "points";
+  /**
+   * `span`: a point (dim 0), a two-point polyline (dim 1) or a polygon ring covering the
+   * computed area (dim 2). `arrow`: tail and head.
+   */
+  kind: "polyline" | "points" | "span" | "arrow";
+  /** Span dimension drawn (span only). */
+  dim?: 0 | 1 | 2;
   /** f64 origin; coords are relative to it. */
   origin: [number, number];
   coords: Float32Array;
@@ -146,7 +153,7 @@ function setFunctions(fns: FnSpec[], constKeys: string[]): void {
       const c = compile(spec, { constIndex, fnIndex }, R, F, false);
       compiled.set(spec.key, c);
       own.set(spec.key, c.discrete);
-      F[i] = c.scalar;
+      F[i] = c.table;
     } catch (e) {
       compileErrors.set(spec.key, e instanceof CodegenError ? e.message : String(e));
       F[i] = () => NaN;
@@ -178,6 +185,12 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
     }
     const c = compiled.get(key);
     if (!c) continue;
+    if (c.kind === "Span" || c.kind === "Arrow") {
+      const r = c.kind === "Span" ? spanGeometry(key, c.vecs, C, range, origin) : arrowGeometry(key, c.vecs, C, origin);
+      if (r) curves.push(r);
+      else warnings.push({ source: key, code: "W-undefined", message: "벡터 값이 정의되지 않아 그리지 않음" });
+      continue;
+    }
     if (total >= SCENE_BUDGET) {
       warnings.push({ source: key, code: "W-budget", message: "장면 샘플 예산을 넘어 그리지 않음" });
       continue;
@@ -204,6 +217,41 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
     curves.push({ key, kind, origin, coords, offsets: Uint32Array.from(offsets) });
   }
   return { type: "result", id, quality, range, curves, warnings };
+}
+
+function rel(xy: number[], origin: [number, number]): Float32Array {
+  const out = new Float32Array(xy.length);
+  for (let i = 0; i < xy.length; i += 2) {
+    out[i] = xy[i]! - origin[0];
+    out[i + 1] = xy[i + 1]! - origin[1];
+  }
+  return out;
+}
+
+/** Point, line through the origin clipped to the computed area, or the whole area. */
+function spanGeometry(key: string, vecs: Vec[], C: Float64Array, range: SampleRange, origin: [number, number]): CurveResult | null {
+  const shape = spanShape(vecs.map((v) => v(C)));
+  if (shape.dim === null) return null;
+  const box = { x0: range.x0, x1: range.x1, y0: range.y0, y1: range.y1 };
+  let xy: number[] = [];
+  if (shape.dim === 0) xy = [0, 0];
+  else if (shape.dim === 1) {
+    // Many points along the line so the name label finds a spot on screen.
+    const seg = clipLine(shape.dir!, box);
+    const n = 64;
+    if (seg) for (let i = 0; i <= n; i++) xy.push(seg[0] + ((seg[2] - seg[0]) * i) / n, seg[1] + ((seg[3] - seg[1]) * i) / n);
+  }
+  else xy = [box.x0, box.y0, box.x1, box.y0, box.x1, box.y1, box.x0, box.y1];
+  return { key, kind: "span", dim: shape.dim, origin, coords: rel(xy, origin), offsets: Uint32Array.of(0, xy.length / 2) };
+}
+
+/** `arrow(v)` from the origin, `arrow(v; P)` from P. */
+function arrowGeometry(key: string, vecs: Vec[], C: Float64Array, origin: [number, number]): CurveResult | null {
+  const v = vecs[0]?.(C);
+  const p = vecs[1]?.(C) ?? [0, 0];
+  if (!v || v.length !== 2 || p.length !== 2 || ![...v, ...p].every(Number.isFinite)) return null;
+  const xy = [p[0]!, p[1]!, p[0]! + v[0]!, p[1]! + v[1]!];
+  return { key, kind: "arrow", origin, coords: rel(xy, origin), offsets: Uint32Array.of(0, 2) };
 }
 
 self.onmessage = (ev: MessageEvent<ToWorker>) => {

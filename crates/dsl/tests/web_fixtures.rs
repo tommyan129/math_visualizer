@@ -5,7 +5,7 @@ use dsl::interp::{Limits, apply};
 use dsl::state::State;
 
 const DEFS: &[&str] = &[
-    "inv(x) -> y: 1/x",
+    "recip(x) -> y: 1/x",
     "cbrt(x) -> y: x^(1/3)",
     "cbrt2(x) -> y: x^{2/3}",
     "half(x) -> y: x^(1/2)",
@@ -30,6 +30,17 @@ const DEFS: &[&str] = &[
     "quad(x) -> y: x^2",
     "poly(x; a, b) -> y: a*x^2 - b*x + 1",
     "wave(t; a) -> y: a*sin(t)",
+    // Stage 4: vectors, matrices, matrix functions, span, arrow.
+    "M2: [[1, 2], [3, 4]]",
+    "vv(; a): [1, a]",
+    "Rot(\\theta) -> matrix: [[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]",
+    "rotx(x; b) -> y: matmul(Rot(b), [x, 1])_[2]",
+    "linalg(x) -> y: det(M2)*x + tr(inv(M2)) + pow(M2, 2)_[1, 2] + transpose(M2)_[1, 2] + pow(M2, -1)_[1, 1]",
+    "outer(x; k) -> y: matmul([1, x], transpose([2, 3]))_[2, 2] + [1, 2, 3]_[k]",
+    "Sp(; a): span(vv, [0, 1])",
+    "Sl: span([1, 2], [2, 4])",
+    "Sz: span([0, 0])",
+    "Ar(; a): arrow(vv; [1, 1])",
 ];
 
 /// Stage 2: highlights over the functions above.

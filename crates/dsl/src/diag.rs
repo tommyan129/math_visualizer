@@ -67,6 +67,13 @@ pub mod code {
     pub const VIEW: &str = "E-view";
     /// Syntax of a later stage.
     pub const UNSUPPORTED: &str = "E-unsupported";
+    // stage 4
+    /// Matrix / vector sizes: ragged rows, operand sizes that do not match.
+    pub const SHAPE: &str = "E-shape";
+    /// An operator on matrices that must be written as a function (`A^2`, `A*B`).
+    pub const MATRIX_OP: &str = "E-matrix-op";
+    /// Element number outside the vector / matrix (`v_[3]` on a length-2 vector).
+    pub const INDEX: &str = "E-index";
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

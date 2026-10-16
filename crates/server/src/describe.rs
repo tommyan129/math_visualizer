@@ -4,8 +4,11 @@
 use dsl::names;
 
 const INDEX: &str = "\
-쓸 수 있는 명령 (3단계). describe(name)으로 자세히:
+쓸 수 있는 명령 (4단계). describe(name)으로 자세히:
   define     함수 정의·수정 (같은 이름에 다시 쓰면 수정)
+  행렬       벡터·행렬 값, matmul 등 연산, -> matrix 함수
+  span       span(v, w): 원점을 지나는 직선·평면
+  arrow      arrow(v), arrow(v; P): 화살표
   del        정의·강조·style·변수·scene 삭제 (참조하는 것도 함께 지워짐)
   scene      보기 프리셋: 좌표계, 처음 켜질 것, clip, view
   step       scene 안의 순서: 켜고 끄기, 상수 값, animate, 카메라, note
@@ -22,7 +25,37 @@ const INDEX: &str = "\
   sum      sum / prod
   상수     슬라이더 상수 규칙
   오류     오류 형식
-아직 없음: 행렬, split, 매개변수·극좌표·음함수, 다변수, 특징점(roots 등)";
+아직 없음: split, 매개변수·극좌표·음함수, 다변수, 특징점(roots 등)";
+
+const MATRIX: &str = "\
+define:
+    A: [[1, 2],
+        [3, 4]]                 # 행렬 (행마다 [..], 여러 줄 가능, 행 길이 같아야 함)
+    v(; a): [1, a]              # 열벡터. 상수를 쓰면 함수처럼 ';' 뒤에 적음
+    R(\\theta) -> matrix: [[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]
+    f(x; a) -> y: matmul(R(x), v)_[2]
+- [1, 2, 3]은 열벡터, [[1, 2, 3]]은 1×3 행렬(행벡터). 원소는 A_[1, 2], v_[2] (1부터).
+- 연산: A + B, A - B, 2*A, A/2는 연산자. 곱은 matmul(A, B), 거듭제곱 pow(A, n) (n이 음수면 역행렬의 거듭제곱),
+  inv(A), transpose(A), det(A), tr(A). A^2, A*B는 오류 (pow, matmul로).
+- 크기는 서버가 값 계산 없이 검사: 크기가 안 맞는 matmul·덧셈, 정사각이 아닌 inv/det/pow는 오류.
+- 벡터·행렬과 -> matrix 함수는 그리지 않음. 다른 정의 안에서 이름(v)이나 호출(R(t))로 씀.
+- 참조하면 그 상수도 적어야 함 (v가 a를 쓰면 S(; a): span(v, w)). 벡터 원소는 숫자만 ([v, w]는 오류).";
+
+const SPAN: &str = "\
+define:
+    S(; a): span(v, w)       # 벡터 1개 이상, 길이 같음
+- 원점을 지나는 직선·평면·점. 어느 것인지는 브라우저가 현재 값으로 정함 (슬라이더로 바뀜):
+  평행하지 않은 두 벡터는 2D에서 평면 전체, 평행하면 직선, 영벡터만이면 원점.
+- 함수처럼 토글·삭제·req 대상. 벡터를 지우면 span도 지워짐.
+- 길이 2 벡터는 2D scene(어느 축 이름이든)에, 길이 3은 3D에만 (6단계). 기본 scene은 2D(x, y).
+- 보이는 범위만 그림, scene clip이 있으면 그 안만. 그린 차원은 apply 응답과 get_state에 나옴.";
+
+const ARROW: &str = "\
+define:
+    p(; a): arrow(v)                    # 원점에서 v까지
+    q(; c): arrow([1, 2*c]; [c, c^2])   # 점 P에서 출발: 시작점은 ';' 뒤, 위치벡터로 (y = x^2의 접선 방향)
+- 시작점과 벡터는 같은 길이. 2D scene에는 길이 2만.
+- 함수처럼 토글·삭제·req 대상. 기본 scene에서 켜진 채 시작.";
 
 const DEFINE: &str = "\
 define: 블록 안에 한 줄에 정의 하나 (스페이스 4칸 들여쓰기).
@@ -186,6 +219,9 @@ pub fn describe(name: Option<&str>) -> String {
         "scene" | "space" | "clip" | "view" | "show" | "hide" => SCENE.into(),
         "step" | "set" | "animate" => STEP.into(),
         "note" => NOTE.into(),
+        "행렬" | "벡터" | "matrix" | "vector" | "matmul" | "pow" | "inv" | "transpose" | "det" | "tr" => MATRIX.into(),
+        "span" => SPAN.into(),
+        "arrow" => ARROW.into(),
         "함수" | "functions" | "builtins" => {
             let list: Vec<String> = names::BUILTINS
                 .iter()
@@ -218,5 +254,7 @@ mod tests {
         let s = dsl::interp::apply(&s, stage2, &Default::default(), 2).unwrap().state;
         let stage3 = "define:\n    T1(x; a) -> y: a*x\n    f2(x; n) -> y: sum(x^k; 0 <= k <= n)\nconstant:\n    n: integer, range=(1, 80), default=4\nscene(1):\n    space: 2D(x, y)\n    show: f, H1\n    hide: H2\n    clip: -10 <= x <= 10\n    view: -5 <= x <= 5 and -3 <= y <= 3\n    step:\n        show: +T1, -H1\n    step:\n        show: +H2, -T1\n        set: a = 2, b = -1\n        animate: n = 4 -> 64, 2s, loop\n        view: -1 <= x <= 1\n        note: \"{f}의 접선\"\n    step:\n        note: + \"{f}의 x = 1에서 접선 {T1(x)}, 기울기 $\\\\frac{dy}{dx}$\"\nreq(scene(1).step(2);; \"...\")\ndel scene(1)\n";
         dsl::interp::apply(&s, stage3, &Default::default(), 3).unwrap();
+        let stage4 = "define:\n    A: [[1, 2],\n        [3, 4]]\n    v(; a): [1, a]\n    R(\\theta) -> matrix: [[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]\n    f4(x; a) -> y: matmul(R(x), v)_[2]\n    w: [0, 1]\n    S(; a): span(v, w)\n    p(; a): arrow(v)\n    c4(x) -> y: x\n    q(; c): arrow([1, 2*c]; [c, c^2])\n    M: pow(A, -1) + inv(A) + transpose(A) + 2*A - A/2\n    d(x) -> y: det(A) + tr(A)\n";
+        dsl::interp::apply(&Default::default(), stage4, &Default::default(), 4).unwrap();
     }
 }

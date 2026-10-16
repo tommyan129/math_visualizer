@@ -8,13 +8,14 @@ import type { Function as Fn } from "../generated/Function";
 import type { Highlight } from "../generated/Highlight";
 import type { Nav } from "../generated/Nav";
 import type { Scene } from "../generated/Scene";
+import type { SpanDim } from "../generated/SpanDim";
 import type { State } from "../generated/State";
 import type { ViewSpec } from "../generated/ViewSpec";
 import type { ViewBox } from "../generated/ViewBox";
 import type { Warning } from "../generated/Warning";
 import { identTex } from "../math/latex";
 import { setImageReadyHandler } from "../math/mathjax";
-import { compileConst, type FnSpec } from "../worker/codegen";
+import { compileConst, specOf, type FnSpec } from "../worker/codegen";
 import { makeRuntime } from "../worker/numeric";
 import type { Quality, SampleRange } from "../worker/sample";
 import { CLIP_KEY, type CurveResult, type FillItem, type FillResult, type FromWorker, type HlSpec, type RasterResult, type ToWorker } from "../worker/worker";
@@ -51,8 +52,12 @@ interface Curve {
   result: CurveResult;
   range: SampleRange;
   quality: Quality;
-  version: number;
+  /** `depStamp` when computed: the definition and everything it refers to. */
+  version: string;
 }
+
+/** Fill opacity of a span drawn as a plane. */
+const PLANE_ALPHA = 0.1;
 
 interface HlGeom {
   result: FillResult | (RasterResult & { pixels: Uint8ClampedArray });
@@ -131,6 +136,8 @@ export class Plot {
   private hlGeom = new Map<string, HlGeom>();
   private hlLatest = new Map<string, number>();
   private hlCoarseInFlight = false;
+  /** Highlights a slider changed while a coarse fill was in flight: redone when it returns. */
+  private hlPending = new Set<string>();
   private warningsByKey = new Map<string, Warning[]>();
   private reqId = 0;
   private latest = new Map<string, number>();
@@ -138,6 +145,8 @@ export class Plot {
   private idleTimer = 0;
   private hlIdleTimer = 0;
   private coarseInFlight = false;
+  /** Functions a slider changed while a coarse sample was in flight: redone when it returns. */
+  private pending = new Set<string>();
   private drawQueued = false;
   /** Pointer position in CSS px while hovering (not dragging). */
   private hoverAt: { px: number; py: number } | null = null;
@@ -185,7 +194,7 @@ export class Plot {
     for (const k of [...this.curves.keys()]) if (!this.members.has(k)) this.curves.delete(k);
     for (const k of [...this.warningsByKey.keys()]) if (!state.functions[k]) this.warningsByKey.delete(k);
 
-    const specs: FnSpec[] = this.allFns.map((f) => ({ key: f.key, version: f.version, body: f.body, consts: f.consts, calls: f.calls }));
+    const specs: FnSpec[] = this.allFns.map(specOf);
     this.post({ type: "functions", fns: specs, constKeys: this.constKeys });
     const clip = activeClip(scene);
     const clipKey = JSON.stringify([this.axes, clip?.expr ?? null]);
@@ -201,7 +210,7 @@ export class Plot {
     const dirty = this.fns
       .filter((f) => {
         const c = this.curves.get(f.key);
-        return !c || c.version !== f.version || f.consts.some((k) => changedConsts.has(k));
+        return !c || c.version !== this.depStamp(f.key) || f.consts.some((k) => changedConsts.has(k));
       })
       .map((f) => f.key);
     this.setHighlights(state, changedConsts);
@@ -214,6 +223,34 @@ export class Plot {
     }
     const id = this.request(dirty, "fine");
     this.waitRendered = { id, revision };
+  }
+
+  /**
+   * Versions of a definition and of everything it refers to (transitively): a curve
+   * that reads a changed vector or function is recomputed even though its own body
+   * did not change.
+   */
+  private depStamp(key: string): string {
+    const fns = this.state?.functions ?? {};
+    const seen = new Set<string>();
+    const stack = [key];
+    while (stack.length) {
+      const k = stack.pop()!;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      stack.push(...(fns[k]?.calls ?? []));
+    }
+    return [...seen].sort().map((k) => `${k}:${fns[k]?.version ?? -1}`).join(",");
+  }
+
+  /** Dimension of each shown span as last drawn at fine quality (`get_state`, apply). */
+  spanDims(): SpanDim[] {
+    return this.fns
+      .filter((f) => f.kind === "Span" && !this.hidden.has(f.key))
+      .flatMap((f) => {
+        const c = this.curves.get(f.key);
+        return c && c.result.dim !== undefined ? [{ key: f.key, dim: c.result.dim }] : [];
+      });
   }
 
   // ----- scene -----------------------------------------------------------
@@ -282,7 +319,8 @@ export class Plot {
     let any = false;
     for (const f of shown) {
       const r = this.curves.get(f.key)!.result;
-      let seen = false;
+      // A plane covers the whole computed area.
+      let seen = r.kind === "span" && r.dim === 2 && (!clip || this.clipGeom!.bits.includes(1));
       for (let i = 0; i < r.coords.length && !seen; i += 2) {
         const x = r.origin[0] + r.coords[i]!, y = r.origin[1] + r.coords[i + 1]!;
         seen = x >= b.x_min && x <= b.x_max && y >= b.y_min && y <= b.y_max && this.inClip(x, y);
@@ -353,6 +391,7 @@ export class Plot {
     }
     const id = ++this.reqId;
     const coarse = quality === "coarse";
+    if (!coarse) for (const k of keys) this.hlPending.delete(k);
     const items: FillItem[] = [];
     for (const k of keys) {
       if (k === CLIP_KEY) {
@@ -400,6 +439,7 @@ export class Plot {
       }
     }
     this.draw();
+    if (r.quality === "coarse") this.flushPendingHighlights();
     this.checkEntry();
   }
 
@@ -437,14 +477,16 @@ export class Plot {
       this.request(keys, "fine");
       this.requestHighlights(hkeys, "fine");
     } else {
+      // One coarse request at a time; values that arrive meanwhile are sent when it
+      // returns, so the last value of a drag is always drawn.
       if (!this.coarseInFlight) {
         this.coarseInFlight = true;
         this.request(keys, "coarse");
-      }
+      } else for (const k of keys) this.pending.add(k);
       if (!this.hlCoarseInFlight && hkeys.length > 0) {
         this.hlCoarseInFlight = true;
         this.requestHighlights(hkeys, "coarse");
-      }
+      } else for (const k of hkeys) this.hlPending.add(k);
     }
   }
 
@@ -535,6 +577,7 @@ export class Plot {
       return id;
     }
     for (const k of keys) this.latest.set(k, id);
+    if (quality === "fine") for (const k of keys) this.pending.delete(k);
     // A full fine request supersedes a pending render wait.
     if (quality === "fine" && this.waitRendered && keys.length === this.fns.length) this.waitRendered.id = id;
     this.post({ type: "sample", id, keys, C: this.constants(), range: this.computeRange(), quality });
@@ -544,11 +587,13 @@ export class Plot {
   private onResult(r: FromWorker): void {
     if (r.type === "fills") return this.onFills(r);
     if (r.quality === "coarse") this.coarseInFlight = false;
+    let dimChanged = false;
     for (const c of r.curves) {
       if (this.latest.get(c.key) !== r.id) continue;
       const f = this.state?.functions[c.key];
       if (!f) continue;
-      this.curves.set(c.key, { result: c, range: r.range, quality: r.quality, version: f.version });
+      if (c.kind === "span" && this.curves.get(c.key)?.result.dim !== c.dim) dimChanged = true;
+      this.curves.set(c.key, { result: c, range: r.range, quality: r.quality, version: this.depStamp(f.key) });
     }
     if (r.quality === "fine") {
       for (const key of new Set(r.curves.map((c) => c.key))) this.warningsByKey.delete(key);
@@ -558,12 +603,32 @@ export class Plot {
       }
     }
     this.draw();
+    if (r.quality === "coarse") this.flushPending();
     if (this.waitRendered && r.id >= this.waitRendered.id && r.quality === "fine") {
       const rev = this.waitRendered.revision;
       this.waitRendered = null;
       this.cb.rendered(rev, this.warnings());
     }
     if (r.quality === "fine") this.checkEntry();
+    // A slider turned a span into a line / plane: the panel shows the new dimension
+    // right away, also while dragging.
+    if (dimChanged) this.cb.rendered(-1, this.warnings());
+  }
+
+  private flushPending(): void {
+    if (this.pending.size === 0) return;
+    const keys = [...this.pending];
+    this.pending.clear();
+    this.coarseInFlight = true;
+    this.request(keys, "coarse");
+  }
+
+  private flushPendingHighlights(): void {
+    if (this.hlPending.size === 0) return;
+    const keys = [...this.hlPending];
+    this.hlPending.clear();
+    this.hlCoarseInFlight = true;
+    this.requestHighlights(keys, "coarse");
   }
 
   /** After pan/zoom: resample if the view left the computed area or the zoom drifted. */
@@ -635,13 +700,22 @@ export class Plot {
       const color = colorOf(f);
       const style = styles.length;
       styles.push({ color: rgba(color), width: 2.5, size: 7 });
-      const base = { id: f.key, version: f.version, source: { def: f.key }, seq: seq++, style, origin: [c.result.origin[0], c.result.origin[1], 0] as [number, number, number], dim: 2 as const, clip: true };
-      if (c.result.kind === "points") {
-        batches.push({ ...base, layer: 3, kind: "points", coords: c.result.coords, pointKind: new Uint8Array(c.result.coords.length / 2).fill(POINT_NORMAL) });
+      const r = c.result;
+      const base = { id: f.key, version: f.version, source: { def: f.key }, seq: seq++, style, origin: [r.origin[0], r.origin[1], 0] as [number, number, number], dim: 2 as const, clip: true };
+      if (r.kind === "points" || (r.kind === "span" && r.dim === 0)) {
+        if (r.kind === "span") styles[style]!.size = 10;
+        batches.push({ ...base, layer: 3, kind: "points", coords: r.coords, pointKind: new Uint8Array(r.coords.length / 2).fill(POINT_NORMAL) });
+      } else if (r.kind === "span" && r.dim === 2) {
+        styles[style] = { color: rgba(color, PLANE_ALPHA), width: 0, size: 0 };
+        batches.push({ ...base, layer: 1, kind: "polygon", coords: r.coords, ringOffsets: Uint32Array.of(0, 4), polyOffsets: Uint32Array.of(0, 1) });
+      } else if (r.kind === "arrow") {
+        styles[style] = { color: rgba(color), width: 2.5, size: 14 };
+        batches.push({ ...base, layer: 3, kind: "arrows", coords: r.coords });
       } else {
-        batches.push({ ...base, layer: 2, kind: "polyline", coords: c.result.coords, offsets: c.result.offsets });
+        batches.push({ ...base, layer: 2, kind: "polyline", coords: r.coords, offsets: r.offsets });
       }
-      const at = this.placeLabel(c.result, f.key.length, placed);
+      // A plane fills the screen: its name is in the panel only.
+      const at = r.kind === "span" && r.dim === 2 ? null : r.kind === "arrow" ? this.arrowLabel(r) : this.placeLabel(r, f.key.length, placed);
       if (at) {
         batches.push({
           id: `label-${f.key}`,
@@ -732,6 +806,7 @@ export class Plot {
       const c = this.curves.get(f.key);
       if (!c || this.hidden.has(f.key)) continue;
       const r = c.result;
+      if (r.kind === "span" && r.dim === 2) continue;
       const [ox, oy] = r.origin;
       const X = (i: number) => ox + r.coords[2 * i]!, Y = (i: number) => oy + r.coords[2 * i + 1]!;
       const consider = (x: number, y: number) => {
@@ -741,7 +816,7 @@ export class Plot {
           best = { key: f.key, color: colorOf(f), x, y };
         }
       };
-      if (r.kind === "points") {
+      if (r.kind === "points" || (r.kind === "span" && r.dim === 0)) {
         for (let i = 0; i < r.coords.length / 2; i++) consider(X(i), Y(i));
         continue;
       }
@@ -757,6 +832,24 @@ export class Plot {
       }
     }
     return best;
+  }
+
+  /** Name label just past an arrow's head, on the side it points to. */
+  private arrowLabel(c: CurveResult): { x: number; y: number; place: LabelPlacement } | null {
+    const v = this.view;
+    const [ox, oy] = c.origin;
+    const hx = ox + c.coords[2]!, hy = oy + c.coords[3]!;
+    const dx = v.sx(hx) - v.sx(ox + c.coords[0]!), dy = v.sy(hy) - v.sy(oy + c.coords[1]!);
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const place: LabelPlacement = {
+      align: ux > 0.3 ? "left" : ux < -0.3 ? "right" : "center",
+      baseline: uy > 0.3 ? "top" : uy < -0.3 ? "bottom" : "middle",
+      dx: ux * 8,
+      dy: uy * 8,
+      halo: true,
+    };
+    return { x: hx, y: hy, place };
   }
 
   /**

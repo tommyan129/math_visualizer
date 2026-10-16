@@ -327,6 +327,7 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Tok::Int | Tok::Decimal => Ok(self.number()),
             Tok::Ident if names::BIG_OPS.contains(&self.peek_text()) && self.peek_at(1) == Tok::LParen => self.big_op(),
+            Tok::Ident if self.peek_text() == "arrow" && self.peek_at(1) == Tok::LParen => self.arrow(),
             Tok::Ident | Tok::TexName | Tok::Tilde => {
                 let (name, span) = self.name()?;
                 if self.at(Tok::LParen) {
@@ -406,6 +407,23 @@ impl<'a> Parser<'a> {
         }
         let end = self.expect(close, what)?;
         Ok((items, end))
+    }
+
+    /// `arrow(v)` / `arrow(v; P)`: the start point goes in its own `;` slot. A Call node
+    /// with one or two arguments.
+    fn arrow(&mut self) -> PResult<Expr> {
+        let (callee, head) = self.name()?;
+        self.expect(Tok::LParen, "'('")?;
+        let mut args = vec![self.expr()?];
+        if self.at(Tok::Comma) {
+            let v = self.src[args[0].span.range()].to_string();
+            return self.error_here(code::SYNTAX, "arrow의 시작점은 ';' 뒤에 씀", Some(&format!("arrow({v}; P)")));
+        }
+        if self.eat(Tok::Semi) {
+            args.push(self.expr()?);
+        }
+        let end = self.expect(Tok::RParen, "')'")?;
+        Ok(Expr::new(ExprKind::Call { callee, kind: NameKind::Unresolved, args }, head.to(end)))
     }
 
     /// `sum(body; lo <= k <= hi)` / `prod(...)`.
@@ -781,6 +799,24 @@ mod tests {
         assert_eq!(ok("f.(2*x).coef"), "(addr (addr f (* 2 x)) .coef)");
         assert_eq!(ok("(cos(t), sin(t))"), "(tuple (cos t) (sin t))");
         assert_eq!(ok("\"memo\""), "\"memo\"");
+    }
+
+    #[test]
+    fn matrices_vectors_and_arrow() {
+        assert_eq!(ok("[[1, 2],\n [3, 4]]"), "(list (list 1 2) (list 3 4))");
+        assert_eq!(ok("matmul(R(t), [1, 0])_[2]"), "(idx (matmul (R t) (list 1 0)) 2)");
+        assert_eq!(ok("2*A - B"), "(+ (* 2 A) -B)");
+        assert_eq!(ok("arrow(v)"), "(arrow v)");
+        assert_eq!(ok("arrow([1, f(c)]; [c, f(c)])"), "(arrow (list 1 (f c)) (list c (f c)))");
+        assert_eq!(ok("span(v, w)"), "(span v w)");
+    }
+
+    #[test]
+    fn arrow_errors() {
+        assert_eq!(errs("arrow(v, P)"), vec![code::SYNTAX]);
+        assert_eq!(suggestion("arrow(v, P)"), "arrow(v; P)");
+        assert_eq!(errs("arrow(v; P; Q)"), vec![code::SYNTAX]);
+        assert_eq!(errs("arrow()"), vec![code::SYNTAX]);
     }
 
     #[test]

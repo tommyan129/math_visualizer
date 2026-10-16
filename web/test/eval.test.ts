@@ -4,7 +4,8 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
-import { compile, type Compiled, type Scalar } from "../src/worker/codegen";
+import { compile, type Compiled, type Scalar, specOf } from "../src/worker/codegen";
+import { clipLine, spanShape } from "../src/worker/linalg";
 import { makeRuntime, TERM_CAP } from "../src/worker/numeric";
 import { isDiscontinuity, sampleCurve, sampleDiscrete, type SampleRange } from "../src/worker/sample";
 
@@ -17,9 +18,9 @@ const R = makeRuntime();
 const F: Scalar[] = [];
 const compiled = new Map<string, Compiled>();
 fns.forEach((f, i) => {
-  const c = compile({ key: f.key, version: f.version, body: f.body, consts: f.consts, calls: f.calls }, { constIndex, fnIndex }, R, F, false);
+  const c = compile(specOf(f), { constIndex, fnIndex }, R, F, false);
   compiled.set(f.key, c);
-  F[i] = c.scalar;
+  F[i] = c.table;
 });
 
 function C(values: Record<string, number> = {}): Float64Array {
@@ -99,7 +100,7 @@ function pieces(key: string, range = view) {
 
 describe("sampling", () => {
   it("1/x breaks at 0 instead of drawing a vertical line", () => {
-    const p = pieces("inv");
+    const p = pieces("recip");
     expect(p.offsets.length - 1).toBe(2);
     // No segment crosses x = 0.
     for (let s = 0; s + 1 < p.offsets.length; s++) {
@@ -217,5 +218,67 @@ describe("sampling regressions", () => {
     const { batch, scalar } = fn((x) => Math.sin(x) * 3 + x * x * x);
     const p = sampleCurve(batch, scalar, new Float64Array(), range(-3, 4, -1, 8, 420), "fine");
     expect(p.offsets.length - 1).toBe(1);
+  });
+});
+
+describe("vectors and matrices", () => {
+  it("a matrix function called inside a curve", () => {
+    // rotx(x; b) = (R(b)·[x, 1])_2 = sin(b)·x + cos(b)
+    for (const [x, b] of [[0, 1], [2, 0.5], [-3, 2]] as const) {
+      expect(f("rotx", x, { b })).toBeCloseTo(Math.sin(b) * x + Math.cos(b), 12);
+    }
+  });
+
+  it("det, tr, inv, pow, transpose and elements", () => {
+    // M2 = [[1, 2], [3, 4]]: det -2, tr(inv) -2.5, (M2²)₁₂ 10, (Mᵀ)₁₂ 3, (M⁻¹)₁₁ -2
+    expect(f("linalg", 0)).toBeCloseTo(8.5, 12);
+    expect(f("linalg", 1)).toBeCloseTo(6.5, 12);
+  });
+
+  it("outer product and element numbers outside the vector are NaN", () => {
+    expect(f("outer", 2, { k: 1 })).toBeCloseTo(7, 12);
+    expect(f("outer", 2, { k: 3 })).toBeCloseTo(9, 12);
+    expect(f("outer", 2, { k: 4 })).toBeNaN();
+    expect(f("outer", 2, { k: 1.5 })).toBeNaN();
+  });
+
+  it("singular inverse and non-integer powers are NaN", () => {
+    expect(R.inv([1, 2, 2, 4], 2).every(Number.isNaN)).toBe(true);
+    expect(R.mpow([1, 2, 3, 4], 2, 0.5).every(Number.isNaN)).toBe(true);
+    expect(R.mpow([2, 0, 0, 3], 2, 0)).toEqual([1, 0, 0, 1]);
+    expect(R.det([0, 1, 1, 0], 2)).toBe(-1);
+    expect(R.det([2, 0, 0, 0, 3, 0, 0, 0, 4], 3)).toBe(24);
+  });
+});
+
+describe("span shape", () => {
+  const vecs = (key: string, consts?: Record<string, number>) => compiled.get(key)!.vecs.map((v) => v(C(consts)));
+
+  it("plane, line, point from current values", () => {
+    expect(spanShape(vecs("Sp", { a: 1 })).dim).toBe(2);
+    expect(spanShape(vecs("Sp", { a: 0 })).dim).toBe(2);
+    const line = spanShape(vecs("Sl"));
+    expect(line.dim).toBe(1);
+    expect(line.dir![0]).toBeCloseTo(1 / Math.sqrt(5), 12);
+    expect(spanShape(vecs("Sz")).dim).toBe(0);
+  });
+
+  it("near-parallel tolerance is relative", () => {
+    expect(spanShape([[1, 2], [2, 4 + 1e-12]]).dim).toBe(1);
+    expect(spanShape([[1e-6, 2e-6], [2e-6, 4.001e-6]]).dim).toBe(2);
+    expect(spanShape([[1e6, 0], [1e-9, 0]]).dim).toBe(1);
+    expect(spanShape([[0, 0], [1e-30, 1e-30]]).dim).toBe(1);
+    expect(spanShape([[NaN, 1]]).dim).toBeNull();
+  });
+
+  it("line clipped to the box", () => {
+    expect(clipLine([1, 0], { x0: -2, x1: 3, y0: -1, y1: 1 })!.map((v) => v + 0)).toEqual([-2, 0, 3, 0]);
+    expect(clipLine([0, 1], { x0: 1, x1: 3, y0: -1, y1: 1 })).toBeNull();
+  });
+
+  it("arrow vector and start point", () => {
+    const [v, p] = vecs("Ar", { a: 3 });
+    expect(v).toEqual([1, 3]);
+    expect(p).toEqual([1, 1]);
   });
 });

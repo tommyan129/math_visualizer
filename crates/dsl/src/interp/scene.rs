@@ -95,6 +95,13 @@ impl<'s> Cx<'s> {
         if let Some(own) = self.state.function_system(key) {
             return if own == sys { Ok(()) } else { Err(format!("'{key}'는 {own} 좌표계 함수라 {sys} scene에 넣을 수 없음")) };
         }
+        if let Some(f) = self.state.functions.get(key) {
+            return match f.vector_dim() {
+                Some(n) if n as usize == axes.len() => Ok(()),
+                Some(n) => Err(format!("{} '{key}'의 벡터 길이가 {n}이라 축 {}개인 {sys} scene에 넣을 수 없음", f.kind.word(), axes.len())),
+                None => Err(format!("{} '{key}'는 그리는 정의가 아님", f.kind.word())),
+            };
+        }
         if let Some(h) = self.state.highlights.get(key) {
             if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &h.target {
                 return self.placement(function, axes).map_err(|_| format!("'{key}'는 {} 좌표계 함수 {function}의 강조라 {sys} scene에 넣을 수 없음", self.state.function_system(function).unwrap_or_default()));
@@ -120,10 +127,19 @@ impl<'s> Cx<'s> {
             }
             return false;
         }
+        if let Some(f) = self.state.functions.get(k).filter(|f| !f.kind.is_drawn()) {
+            let word = f.kind.word();
+            self.err(span, code::TARGET, format!("{word} '{k}'는 그리는 정의가 아니라 scene에 넣을 수 없음 (함수, span, arrow, 강조)"));
+            return false;
+        }
         match self.placement(k, axes) {
             Ok(()) => true,
             Err(m) => {
-                let sug = self.state.function_system(k).map_or_else(|| "그 축을 쓰는 scene".to_string(), |s| format!("space: {s}"));
+                let sug = match (self.state.function_system(k), self.state.functions.get(k).and_then(|f| f.vector_dim())) {
+                    (Some(s), _) => format!("space: {s}"),
+                    (None, Some(3)) => "3D scene (6단계)".to_string(),
+                    _ => "그 축을 쓰는 scene".to_string(),
+                };
                 self.err_s(span, code::PLACEMENT, m, sug);
                 false
             }
@@ -454,8 +470,11 @@ impl<'s> Cx<'s> {
             None => {
                 // One coordinate system among the `show` targets: take it.
                 let systems: BTreeSet<String> = show.into_iter().flatten().filter_map(|(n, _)| self.state.function_system(&n.key)).collect();
-                match (systems.len(), show.into_iter().flatten().find_map(|(n, _)| self.state.functions.get(&n.key))) {
-                    (1, Some(f)) => vec![f.inputs[0].clone(), f.output.clone()],
+                let flat_2d = show.into_iter().flatten().any(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.vector_dim()) == Some(2));
+                match (systems.len(), show.into_iter().flatten().find_map(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.curve_axes()))) {
+                    (1, Some((i, o))) => vec![i.clone(), o.clone()],
+                    // Only spans / arrows of length-2 vectors: the plain plane.
+                    (0, _) if flat_2d => vec![Ident::plain("x"), Ident::plain("y")],
                     _ => {
                         self.err_s(def.id_span, code::SCENE, "scene의 좌표계(space)가 필요함", format!("scene({key}):\n    space: 2D(x, y)"));
                         vec![]
@@ -806,10 +825,16 @@ impl<'s> Cx<'s> {
     /// One default scene per coordinate system in use; members and toggles of every scene.
     pub(super) fn sync_default_scenes(&mut self) {
         let mut systems: Vec<(u64, String, Vec<Ident>)> = vec![];
-        let mut fns: Vec<&Function> = self.state.functions.values().collect();
+        let mut fns: Vec<&Function> = self.state.functions.values().filter(|f| f.kind.is_drawn()).collect();
         fns.sort_by_key(|f| f.order);
         for f in fns {
-            let axes = vec![f.inputs[0].clone(), f.output.clone()];
+            // Spans and arrows of length-2 vectors go in the default `2D(x, y)`; length 3
+            // waits for 3D (stage 6).
+            let axes = match (f.curve_axes(), f.vector_dim()) {
+                (Some((i, o)), _) => vec![i.clone(), o.clone()],
+                (None, Some(2)) => vec![Ident::plain("x"), Ident::plain("y")],
+                _ => continue,
+            };
             let k = key_of(&axes);
             if !systems.iter().any(|(_, s, _)| *s == k) {
                 systems.push((f.order, k, axes));

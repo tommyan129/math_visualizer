@@ -66,6 +66,8 @@ export type Batch =
   | (BatchBase & { kind: "text"; coords: Float32Array; labels: LabelRef[]; placement: LabelPlacement[] })
   // Even-odd fill. `ringOffsets`: ring starts + end (points); `polyOffsets`: polygon starts + end (rings).
   | (BatchBase & { kind: "polygon"; coords: Float32Array; ringOffsets: Uint32Array; polyOffsets: Uint32Array })
+  // Arrows: tail and head per arrow (x0, y0, x1, y1); `size` of the style is the head length in px.
+  | (BatchBase & { kind: "arrows"; coords: Float32Array })
   // Raster (inequality regions). `origin` is the top-left world corner; `size` is the world width / height.
   | (BatchBase & { kind: "image"; size: [number, number]; width: number; height: number; pixels: Uint8ClampedArray });
 

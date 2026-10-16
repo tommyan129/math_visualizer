@@ -179,6 +179,8 @@ pub enum NameKind {
     UserVar,
     /// Index of an enclosing `sum` / `prod`.
     Index,
+    /// Named vector or matrix from `define:` (`A: [[1, 2], [3, 4]]`, `v(; a): [1, a]`).
+    Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -190,9 +192,44 @@ pub enum Ty {
     /// Inequality region (comparison / and / or / not).
     Region,
     Str,
+    /// Column vector (an m×1 result with m ≥ 2 is always a vector).
     Vector { n: u32 },
+    /// m×n with n ≥ 2, or 1×1.
     Matrix { m: u32, n: u32 },
     Tuple { n: u32 },
+}
+
+impl Ty {
+    /// (rows, columns) of a vector or matrix.
+    pub fn dims(&self) -> Option<(u32, u32)> {
+        match self {
+            Ty::Vector { n } => Some((*n, 1)),
+            Ty::Matrix { m, n } => Some((*m, *n)),
+            _ => None,
+        }
+    }
+
+    /// Vector or matrix of the given size (m×1 with m ≥ 2 becomes a vector; 1×1 stays a matrix).
+    pub fn of_dims(m: u32, n: u32) -> Ty {
+        if n == 1 && m > 1 { Ty::Vector { n: m } } else { Ty::Matrix { m, n } }
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, Ty::Vector { .. } | Ty::Matrix { .. })
+    }
+
+    /// `벡터(2)`, `2×3 행렬`, for messages.
+    pub fn describe(&self) -> String {
+        match self {
+            Ty::Unknown => "알 수 없음".into(),
+            Ty::Scalar => "숫자".into(),
+            Ty::Region => "부등식".into(),
+            Ty::Str => "문자열".into(),
+            Ty::Vector { n } => format!("길이 {n} 벡터"),
+            Ty::Matrix { m, n } => format!("{m}×{n} 행렬"),
+            Ty::Tuple { n } => format!("{n}칸 튜플"),
+        }
+    }
 }
 
 impl Expr {

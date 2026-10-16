@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 /// Bumped whenever a message or state-model shape changes incompatibly.
 /// A browser with a different version is told to reload.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// Browser -> server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -35,6 +35,9 @@ pub enum ClientMsg {
         #[ts(type = "number")]
         revision: u64,
         warnings: Vec<Warning>,
+        /// Dimension each shown span was drawn with (stage 4).
+        #[serde(default)]
+        spans: Vec<SpanDim>,
     },
 }
 
@@ -153,7 +156,14 @@ pub enum ServerRequest {
 #[serde(tag = "type")]
 #[ts(export)]
 pub enum BrowserReply {
-    View { workspace: String, scene: String, view: ViewBox, warnings: Vec<Warning> },
+    View {
+        workspace: String,
+        scene: String,
+        view: ViewBox,
+        warnings: Vec<Warning>,
+        #[serde(default)]
+        spans: Vec<SpanDim>,
+    },
     /// Base64 PNG.
     Png { workspace: String, data: String, width: u32, height: u32 },
     Error { message: String },
@@ -203,6 +213,15 @@ pub struct ViewBox {
     pub x_max: f64,
     pub y_min: f64,
     pub y_max: f64,
+}
+
+/// How the browser drew a span from the current values: 0 = the origin (point),
+/// 1 = a line, 2 = a plane (design.md "span").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SpanDim {
+    pub key: String,
+    pub dim: u32,
 }
 
 /// Render-time warning reported by the browser (shown under the definition and in `get_state`).
