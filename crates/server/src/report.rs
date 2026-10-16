@@ -3,7 +3,7 @@
 
 use dsl::interp::{Note, ObjKind, fmt_num};
 use dsl::state::{BASE_STYLES, Constant, Highlight, NoteSeg, Request, Scene, State};
-use model::protocol::{ReqStatus, ReqView, SpanDim, ViewBox, Warning};
+use model::protocol::{FeatureClass, FeaturePoints, ReqStatus, ReqView, SpanDim, ViewBox, Warning};
 
 use crate::engine::{ApplyError, ApplyOk, KeyError, RequestsOut, WorkspaceView};
 
@@ -15,8 +15,8 @@ pub enum Browser {
     OtherWorkspace,
     /// Connected but no answer in time.
     Timeout,
-    Rendered { warnings: Vec<Warning>, spans: Vec<SpanDim> },
-    View { view: ViewBox, warnings: Vec<Warning>, spans: Vec<SpanDim> },
+    Rendered { warnings: Vec<Warning>, spans: Vec<SpanDim>, features: Vec<FeaturePoints> },
+    View { view: ViewBox, warnings: Vec<Warning>, spans: Vec<SpanDim>, features: Vec<FeaturePoints> },
 }
 
 pub fn key_error(e: &KeyError) -> String {
@@ -74,6 +74,30 @@ fn warnings_text(w: &[Warning]) -> String {
     format!("경고 {}개\n  {}", w.len(), items.join("\n  "))
 }
 
+/// Most points listed per feature-point definition.
+const FEATURE_LIST_MAX: usize = 12;
+
+/// `극대 (-1, 2), 극소 (1, -2)`; a vertical asymptote as `수직 점근선 x = 1`.
+fn feature_text(s: &State, fp: &FeaturePoints) -> String {
+    if fp.points.is_empty() {
+        return "찾은 점 없음".into();
+    }
+    let axis = s.functions.get(&fp.key).and_then(|f| f.feature.as_ref()).and_then(|sp| sp.axes.first()).map_or("x".to_string(), |a| a.key.clone());
+    let mut items: Vec<String> = fp
+        .points
+        .iter()
+        .take(FEATURE_LIST_MAX)
+        .map(|p| match (p.class, p.y) {
+            (FeatureClass::Asymptote, _) | (_, None) => format!("{} {axis} = {}", p.class.word(), fmt_num(p.x)),
+            (c, Some(y)) => format!("{} ({}, {})", c.word(), fmt_num(p.x), fmt_num(y)),
+        })
+        .collect();
+    if fp.points.len() > FEATURE_LIST_MAX || fp.capped {
+        items.push(format!("… (모두 {}개{})", fp.points.len(), if fp.capped { " 이상" } else { "" }));
+    }
+    format!("{}개: {}", fp.points.len(), items.join(", "))
+}
+
 pub fn browser_line(b: &Browser) -> String {
     match b {
         Browser::NotConnected => "브라우저: 미연결 (화면 확인은 연결 후 get_state로)".into(),
@@ -81,7 +105,7 @@ pub fn browser_line(b: &Browser) -> String {
         Browser::Timeout => "브라우저: 응답 없음 (렌더 결과는 get_state로)".into(),
         // `get_state` marks each span in the definition list instead.
         Browser::View { warnings, .. } => format!("브라우저: {}", warnings_text(warnings)),
-        Browser::Rendered { warnings, spans } => {
+        Browser::Rendered { warnings, spans, .. } => {
             let mut t = format!("브라우저: {}", warnings_text(warnings));
             if !spans.is_empty() {
                 t.push_str(&format!("\nspan: {}", spans.iter().map(|d| format!("{} {}", d.key, span_dim_word(d.dim))).collect::<Vec<_>>().join(", ")));
@@ -91,9 +115,18 @@ pub fn browser_line(b: &Browser) -> String {
     }
 }
 
+/// `특징점: E 2개: 극대 (-1, 2), ...` lines after an `apply` that drew some.
+fn feature_lines(s: &State, b: &Browser) -> Vec<String> {
+    match b {
+        Browser::Rendered { features, .. } => features.iter().map(|fp| format!("특징점 {}: {}", fp.key, feature_text(s, fp))).collect(),
+        _ => vec![],
+    }
+}
+
 pub fn apply_ok(ok: &ApplyOk, browser: &Browser) -> String {
     let mut lines = apply_lines(ok);
     lines.push(browser_line(browser));
+    lines.extend(feature_lines(&ok.state, browser));
     lines.join("\n")
 }
 
@@ -150,6 +183,10 @@ pub fn apply_lines(ok: &ApplyOk) -> Vec<String> {
             Note::DefaultSceneCreated { key } => format!("자동: 기본 scene({key}) 생성"),
             Note::DefaultSceneRemoved { key } => format!("자동: 기본 scene({key}) 제거 (그 좌표계의 함수가 없음)"),
             Note::SceneRefRemoved { scene, target, place } => format!("자동: scene({scene})의 {place}에서 {target} 뺌 (scene은 남음)"),
+            Note::DerivativeGenerated { function, order, src } => {
+                let x = s.functions.get(function).and_then(|f| f.inputs.first()).map_or("x", |i| i.key.as_str());
+                format!("자동: 도함수 {function}@{order}({x}) = {src} (서버 기호 미분; {function}@{order}을 정의하면 그걸 씀)")
+            }
         });
     }
     lines
@@ -244,6 +281,10 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
         Browser::View { spans, .. } | Browser::Rendered { spans, .. } => spans,
         _ => &[],
     };
+    let features: &[FeaturePoints] = match browser {
+        Browser::View { features, .. } | Browser::Rendered { features, .. } => features,
+        _ => &[],
+    };
     let mark = |key: &str| -> String {
         let Some(sc) = cur else { return String::new() };
         let f = s.functions.get(key);
@@ -265,6 +306,11 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
         {
             return format!(" [{}]", span_dim_word(d.dim));
         }
+        if let Some(fp) = features.iter().find(|d| d.key == key)
+            && sc.visible(key, step)
+        {
+            return format!(" → {}", feature_text(s, fp));
+        }
         if sc.steps.get(step).is_some_and(|st| st.concealed.iter().any(|c| c == key)) {
             return " [공개 전]".into();
         }
@@ -278,6 +324,14 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
         lines.push("정의:".into());
         for f in fs {
             lines.push(format!("  {}{}", f.source(), mark(&f.key)));
+            // Generated derivatives in use that Claude has not defined.
+            let x = f.inputs.first().map_or("x", |i| i.key.as_str());
+            for (i, e) in f.derivs.iter().enumerate() {
+                let k = format!("{}@{}", f.key, i + 1);
+                if !s.functions.contains_key(&k) {
+                    lines.push(format!("    자동 도함수 {k}({x}) = {}", dsl::print::expr_dsl(e)));
+                }
+            }
         }
     }
     let mut hs: Vec<_> = s.highlights.values().collect();
@@ -379,7 +433,7 @@ mod tests {
     fn apply_text_lists_changes_and_automatic_actions_only() {
         let (state, notes) = applied(&["define:\n    f(x; a) -> y: a*x\n    g(x; a) -> y: f(x)\n", "define:\n    f(x; a, b) -> y: a*x + b\n"]);
         let ok = ApplyOk { workspace: "w1".into(), revision: 2, notes, state };
-        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![] });
+        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: vec![] });
         assert_eq!(
             text,
             "적용됨 · rev 2\n수정: f(x; a, b) -> y\n자동: 상수 생성 b = 1 (-10..10)\n자동: g(x; a, b) -> y ← 상수 b 추가 (f가 b를 씀)\n브라우저: 경고 없음"
@@ -411,6 +465,7 @@ mod tests {
             view: ViewBox { x_min: -10.0, x_max: 10.0, y_min: -6.25, y_max: 6.25 },
             warnings: vec![Warning { source: Some("f".into()), code: "W-sum-terms".into(), message: "항이 너무 많은 점은 그리지 않음".into() }],
             spans: vec![],
+            features: vec![],
         };
         assert_eq!(
             state_text(&w, &b),
@@ -425,12 +480,31 @@ mod tests {
         let lines = apply_lines(&ok);
         assert!(lines.contains(&"추가: v(; a)".to_string()), "{lines:?}");
         assert!(lines.contains(&"추가: R(t) -> matrix".to_string()), "{lines:?}");
-        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 1 }] });
+        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 1 }], features: vec![] });
         assert!(r.ends_with("브라우저: 경고 없음\nspan: S 직선 (1차원)"), "{r}");
         let w = view_of(state, "2D(x, y)", 0);
-        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }] };
+        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }], features: vec![] };
         let t = state_text(&w, &b);
         assert!(t.contains("  v(; a): [1, a]\n  w: [0, 1]\n  u: [1, 2, 3]\n  S(; a): span(v, w) [평면 (2차원)]\n  T: span(u) [다른 좌표계 축 3개]\n  p(; a): arrow(v; w)\n  R(t) -> matrix: [[cos(t), 0], [0, 1]]"), "{t}");
+    }
+
+    #[test]
+    fn derivative_and_feature_text() {
+        use model::protocol::FeaturePoint;
+        let (state, notes) = applied(&["define:\n    f(x) -> y: x^3 - 3*x\n    E: extrema(f)\n    B: breaks(f)\n"]);
+        let ok = ApplyOk { workspace: "w1".into(), revision: 1, notes, state: state.clone() };
+        let lines = apply_lines(&ok);
+        assert!(lines.contains(&"자동: 도함수 f@1(x) = 3*x^2 - 3 (서버 기호 미분; f@1을 정의하면 그걸 씀)".to_string()), "{lines:?}");
+        let pts = vec![
+            FeaturePoints { key: "E".into(), points: vec![FeaturePoint { x: -1.0, y: Some(2.0), class: FeatureClass::Max }, FeaturePoint { x: 1.0, y: Some(-2.0), class: FeatureClass::Min }], capped: false },
+            FeaturePoints { key: "B".into(), points: vec![], capped: false },
+        ];
+        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: pts.clone() });
+        assert!(r.ends_with("특징점 E: 2개: 극대 (-1, 2), 극소 (1, -2)\n특징점 B: 찾은 점 없음"), "{r}");
+        let w = view_of(state, "2D(x, y)", 0);
+        let b = Browser::View { view: ViewBox { x_min: -3.0, x_max: 3.0, y_min: -3.0, y_max: 3.0 }, warnings: vec![], spans: vec![], features: pts };
+        let t = state_text(&w, &b);
+        assert!(t.contains("  f(x) -> y: x^3 - 3*x\n    자동 도함수 f@1(x) = 3*x^2 - 3\n  E: extrema(f) → 2개: 극대 (-1, 2), 극소 (1, -2)\n  B: breaks(f) → 찾은 점 없음"), "{t}");
     }
 
     #[test]

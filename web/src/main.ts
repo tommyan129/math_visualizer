@@ -55,7 +55,7 @@ const client = new Client(wsUrl, {
   serverRequest(r) {
     if (r.type === "GetView") {
       if (!openId) return { type: "Error", message: "열린 작업 공간 없음" };
-      return { type: "View", workspace: openId, scene: nav().scene ?? "", view: plot.box(), warnings: plot.warnings(), spans: plot.spanDims() };
+      return { type: "View", workspace: openId, scene: nav().scene ?? "", view: plot.box(), warnings: plot.warnings(), spans: plot.spanDims(), features: plot.featurePoints() };
     }
     if (r.type === "Snapshot") {
       if (!openId) return { type: "Error", message: "열린 작업 공간 없음" };
@@ -201,6 +201,10 @@ const panel = new Panel({
     if (sc) void userOp({ type: "Toggle", scene: sc, target: key, visible });
   },
   remove: (key) => void applyDsl(`del ${key}\n`),
+  toggleCoords: (key) => {
+    plot.toggleCoordLabels(key);
+    render();
+  },
   drag: (k, v) => {
     // Grabbing the slider stops its animation.
     animator.stop(k);
@@ -281,7 +285,7 @@ document.getElementById("app")!.replaceWith(
 const plot = new Plot(card, {
   rendered(revision: number, warnings: Warning[]) {
     // -1: the first-screen check finished after the render was reported.
-    if (openId && revision >= 0) client.send({ type: "Rendered", workspace: openId, revision, warnings, spans: plot.spanDims() });
+    if (openId && revision >= 0) client.send({ type: "Rendered", workspace: openId, revision, warnings, spans: plot.spanDims(), features: plot.featurePoints() });
     render();
   },
 });
@@ -314,7 +318,7 @@ function render(): void {
     updated: new Set(n.updated),
     select: (k) => void goScene(k),
   });
-  panel.render({ state, scene, step: n.step, hasKey: ws?.has_key ?? false, warnings: (k) => plot.warningsFor(k), sceneWarnings: plot.sceneWarnings(), spanDim: (k) => plot.spanDims().find((d) => d.key === k)?.dim });
+  panel.render({ state, scene, step: n.step, hasKey: ws?.has_key ?? false, warnings: (k) => plot.warningsFor(k), sceneWarnings: plot.sceneWarnings(), spanDim: (k) => plot.spanDims().find((d) => d.key === k)?.dim, features: (k) => plot.featureResult(k), coordLabels: (k) => plot.coordLabels(k) });
   stepbar.render(state, scene, n.step);
   splitNote.hidden = !stepbar.visible;
   empty.textContent = !ws ? "작업 공간을 만들거나 고르면 그래프가 여기에 그려짐" : "";

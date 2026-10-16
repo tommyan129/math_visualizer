@@ -2,7 +2,7 @@
 // It knows nothing about definitions; a WebGL2 renderer can replace it later.
 
 import { texImage } from "../math/mathjax";
-import { cssColor, POINT_HOLE, type Batch, type ClipMask, type Style } from "./primitives";
+import { cssColor, POINT_FEATURE, POINT_HOLE, type Batch, type ClipMask, type Style } from "./primitives";
 import type { View } from "./view";
 
 const HALO = "#212329";
@@ -212,6 +212,13 @@ export class Renderer {
         ctx.fill();
         ctx.strokeStyle = color;
         ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (b.pointKind[i] === POINT_FEATURE) {
+        // A feature point: the color with a background ring, so it reads on its curve.
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = HALO;
+        ctx.lineWidth = 2;
         ctx.stroke();
       } else {
         ctx.fillStyle = color;

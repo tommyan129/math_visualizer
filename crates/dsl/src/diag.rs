@@ -81,6 +81,10 @@ pub mod code {
     pub const SPLIT_OVERLAP: &str = "E-split-overlap";
     /// Split boundary points out of order, repeated, or using an input variable.
     pub const SPLIT_AT: &str = "E-split-at";
+    /// A needed derivative cannot be generated (no rule for a construct in the body).
+    pub const DERIV: &str = "E-deriv";
+    /// Feature-point slots: a filter word the kind does not have.
+    pub const FEATURE: &str = "E-feature";
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

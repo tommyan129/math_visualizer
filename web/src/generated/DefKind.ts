@@ -4,4 +4,4 @@
  * What a `define:` entry is. Everything lives in `State::functions` so references,
  * cascade, constants and req work the same for all of them.
  */
-export type DefKind = "Curve" | "Matrix" | "Value" | "Span" | "Arrow" | "Parametric" | "Polar" | "Equation";
+export type DefKind = "Curve" | "Matrix" | "Value" | "Span" | "Arrow" | "Parametric" | "Polar" | "Equation" | "Feature";

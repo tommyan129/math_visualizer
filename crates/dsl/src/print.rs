@@ -104,6 +104,17 @@ fn print(e: &Expr) -> String {
             AddressStep::Term { pattern } => format!("{}.({})", wrap(base, 10), expr_dsl(pattern)),
             AddressStep::Part { part } => format!("{}.{part}", wrap(base, 10)),
         },
+        ExprKind::Feature { callee, args, range, filter } => {
+            // Empty slots print as `;;` (`extrema(f;; max)`).
+            let mut s = args.iter().map(feature_arg).collect::<Vec<_>>().join(", ");
+            match (range, filter) {
+                (Some(r), Some(f)) => s.push_str(&format!("; {}; {f}", expr_dsl(r))),
+                (Some(r), None) => s.push_str(&format!("; {}", expr_dsl(r))),
+                (None, Some(f)) => s.push_str(&format!(";; {f}")),
+                (None, None) => {}
+            }
+            format!("{}({s})", callee.key)
+        }
         // One line per piece, unindented (`Function::source` indents).
         ExprKind::Split { name, subject, at, pieces } => {
             let name = name.as_ref().map_or(String::new(), |n| format!("{} = ", n.key));
@@ -114,6 +125,14 @@ fn print(e: &Expr) -> String {
             }
             s
         }
+    }
+}
+
+/// A feature target: a name, or `y = x` (stored as an `==` comparison).
+fn feature_arg(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Compare { first, rest } if rest.len() == 1 && rest[0].op == CmpOp::Eq => format!("{} = {}", expr_dsl(first), expr_dsl(&rest[0].rhs)),
+        _ => expr_dsl(e),
     }
 }
 
@@ -160,6 +179,11 @@ mod tests {
             "matmul(R(t), [1, 0])_[2]",
             "A_[1, 2] + 2*transpose(v)_[1, 1]",
             "arrow(v; [1, f(c)])",
+            "extrema(f)",
+            "roots(f; -1 < x < 1)",
+            "extrema(f;; max)",
+            "breaks(f; x > 0; hole)",
+            "intersect(f, y = 2*x)",
         ] {
             assert_eq!(round(s), s);
         }

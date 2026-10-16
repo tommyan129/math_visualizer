@@ -2,6 +2,7 @@
 import type { DefKind } from "./DefKind";
 import type { Expr } from "./Expr";
 import type { FamilyIndex } from "./FamilyIndex";
+import type { FeatureSpec } from "./FeatureSpec";
 import type { Ident } from "./Ident";
 import type { OrderConstraint } from "./OrderConstraint";
 import type { ParamRange } from "./ParamRange";
@@ -30,6 +31,10 @@ range: ParamRange | null,
  */
 family: FamilyIndex | null, 
 /**
+ * Feature-point definitions (stage 5b): what to find, resolved for the browser.
+ */
+feature: FeatureSpec | null, 
+/**
  * Value type of the body: scalar for a curve, vector / matrix for `Matrix` and
  * `Value`; for `Span` / `Arrow` the vector type of their arguments.
  */
@@ -52,6 +57,12 @@ calls: Array<string>,
  * "경계점 순서가 곧 상수 조건"). The browser keeps sliders from breaking them.
  */
 constraints: Array<OrderConstraint>, 
+/**
+ * Server-generated derivatives of the body, order 1, 2, … (index 0 = order 1), only
+ * up to the highest order something needs (design.md "f@n"). Not names: a Claude
+ * `f@n` definition takes precedence for its order.
+ */
+derivs: Array<Expr>, 
 /**
  * Data color index, fixed at creation.
  */

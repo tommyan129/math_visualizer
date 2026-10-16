@@ -2,6 +2,7 @@
 //! No I/O. The server never evaluates expression values; see `docs/design.md`.
 
 pub mod ast;
+pub mod deriv;
 pub mod diag;
 pub mod interp;
 pub mod lexer;

@@ -102,6 +102,47 @@ define:
     Oc(x, y): family(x^2 + y^2 = j^2; 1 <= j <= 3)
 ";
 
+/// Stage 5b: generated derivatives and feature points (`web/test/fixtures/features.json`).
+const FEATURES: &str = "\
+define:
+    cub(x) -> y: x^3 - 3*x
+    E: extrema(cub)
+    I: inflections(cub)
+    R: roots(cub)
+    q4(x) -> y: x^4
+    I4: inflections(q4)
+    E4: extrema(q4)
+    R4: roots(q4)
+    dbl(x) -> y: (x - 1)^2*(x + 2)
+    R2: roots(dbl)
+    rat(x) -> y: (x^2 - 1)/(x - 1) + 1/(x + 2)
+    B: breaks(rat)
+    Bh: breaks(rat;; hole)
+    ab(x) -> y: abs(x - 1)
+    Bc: breaks(ab)
+    sq(x) -> y: sqrt(x + 3)
+    Bs: breaks(sq)
+    st(x) -> y:
+        split x at 0
+        -1, x < 0
+        1, x >= 0
+    Bj: breaks(st)
+    lin2(x) -> y: x
+    P: intersect(cub, lin2)
+    Q: intersect(cub, y = 2)
+    Y: yint(cub)
+    M: argmax(cub; -3 <= x <= 3)
+    Mm: argmin(cub; -2 <= x <= 2)
+    Pm: extrema(cub;; min)
+    Rr(; c): roots(cub; 0 < x < c)
+    T(x) -> y: cub@1(Pm_[1])*(x - Pm_[1]) + Pm_[2]
+    U(x) -> y: x - P_[1]
+    circ(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi
+    Tc: tangents(circ)
+    card(\\theta) -> polar(r): 1 + cos(\\theta)
+    Tp: tangents(card;; horizontal)
+";
+
 #[test]
 fn write_web_fixtures() {
     let src = format!("define:\n{}", DEFS.iter().map(|d| format!("    {d}\n")).collect::<String>());
@@ -113,4 +154,8 @@ fn write_web_fixtures() {
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/state.json");
     std::fs::create_dir_all(out.parent().unwrap()).unwrap();
     std::fs::write(out, serde_json::to_string_pretty(&state).unwrap()).unwrap();
+
+    let features = apply(&State::default(), FEATURES, &Limits::default(), 1).unwrap_or_else(|d| panic!("{d:?}")).state;
+    let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/features.json");
+    std::fs::write(out, serde_json::to_string_pretty(&features).unwrap()).unwrap();
 }

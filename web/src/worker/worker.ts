@@ -3,6 +3,7 @@
 
 import type { Expr } from "../generated/Expr";
 import { CodegenError, compile, compileRegion, type Compiled, type DrawnMembers, type FnSpec, type Region, type Scalar, type Vec } from "./codegen";
+import { FeatureSet, type FeaturePt } from "./features";
 import { computeFill, rasterRegion, type FillRule, type RasterRect } from "./fill";
 import { clipLine, spanShape } from "./linalg";
 import { makeRuntime } from "./numeric";
@@ -37,9 +38,13 @@ export interface CurveResult {
   key: string;
   /**
    * `span`: a point (dim 0), a two-point polyline (dim 1) or a polygon ring covering the
-   * computed area (dim 2). `arrow`: tail and head.
+   * computed area (dim 2). `arrow`: tail and head. `features`: the points in `points`.
    */
-  kind: "polyline" | "points" | "span" | "arrow";
+  kind: "polyline" | "points" | "span" | "arrow" | "features";
+  /** Feature points found (features only). */
+  points?: FeaturePt[];
+  /** More than `MAX_FEATURE_POINTS` were found. */
+  capped?: boolean;
   /** Span dimension drawn (span only). */
   dim?: 0 | 1 | 2;
   /** f64 origin; coords are relative to it. */
@@ -94,6 +99,7 @@ let regionErrors = new Map<string, string>();
 let axes: [string, string] = ["x", "y"];
 let polar = false;
 let clipExpr: Expr | null = null;
+const featureSet = new FeatureSet();
 
 /**
  * A region written in (r, θ) evaluated on the Cartesian screen: a point belongs when
@@ -128,6 +134,7 @@ function setHighlights(specs: HlSpec[]): void {
 function fills(id: number, items: FillItem[], C: Float64Array, range: SampleRange, quality: Quality): Extract<FromWorker, { type: "fills" }> {
   const results: (FillResult | RasterResult)[] = [];
   const warnings: WorkerWarning[] = [];
+  featureSet.run(C, range);
   const origin: [number, number] = [(range.x0 + range.x1) / 2, (range.y0 + range.y1) / 2];
   for (const it of items) {
     const err = regionErrors.get(it.key);
@@ -188,6 +195,7 @@ function setFunctions(fns: FnSpec[], constKeys: string[]): void {
       }
     }
   }
+  featureSet.set(fns, { constIndex, fnIndex }, R, F, compiled, compileErrors);
 }
 
 function sample(id: number, keys: string[], C: Float64Array, range: SampleRange, quality: Quality): Extract<FromWorker, { type: "result" }> {
@@ -195,6 +203,7 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
   const warnings: WorkerWarning[] = [];
   const origin: [number, number] = [(range.x0 + range.x1) / 2, (range.y0 + range.y1) / 2];
   let total = 0;
+  featureSet.run(C, range);
   for (const key of keys) {
     const err = compileErrors.get(key);
     if (err) {
@@ -203,6 +212,18 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
     }
     const c = compiled.get(key);
     if (!c) continue;
+    warnings.push(...featureSet.valueWarnings(key));
+    if (c.kind === "Feature") {
+      const out = featureSet.result(key);
+      const coords = new Float32Array(out.points.length * 2);
+      out.points.forEach((p, i) => {
+        coords[2 * i] = p.x - origin[0];
+        coords[2 * i + 1] = (Number.isFinite(p.y) ? p.y : origin[1]) - origin[1];
+      });
+      if (out.capped) warnings.push({ source: key, code: "W-feature-cap", message: `특징점이 너무 많아 앞의 ${out.points.length}개만 그림 (범위를 좁히기)` });
+      curves.push({ key, kind: "features", origin, coords, offsets: new Uint32Array(), points: out.points, capped: out.capped });
+      continue;
+    }
     if (c.kind === "Span" || c.kind === "Arrow") {
       const r = c.kind === "Span" ? spanGeometry(key, c.vecs, C, range, origin) : arrowGeometry(key, c.vecs, C, origin);
       if (r) curves.push(r);

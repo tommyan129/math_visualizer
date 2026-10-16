@@ -328,6 +328,7 @@ impl<'a> Parser<'a> {
             Tok::Int | Tok::Decimal => Ok(self.number()),
             Tok::Ident if names::BIG_OPS.contains(&self.peek_text()) && self.peek_at(1) == Tok::LParen => self.big_op(),
             Tok::Ident if self.peek_text() == "arrow" && self.peek_at(1) == Tok::LParen => self.arrow(),
+            Tok::Ident if names::feature(self.peek_text()).is_some() && self.peek_at(1) == Tok::LParen => self.feature_call(),
             Tok::Ident | Tok::TexName | Tok::Tilde => {
                 let (name, span) = self.name()?;
                 if self.at(Tok::LParen) {
@@ -424,6 +425,47 @@ impl<'a> Parser<'a> {
         }
         let end = self.expect(Tok::RParen, "')'")?;
         Ok(Expr::new(ExprKind::Call { callee, kind: NameKind::Unresolved, args }, head.to(end)))
+    }
+
+    /// `extrema(f)`, `roots(f; -1 < x < 1)`, `extrema(f;; max)`, `intersect(f, y = x)`:
+    /// targets; range; filter word. Empty slots allowed; at most three.
+    fn feature_call(&mut self) -> PResult<Expr> {
+        let (callee, head) = self.name()?;
+        self.expect(Tok::LParen, "'('")?;
+        let mut args = vec![];
+        if !matches!(self.peek(), Tok::Semi | Tok::RParen) {
+            loop {
+                let e = self.expr()?;
+                // `y = x`: the other curve written as an equation of the target's axes.
+                let e = if self.eat(Tok::Eq) {
+                    let rhs = self.expr()?;
+                    let span = e.span.to(rhs.span);
+                    Expr::new(ExprKind::Compare { first: Box::new(e), rest: vec![CompareLink { op: CmpOp::Eq, rhs }] }, span)
+                } else {
+                    e
+                };
+                args.push(e);
+                if !self.eat(Tok::Comma) {
+                    break;
+                }
+            }
+        }
+        let mut range = None;
+        let mut filter = None;
+        if self.eat(Tok::Semi) {
+            if !matches!(self.peek(), Tok::Semi | Tok::RParen) {
+                range = Some(Box::new(self.expr()?));
+            }
+            if self.eat(Tok::Semi) && !self.at(Tok::RParen) {
+                filter = Some(self.name()?.0.key);
+            }
+        }
+        if self.at(Tok::Semi) {
+            let form = format!("{}(f; -1 < x < 1; 종류)", callee.key);
+            return self.error_here(code::SYNTAX, "특징점 칸은 세 개까지 (대상; 범위; 종류)", Some(&form));
+        }
+        let end = self.expect(Tok::RParen, "')'")?;
+        Ok(Expr::new(ExprKind::Feature { callee, args, range, filter }, head.to(end)))
     }
 
     /// `sum(body; lo <= k <= hi)` / `prod(...)`.
@@ -546,6 +588,10 @@ impl<'a> Parser<'a> {
                 let t = self.bump();
                 id.deriv = self.src[t.span.range()].parse().unwrap_or(u32::MAX);
                 end = t.span;
+                if id.deriv == 0 {
+                    self.diag(Diagnostic::new(t.span, code::SYNTAX, "미분 횟수는 1 이상").suggest(format!("{}@1", id.base)));
+                    id.deriv = 1;
+                }
             } else {
                 return self.error_here(code::SYNTAX, "'@' 뒤에는 미분 횟수가 와야 함", Some("f@2"));
             }
@@ -661,6 +707,13 @@ mod tests {
                 sx(subject),
                 at.iter().map(sx).collect::<Vec<_>>().join(" "),
                 pieces.iter().map(|p| format!(" [{} {}]", sx(&p.value), sx(&p.cond))).collect::<String>()
+            ),
+            ExprKind::Feature { callee, args, range, filter } => format!(
+                "({} {}; {}; {})",
+                callee.key,
+                args.iter().map(sx).collect::<Vec<_>>().join(" "),
+                range.as_ref().map_or(String::new(), |r| sx(r)),
+                filter.as_deref().unwrap_or("")
             ),
             ExprKind::Error {} => "ERR".into(),
         }
@@ -791,6 +844,32 @@ mod tests {
         assert_eq!(ok("f@2(x)"), "(f@2 x)");
         assert_eq!(ok("~f(x)"), "(~f x)");
         assert_eq!(ok("x^[*]^2"), "(^ x^[*] 2)");
+        assert_eq!(ok("~g(f@1(x))"), "(~g (f@1 x))");
+    }
+
+    #[test]
+    fn feature_calls() {
+        assert_eq!(ok("extrema(f)"), "(extrema f; ; )");
+        assert_eq!(ok("roots(f; -1 < x < 1)"), "(roots f; (cmp (neg 1) Lt x Lt 1); )");
+        assert_eq!(ok("extrema(f;; max)"), "(extrema f; ; max)");
+        assert_eq!(ok("breaks(g; x > 0; hole)"), "(breaks g; (cmp x Gt 0); hole)");
+        assert_eq!(ok("intersect(f, y = x)"), "(intersect f (cmp y Eq x); ; )");
+        assert_eq!(ok("intersect(f, g; 0 < x < 2)"), "(intersect f g; (cmp 0 Lt x Lt 2); )");
+        // Other names keep the ordinary call syntax.
+        assert_eq!(ok("extremum(f)"), "(extremum f)");
+    }
+
+    #[test]
+    fn feature_call_errors() {
+        assert_eq!(errs("extrema(f; x > 0; max; 1)"), vec![code::SYNTAX]);
+        assert_eq!(errs("roots(f x)"), vec![code::IMPLICIT_MUL]);
+        assert_eq!(errs("roots(f;"), vec![code::SYNTAX]);
+    }
+
+    #[test]
+    fn derivative_name_errors() {
+        assert_eq!(errs("f@0(x)"), vec![code::SYNTAX]);
+        assert_eq!(errs("f@(x)"), vec![code::SYNTAX]);
     }
 
     #[test]

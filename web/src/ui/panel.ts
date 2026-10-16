@@ -8,6 +8,8 @@ import type { Highlight } from "../generated/Highlight";
 import type { Scene } from "../generated/Scene";
 import type { State } from "../generated/State";
 import type { Warning } from "../generated/Warning";
+import type { CurveResult } from "../worker/worker";
+import { FEATURE_WORD, pointText } from "../canvas/featureText";
 import { resolveHighlights, sortedHighlights } from "../canvas/highlight";
 import { colorOf } from "../canvas/plot";
 import { activeClip, concealedAt, visibleAt } from "../canvas/scene";
@@ -20,6 +22,8 @@ export interface PanelActions {
   toggle(key: string, visible: boolean): void;
   /** `del key` through the DSL path. */
   remove(key: string): void;
+  /** Coordinate labels of a feature definition on / off (screen only). */
+  toggleCoords(key: string): void;
   drag(constant: string, value: number): void;
   /** Split boundary order the value would break (`"a < b"`), or null. */
   blocked(constant: string, value: number): string | null;
@@ -40,7 +44,13 @@ export interface PanelView {
   sceneWarnings: Warning[];
   /** How a span is drawn now: 0 point, 1 line, 2 plane; undefined before it is drawn. */
   spanDim(key: string): number | undefined;
+  /** Points a feature definition found; undefined before it is computed. */
+  features(key: string): CurveResult | undefined;
+  coordLabels(key: string): boolean;
 }
+
+/** Most feature points listed under a definition. */
+const FEATURE_LIST_MAX = 8;
 
 const SPAN_DIM = ["점 (원점)", "직선", "평면"];
 
@@ -269,7 +279,7 @@ export class Panel {
   private sceneWarn = h("div", { class: "scene-warn" });
   private others = h("div", { class: "hint others" });
   private clipSrc = "";
-  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [], spanDim: () => undefined };
+  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [], spanDim: () => undefined, features: () => undefined, coordLabels: () => true };
 
   constructor(private actions: PanelActions) {
     this.clipBox.append(this.clipInput, this.clipReset);
@@ -421,7 +431,7 @@ export class Panel {
     this.others.hidden = elsewhere === 0 || !this.v.scene;
     // Re-render only when something visible changed (MathJax output is cached anyway).
     const nodes = state ? resolveHighlights(state, hidden).nodeColors : new Map<string, Map<number, string>>();
-    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])], this.v.spanDim(f.key)])]);
+    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])], this.v.spanDim(f.key), this.v.features(f.key)?.points, this.v.coordLabels(f.key)])]);
     if (key === this.defKey) return;
     this.defKey = key;
     const base = latexCtx(all, colorOf);
@@ -442,7 +452,7 @@ export class Panel {
       box = h("span", { class: "nobox", title: "다른 정의에서 쓰는 값 (그리지 않음)" });
     }
     const dim = f.kind === "Span" && visible ? this.v.spanDim(f.key) : undefined;
-    const badge = dim !== undefined ? h("span", { class: "span-dim" }, `${SPAN_DIM[dim] ?? `${dim}차원`} · ${dim}차원`) : null;
+    const badge = dim !== undefined ? h("span", { class: "span-dim" }, `${SPAN_DIM[dim] ?? `${dim}차원`} · ${dim}차원`) : f.kind === "Feature" && visible ? this.featureLine(f) : null;
     let math: Node;
     try {
       math = texElement(functionTex(f, ctx));
@@ -455,6 +465,19 @@ export class Panel {
       box,
       h("div", { class: "body-col" }, h("label", { class: "math", for: id }, math), badge, ...warns.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message))),
     );
+  }
+
+  /** `극대 (−1, 2) · 극소 (1, −2)` and the coordinate-label switch. */
+  private featureLine(f: Fn): HTMLElement | null {
+    const r = this.v.features(f.key);
+    if (!r) return null;
+    const pts = r.points ?? [];
+    const axis = f.feature?.axes[0]?.key.replace(/^\\/, "") ?? "x";
+    const items = pts.slice(0, FEATURE_LIST_MAX).map((p) => `${FEATURE_WORD[p.cls]} ${pointText(p, axis)}`);
+    if (pts.length > FEATURE_LIST_MAX) items.push(`… 모두 ${pts.length}개${r.capped ? " 이상" : ""}`);
+    const on = this.v.coordLabels(f.key);
+    const btn = h("button", { class: `coord-toggle${on ? " on" : ""}`, title: on ? "좌표 라벨 끄기" : "좌표 라벨 켜기", onclick: () => this.actions.toggleCoords(f.key) }, "좌표");
+    return h("span", { class: "feature-pts" }, pts.length ? items.join(" · ") : "찾은 점 없음", pts.length ? btn : null);
   }
 
   private renderConsts(state: State | null): void {

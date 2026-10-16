@@ -33,6 +33,9 @@ pub enum DefKind {
     Polar,
     /// `C(x, y; r): x^2 + y^2 = r^2`: implicit curve, no value (cannot be called).
     Equation,
+    /// `E: extrema(f)`: feature points of a curve, found by the browser (stage 5b). Used in
+    /// an expression it is the point `[x, y]` when there is exactly one.
+    Feature,
 }
 
 impl DefKind {
@@ -51,6 +54,7 @@ impl DefKind {
             DefKind::Parametric => "매개변수 함수",
             DefKind::Polar => "극좌표 함수",
             DefKind::Equation => "방정식",
+            DefKind::Feature => "특징점",
         }
     }
 }
@@ -76,6 +80,9 @@ pub struct Function {
     /// `family(...; 0 <= k <= n)`: one copy per integer k (stage 5). Body and range use k.
     #[serde(default)]
     pub family: Option<FamilyIndex>,
+    /// Feature-point definitions (stage 5b): what to find, resolved for the browser.
+    #[serde(default)]
+    pub feature: Option<FeatureSpec>,
     /// Value type of the body: scalar for a curve, vector / matrix for `Matrix` and
     /// `Value`; for `Span` / `Arrow` the vector type of their arguments.
     #[serde(default = "scalar_ty")]
@@ -92,6 +99,11 @@ pub struct Function {
     /// "경계점 순서가 곧 상수 조건"). The browser keeps sliders from breaking them.
     #[serde(default)]
     pub constraints: Vec<OrderConstraint>,
+    /// Server-generated derivatives of the body, order 1, 2, … (index 0 = order 1), only
+    /// up to the highest order something needs (design.md "f@n"). Not names: a Claude
+    /// `f@n` definition takes precedence for its order.
+    #[serde(default)]
+    pub derivs: Vec<Expr>,
     /// Data color index, fixed at creation.
     pub color: u32,
     /// Creation order, for listing.
@@ -125,6 +137,95 @@ pub struct FamilyIndex {
     pub hi_strict: bool,
     /// `0 <= k <= n` as written.
     pub src: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum FeatureKind {
+    Roots,
+    Intersect,
+    Yint,
+    Extrema,
+    Inflections,
+    Argmax,
+    Argmin,
+    Breaks,
+    Tangents,
+}
+
+impl FeatureKind {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "roots" => Self::Roots,
+            "intersect" => Self::Intersect,
+            "yint" => Self::Yint,
+            "extrema" => Self::Extrema,
+            "inflections" => Self::Inflections,
+            "argmax" => Self::Argmax,
+            "argmin" => Self::Argmin,
+            "breaks" => Self::Breaks,
+            "tangents" => Self::Tangents,
+            _ => return None,
+        })
+    }
+
+    /// Derivative order of the target the browser needs (generated when Claude has not
+    /// defined `f@n`): sign changes of f' for extrema and interval max / min, of f'' for
+    /// inflection points, x'(t) / y'(t) (or r'(θ)) for tangents. Roots, intersections and
+    /// breaks are found from values.
+    pub fn deriv_order(self) -> u32 {
+        match self {
+            Self::Extrema | Self::Argmax | Self::Argmin | Self::Tangents => 1,
+            Self::Inflections => 2,
+            Self::Roots | Self::Intersect | Self::Yint | Self::Breaks => 0,
+        }
+    }
+}
+
+/// What a feature-point definition finds (`E: extrema(f; -1 < x < 1; max)`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FeatureSpec {
+    pub kind: FeatureKind,
+    /// Target curve (`tangents`: a parametric or polar function).
+    pub target: String,
+    /// `intersect`: the other curve as an expression in the target's input (`g(x)`, `2*x`).
+    pub other: Option<Expr>,
+    /// Range slot: a region over the target's input; every point is checked against it.
+    pub range: Option<Expr>,
+    /// Search interval from the range (constant expressions); `None` = the computed area
+    /// on that side.
+    pub lo: Option<Expr>,
+    pub hi: Option<Expr>,
+    /// Third slot (`max`, `hole`, `vertical`, …).
+    pub filter: Option<String>,
+    /// Coordinate system the points are drawn in (the target's): `polar(r, \theta)` or 2D.
+    pub polar: bool,
+    pub axes: Vec<Ident>,
+    /// `breaks`: expressions in the target's input whose zeros may be breaks, from the
+    /// target's AST (design.md "식이 깨지는 점"). Refreshed when the target changes.
+    pub candidates: Vec<BreakCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct BreakCandidate {
+    pub cause: BreakCause,
+    pub expr: Expr,
+}
+
+/// Where a break candidate came from; the browser classifies by the values on both sides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum BreakCause {
+    /// Denominator = 0 (or `tan`, a negative power): hole or vertical asymptote.
+    Denominator,
+    /// `sqrt` / `log` argument = 0 (`asin` / `acos` argument = ±1): domain endpoint.
+    Domain,
+    /// `abs` argument = 0: cusp candidate.
+    Abs,
+    /// split boundary (or `sign` argument = 0): jump candidate.
+    Boundary,
 }
 
 /// `lo < hi`, both constant expressions (numbers and constants only).
@@ -176,6 +277,7 @@ impl Function {
             DefKind::Parametric => Some((false, self.outputs.iter().collect())),
             DefKind::Equation => Some((false, self.inputs.iter().collect())),
             DefKind::Polar => Some((true, vec![self.output.as_ref()?, self.inputs.first()?])),
+            DefKind::Feature => self.feature.as_ref().map(|f| (f.polar, f.axes.iter().collect())),
             _ => None,
         }
     }

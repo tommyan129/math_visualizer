@@ -17,6 +17,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -95,6 +96,7 @@
         "vv"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 34,
       "order": 38,
       "version": 1
@@ -135,6 +137,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Region"
       },
@@ -246,6 +249,7 @@
       "body_src": "x^2 + y^2 = 1",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 42,
       "order": 57,
       "version": 5
@@ -382,6 +386,7 @@
         "hi_strict": false,
         "src": "0 <= j <= n"
       },
+      "feature": null,
       "ty": {
         "type": "Tuple",
         "n": 2
@@ -438,6 +443,7 @@
         "quad"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 44,
       "order": 59,
       "version": 5
@@ -478,6 +484,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Region"
       },
@@ -549,6 +556,7 @@
       "body_src": "x*y = 1",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 43,
       "order": 58,
       "version": 5
@@ -570,6 +578,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Matrix",
         "m": 2,
@@ -646,6 +655,7 @@
       "body_src": "[[1, 2], [3, 4]]",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 25,
       "order": 28,
       "version": 1
@@ -717,6 +727,7 @@
         "hi_strict": false,
         "src": "1 <= j <= 3"
       },
+      "feature": null,
       "ty": {
         "type": "Region"
       },
@@ -852,6 +863,7 @@
       "body_src": "x^2 + y^2 = j^2",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 45,
       "order": 60,
       "version": 5
@@ -883,6 +895,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Matrix",
         "m": 2,
@@ -1074,6 +1087,7 @@
       "body_src": "[[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 27,
       "order": 30,
       "version": 1
@@ -1095,6 +1109,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -1179,6 +1194,7 @@
       "body_src": "span([1, 2], [2, 4])",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 32,
       "order": 36,
       "version": 1
@@ -1200,6 +1216,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -1278,6 +1295,7 @@
         "vv"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 31,
       "order": 35,
       "version": 1
@@ -1299,6 +1317,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -1355,6 +1374,7 @@
       "body_src": "span([0, 0])",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 33,
       "order": 37,
       "version": 1
@@ -1394,6 +1414,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1560,6 +1581,7 @@
       "body_src": "split x at 0\n-x, x < 0\nx, x >= 0",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 35,
       "order": 50,
       "version": 5
@@ -1599,6 +1621,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1652,6 +1675,7 @@
       "body_src": "sum(1; 1 <= k <= 1000000)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 20,
       "order": 22,
       "version": 1
@@ -1691,6 +1715,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1817,6 +1842,7 @@
         "par"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 14,
       "order": 16,
       "version": 1
@@ -1856,6 +1882,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1919,6 +1946,7 @@
       "body_src": "x^(1/3)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 1,
       "order": 1,
       "version": 1
@@ -1958,6 +1986,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2014,6 +2043,7 @@
       "body_src": "x^{2/3",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 2,
       "order": 2,
       "version": 1
@@ -2053,6 +2083,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2093,6 +2124,7 @@
       "body_src": "x^0.5",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 4,
       "order": 4,
       "version": 1
@@ -2132,6 +2164,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2163,6 +2196,7 @@
       "body_src": "x!",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 11,
       "order": 12,
       "version": 1
@@ -2202,6 +2236,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2245,6 +2280,7 @@
       "body_src": "floor(x)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 19,
       "order": 21,
       "version": 1
@@ -2284,6 +2320,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2434,6 +2471,7 @@
       "body_src": "split x at 0\n-1, x < 0\n1, x > 0",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 38,
       "order": 53,
       "version": 5
@@ -2473,6 +2511,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2516,6 +2555,7 @@
       "body_src": "gamma(x)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 12,
       "order": 13,
       "version": 1
@@ -2555,6 +2595,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2618,6 +2659,7 @@
       "body_src": "x^(1/2)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 3,
       "order": 3,
       "version": 1
@@ -2657,6 +2699,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2742,6 +2785,7 @@
       "body_src": "sum(1/k; 1 <= k <= x)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 7,
       "order": 8,
       "version": 1
@@ -2781,6 +2825,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2850,6 +2895,7 @@
       "body_src": "1 + cos(\\theta)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 41,
       "order": 56,
       "version": 5
@@ -2889,6 +2935,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3047,6 +3094,7 @@
       "body_src": "log(x, 2) + ln(\\e) + deg(180) - \\pi",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 18,
       "order": 20,
       "version": 1
@@ -3086,6 +3134,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3110,6 +3159,7 @@
       "body_src": "x",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 21,
       "order": 23,
       "version": 1
@@ -3149,6 +3199,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3536,6 +3587,7 @@
         "M2"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 29,
       "order": 32,
       "version": 1
@@ -3575,6 +3627,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3627,6 +3680,7 @@
       "body_src": "mod(x, 3)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 10,
       "order": 11,
       "version": 1
@@ -3666,6 +3720,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3757,6 +3812,7 @@
       "body_src": "-2^2 + 0*x",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 5,
       "order": 5,
       "version": 1
@@ -3796,6 +3852,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4018,6 +4075,7 @@
       "body_src": "matmul([1, x], transpose([2, 3]))_[2, 2] + [1, 2, 3]_[k]",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 30,
       "order": 33,
       "version": 1
@@ -4057,6 +4115,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4125,6 +4184,7 @@
       "body_src": "a*x^2",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 13,
       "order": 14,
       "version": 1
@@ -4221,6 +4281,7 @@
         "src": "0 <= t <= 2*\\pi"
       },
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Tuple",
         "n": 2
@@ -4311,6 +4372,7 @@
       "body_src": "(cos(t), sin(t))",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 39,
       "order": 54,
       "version": 5
@@ -4350,6 +4412,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4492,6 +4555,7 @@
       "body_src": "a*x^2 - b*x + 1",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 23,
       "order": 25,
       "version": 1
@@ -4570,6 +4634,7 @@
         "src": "0 <= t <= \\pi"
       },
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -4676,6 +4741,7 @@
         "Rot"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 40,
       "order": 55,
       "version": 5
@@ -4715,6 +4781,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4755,6 +4822,7 @@
       "body_src": "x^2",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 22,
       "order": 24,
       "version": 1
@@ -4794,6 +4862,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4834,6 +4903,7 @@
       "body_src": "1/x",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 0,
       "order": 0,
       "version": 1
@@ -4873,6 +4943,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4916,6 +4987,7 @@
       "body_src": "round(x)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 9,
       "order": 10,
       "version": 1
@@ -4955,6 +5027,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -5078,6 +5151,7 @@
         "Rot"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 28,
       "order": 31,
       "version": 1
@@ -5117,6 +5191,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -5160,6 +5235,7 @@
       "body_src": "sqrt(x)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 16,
       "order": 18,
       "version": 1
@@ -5199,6 +5275,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -5398,6 +5475,7 @@
       "body_src": "split r = x^2 at 1\nr, r < 1\n1/r, r >= 1",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 37,
       "order": 52,
       "version": 5
@@ -5437,6 +5515,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -5479,6 +5558,7 @@
       "body_src": "1000*x",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 17,
       "order": 19,
       "version": 1
@@ -5518,6 +5598,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -5820,6 +5901,7 @@
           "src": "a < b"
         }
       ],
+      "derivs": [],
       "color": 36,
       "order": 51,
       "version": 5
@@ -5859,6 +5941,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -5985,6 +6068,7 @@
       "body_src": "sum(x^k/k!; 0 <= k <= n)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 6,
       "order": 6,
       "version": 1
@@ -6024,6 +6108,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -6067,6 +6152,7 @@
       "body_src": "tan(x)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 15,
       "order": 17,
       "version": 1
@@ -6106,6 +6192,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -6177,6 +6264,7 @@
         "harm"
       ],
       "constraints": [],
+      "derivs": [],
       "color": 8,
       "order": 9,
       "version": 1
@@ -6198,6 +6286,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -6244,6 +6333,7 @@
       "body_src": "[1, a]",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 26,
       "order": 29,
       "version": 1
@@ -6283,6 +6373,7 @@
       "outputs": [],
       "range": null,
       "family": null,
+      "feature": null,
       "ty": {
         "type": "Scalar"
       },
@@ -6354,6 +6445,7 @@
       "body_src": "a*sin(t)",
       "calls": [],
       "constraints": [],
+      "derivs": [],
       "color": 24,
       "order": 27,
       "version": 1

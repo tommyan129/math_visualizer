@@ -4,13 +4,15 @@
 use dsl::names;
 
 const INDEX: &str = "\
-쓸 수 있는 명령 (5a단계). describe(name)으로 자세히:
+쓸 수 있는 명령 (5b단계). describe(name)으로 자세히:
   define     함수 정의·수정 (같은 이름에 다시 쓰면 수정)
   split      구간별 함수 (경계점, 조각마다 식)
   매개변수   p(t) -> (x, y): (식, 식), 범위
   극좌표     h(\\theta) -> polar(r), polar(r, \\theta) scene
   방정식     C(x, y): 좌변 = 우변 (음함수 곡선)
   family     family(본문; 0 <= k <= n): 같은 도형을 k마다 반복
+  도함수     f@n(x) -> y, 역함수 ~f(x) -> y, 정의 안 한 f@n은 서버 기호 미분
+  특징점     E: extrema(f), roots, intersect, yint, inflections, argmax, argmin, breaks, tangents
   행렬       벡터·행렬 값, matmul 등 연산, -> matrix 함수
   span       span(v, w): 원점을 지나는 직선·평면
   arrow      arrow(v), arrow(v; P): 화살표
@@ -30,7 +32,7 @@ const INDEX: &str = "\
   sum      sum / prod
   상수     슬라이더 상수 규칙
   오류     오류 형식
-아직 없음: 도함수 f@n·역함수 ~f, 특징점(roots 등), 수치 검증, 다변수(3D)";
+아직 없음: 수치 검증, 계산 과정 diff, 특징점 하나 번호로 가리키기(E_[2]), 다변수(3D)";
 
 const SPLIT: &str = "\
 define:
@@ -51,6 +53,38 @@ define:
 - 실제 값에서 두 줄이 겹치면(예: 다른 경로로 a > b) 그 점은 정의 안 됨 + 경고 [W-split-overlap].
 - 경계가 서로 다른 식 둘 이상이면 split을 두 단계로 (조각 값에 다른 split 함수를 부름).
 - y = f(x) 함수와 극좌표 함수에 씀.";
+
+const DERIV: &str = "\
+define:
+    f(x; a) -> y: a*x^3
+    f@1(x; a) -> y: 3*a*x^2          # 화면엔 f'. f@2 → f'', f@4 → f⁽⁴⁾
+    ~f(x; a) -> y: (x/a)^(1/3)        # 화면엔 f⁻¹
+    T(x; a, c) -> y: f@2(c)*(x - c)   # 정의 안 한 f@2: 서버가 기호 미분으로 채움
+- f@n, ~f를 정의하려면 같은 축의 일반 함수 f가 먼저 있어야 함. del f 하면 f@n, ~f도 함께 지워짐.
+- 정의 안 한 f@n을 부르거나 특징점이 도함수를 쓰면 서버가 f의 식을 미분해서 씀 (응답에 '자동: 도함수'로 식을 알림).
+  이름은 비어 있어서 나중에 f@n을 정의하면 그걸 씀. 미분 규칙이 없는 식(gamma, !, prod 등)이면 [E-deriv] → f@n 직접 정의.
+- ~f는 서버가 만들지 않음: 부르려면 정의해야 함. 미분 횟수는 1..8.";
+
+const FEATURE: &str = "\
+define:
+    f(x) -> y: x^3 - 3*x
+    E: extrema(f)                      # 극대·극소 (f'의 부호가 바뀌는 점)
+    M: extrema(f;; max)                # 칸: 대상; 범위; 종류 (빈칸 가능)
+    R: roots(f; -1 < x < 2)            # 근 (부호 변화 + 접하는 근)
+    I: inflections(f)                  # 변곡점 (f''의 부호 변화; x^4의 0은 아님)
+    P: intersect(f, g)                 # 교점. 둘째 칸에 y = 2*x 같은 식도 됨
+    Y: yint(f)
+    A: argmax(f; -2 <= x <= 3)         # 구간 위 최댓값 (argmin: 최솟값), 양 끝 있는 구간 필수
+    B: breaks(f;; hole)                # 구멍, 수직 점근선, 점프, 정의역 끝점, 뾰족점 (종류: hole, asymptote, jump, endpoint, cusp)
+    Tg: tangents(p;; vertical)         # 매개변수·극좌표 곡선의 수평·수직 접선 (종류: horizontal, vertical)
+    Pm: extrema(f;; min)
+    L(x) -> y: f@1(Pm_[1])*(x - Pm_[1]) + Pm_[2]    # 점이 하나면 값 [x, y]로 씀
+- 특징점은 define 안의 이름 붙은 정의 하나: 토글, del cascade, req, scene show, step +E가 다른 정의와 같음.
+- 대상 함수의 상수를 머리에 적어야 함: f(x; a)면 E(; a): extrema(f). 범위·식 칸의 상수도.
+- 점은 브라우저가 찾음 (범위가 없으면 계산 범위 = 화면 ± 한 화면). get_state와 apply 응답에 좌표가 옴.
+- 값으로 쓸 때(E_[1], E_[2], arrow(v; E)) 점이 정확히 하나여야 함: 아니면 그 식은 정의 안 됨 + [W-feature-value].
+- 결과 하나를 번호로 가리키기(E_[2])는 아직 없음: 범위 칸으로 좁혀서 하나만 남게.
+- 극좌표 tangents의 좌표는 (r, θ).";
 
 const PARAMETRIC: &str = "\
 define:
@@ -294,6 +328,8 @@ pub fn describe(name: Option<&str>) -> String {
         "극좌표" | "polar" => POLAR.into(),
         "방정식" | "음함수" | "equation" | "implicit" => EQUATION.into(),
         "family" | "반복" => EACH.into(),
+        "도함수" | "역함수" | "f@n" | "~f" | "derivative" | "inverse" => DERIV.into(),
+        "특징점" | "feature" | "features" | "roots" | "intersect" | "yint" | "extrema" | "inflections" | "argmax" | "argmin" | "breaks" | "tangents" => FEATURE.into(),
         "함수" | "functions" | "builtins" => {
             let list: Vec<String> = names::BUILTINS
                 .iter()
@@ -330,5 +366,9 @@ mod tests {
         dsl::interp::apply(&Default::default(), stage4, &Default::default(), 4).unwrap();
         let stage5 = "define:\n    R(\\theta) -> matrix: [[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]\n    f(x; a, b) -> y:\n        split x at a, b\n        -1,     x < a\n        x^2,    a <= x <= b\n        3 - x,  x > b\n    g(x) -> y:\n        split r = x^2 at 1\n        r,      r < 1\n        1/r,    r >= 1\n    p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi\n    q(t; a) -> (x, y): matmul(R(t), [a, 0]), 0 <= t <= \\pi\n    D1(t; k) -> (x, y): (k, t), 0 <= t <= g(k)\n    h(\\theta) -> polar(r): 1 + cos(\\theta)\n    s(\\theta) -> polar(r): \\theta/4, 0 <= \\theta <= 6*\\pi\n    C(x, y; a): x^2 + y^2 = a^2\n    L(x, y): x*y = 1\n    D(t; a, w, n) -> (x, y): family((a + j*w, t), 0 <= t <= g(a + j*w); 0 <= j <= n)\n    O(x, y; m): family(x^2 + y^2 = j^2; 1 <= j <= m)\n    F(x) -> y: family(sin(x + j*\\pi/4); 0 <= j <= 3)\nscene(1):\n    space: polar(r, \\theta)\n    show: h\n    view: r <= 3\n    clip: r <= 2 and 0 <= \\theta <= \\pi\nH1 = highlight(; x^2 + y^2 <= a^2)\n";
         dsl::interp::apply(&Default::default(), stage5, &Default::default(), 5).unwrap();
+        let stage5b = "define:\n    f(x; a) -> y: a*x^3\n    f@1(x; a) -> y: 3*a*x^2\n    ~f(x; a) -> y: (x/a)^(1/3)\n    T(x; a, c) -> y: f@2(c)*(x - c)\n    g(x) -> y: x^3 - 3*x\n    h(x) -> y: 2*x\n    p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi\n    E: extrema(g)\n    M: extrema(g;; max)\n    R: roots(g; -1 < x < 2)\n    I: inflections(g)\n    P: intersect(g, h)\n    P2: intersect(g, y = 2*x)\n    Y: yint(g)\n    A: argmax(g; -2 <= x <= 3)\n    B: breaks(g;; hole)\n    Tg: tangents(p;; vertical)\n    Pm: extrema(g;; min)\n    L(x) -> y: g@1(Pm_[1])*(x - Pm_[1]) + Pm_[2]\n    V: arrow([1, 0]; Pm)\n";
+        dsl::interp::apply(&Default::default(), stage5b, &Default::default(), 6).unwrap_or_else(|d| panic!("{d:?}"));
+        assert!(describe(Some("특징점")).contains("extrema"));
+        assert!(describe(Some("f@n")).contains("~f"));
     }
 }

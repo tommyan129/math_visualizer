@@ -283,6 +283,13 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
       // The subject's name goes on a line under the cases (beside them is too wide for the panel).
       return e.name ? `\\begin{gathered} ${cases} \\\\ \\scriptstyle ${identTex(e.name)} \\,=\\, ${go(unparen(e.subject))} \\end{gathered}` : cases;
     }
+    case "Feature": {
+      // `extrema(f; -1 < x < 1; max)`: slots as written, `;` between them.
+      const slots = [e.args.map((a) => go(unparen(a))).join(", ")];
+      if (e.range || e.filter) slots.push(e.range ? go(unparen(e.range)) : "");
+      if (e.filter) slots.push(`\\text{${e.filter.replace(/[^A-Za-z]/g, "")}}`);
+      return `\\operatorname{${e.callee.key.replace(/[^A-Za-z]/g, "")}}${paren(slots.join(";\\, "))}`;
+    }
     default:
       return "\\text{?}";
   }

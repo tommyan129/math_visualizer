@@ -26,6 +26,7 @@ struct Rendered {
     revision: u64,
     warnings: Vec<Warning>,
     spans: Vec<SpanDim>,
+    features: Vec<FeaturePoints>,
 }
 
 struct Active {
@@ -144,10 +145,10 @@ impl Hub {
                     let _ = tx.send(reply);
                 }
             }
-            ClientMsg::Rendered { workspace, revision, warnings, spans } => {
+            ClientMsg::Rendered { workspace, revision, warnings, spans, features } => {
                 let inner = self.inner.lock().unwrap();
                 if let Some(a) = inner.active.as_ref().filter(|a| a.conn == c.id) {
-                    a.rendered.send_replace(Some(Rendered { workspace, revision, warnings, spans }));
+                    a.rendered.send_replace(Some(Rendered { workspace, revision, warnings, spans, features }));
                 }
             }
         }
@@ -210,6 +211,7 @@ impl Hub {
             Ok(Ok(r)) => Browser::Rendered {
                 warnings: r.as_ref().map(|r| r.warnings.clone()).unwrap_or_default(),
                 spans: r.as_ref().map(|r| r.spans.clone()).unwrap_or_default(),
+                features: r.as_ref().map(|r| r.features.clone()).unwrap_or_default(),
             },
             // Tab closed or taken over while waiting.
             Ok(Err(_)) => Browser::NotConnected,
@@ -245,7 +247,7 @@ impl Hub {
     /// Asks the active tab for its current scene, view and warnings.
     pub async fn get_view(&self, workspace: &str) -> Browser {
         match self.ask(workspace, ServerRequest::GetView {}, VIEW_WAIT).await {
-            Ok(BrowserReply::View { workspace: w, view, warnings, spans, .. }) if w == workspace => Browser::View { view, warnings, spans },
+            Ok(BrowserReply::View { workspace: w, view, warnings, spans, features, .. }) if w == workspace => Browser::View { view, warnings, spans, features },
             Ok(_) => Browser::OtherWorkspace,
             Err(b) => b,
         }

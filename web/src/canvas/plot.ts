@@ -4,6 +4,7 @@
 // - Coarse while interacting, fine once interaction stops. Latest request wins.
 // - A constant change recomputes only the functions that use it.
 
+import type { FeaturePoints } from "../generated/FeaturePoints";
 import type { Function as Fn } from "../generated/Function";
 import type { Highlight } from "../generated/Highlight";
 import type { Nav } from "../generated/Nav";
@@ -15,13 +16,14 @@ import type { ViewBox } from "../generated/ViewBox";
 import type { Warning } from "../generated/Warning";
 import { identTex, isVectorName } from "../math/latex";
 import { setImageReadyHandler } from "../math/mathjax";
-import { compileConst, compileOrder, specOf, type FnSpec } from "../worker/codegen";
+import { compileConst, compileOrder, specsOf, type FnSpec } from "../worker/codegen";
 import { makeRuntime } from "../worker/numeric";
 import type { Quality, SampleRange } from "../worker/sample";
 import { CLIP_KEY, type CurveResult, type FillItem, type FillResult, type FromWorker, type HlSpec, type RasterResult, type ToWorker } from "../worker/worker";
 import type { RasterRect } from "../worker/fill";
 import { maskPixels, resolveHighlights, sortedHighlights } from "./highlight";
-import { POINT_HOLE, POINT_NORMAL, rgba, type Batch, type ClipMask, type LabelPlacement, type Style } from "./primitives";
+import { POINT_FEATURE, POINT_HOLE, POINT_NORMAL, rgba, type Batch, type ClipMask, type LabelPlacement, type LabelRef, type Style } from "./primitives";
+import { FEATURE_WORD, pointText } from "./featureText";
 import { activeClip, sceneAxes, visibleAt } from "./scene";
 import { Renderer } from "./renderer";
 import { buildPolarSpace, buildSpace, spaceStyles } from "./space";
@@ -150,6 +152,8 @@ export class Plot {
   private drawQueued = false;
   /** Pointer position in CSS px while hovering (not dragging). */
   private hoverAt: { px: number; py: number } | null = null;
+  /** Feature definitions whose coordinate labels the user turned off. */
+  private coordOff = new Set<string>();
 
   constructor(host: HTMLElement, private cb: PlotCallbacks) {
     this.canvas = document.createElement("canvas");
@@ -194,7 +198,7 @@ export class Plot {
     for (const k of [...this.curves.keys()]) if (!this.members.has(k)) this.curves.delete(k);
     for (const k of [...this.warningsByKey.keys()]) if (!state.functions[k]) this.warningsByKey.delete(k);
 
-    const specs: FnSpec[] = this.allFns.map(specOf);
+    const specs: FnSpec[] = specsOf(state, this.allFns);
     this.post({ type: "functions", fns: specs, constKeys: this.constKeys });
     const clip = activeClip(scene);
     const polar = scene?.polar ?? false;
@@ -242,6 +246,35 @@ export class Plot {
       stack.push(...(fns[k]?.calls ?? []));
     }
     return [...seen].sort().map((k) => `${k}:${fns[k]?.version ?? -1}`).join(",");
+  }
+
+  /** Points each shown feature-point definition found at fine quality (`get_state`, apply). */
+  featurePoints(): FeaturePoints[] {
+    return this.fns
+      .filter((f) => f.kind === "Feature" && !this.hidden.has(f.key))
+      .flatMap((f) => {
+        const c = this.curves.get(f.key);
+        if (!c || c.quality !== "fine" || !c.result.points) return [];
+        const points = c.result.points.map((p) => ({ x: p.vx, y: p.cls === "Asymptote" || !Number.isFinite(p.vy) ? null : p.vy, class: p.cls }));
+        return [{ key: f.key, points, capped: !!c.result.capped }];
+      });
+  }
+
+  /** Last points of a feature definition (panel), or undefined before it is computed. */
+  featureResult(key: string): CurveResult | undefined {
+    const c = this.curves.get(key);
+    return c?.result.kind === "features" ? c.result : undefined;
+  }
+
+  /** Coordinate labels beside feature points (on by default; per definition). */
+  coordLabels(key: string): boolean {
+    return !this.coordOff.has(key);
+  }
+
+  toggleCoordLabels(key: string): void {
+    if (this.coordOff.has(key)) this.coordOff.delete(key);
+    else this.coordOff.add(key);
+    this.draw();
   }
 
   /** Dimension of each shown span as last drawn at fine quality (`get_state`, apply). */
@@ -320,6 +353,8 @@ export class Plot {
     let any = false;
     for (const f of shown) {
       const r = this.curves.get(f.key)!.result;
+      // No feature point is a result (x⁴ has no inflection point), not a missing curve.
+      if (r.kind === "features") continue;
       // A plane covers the whole computed area.
       let seen = r.kind === "span" && r.dim === 2 && (!clip || this.clipGeom!.bits.includes(1));
       for (let i = 0; i < r.coords.length && !seen; i += 2) {
@@ -620,6 +655,8 @@ export class Plot {
       const f = this.state?.functions[c.key];
       if (!f) continue;
       if (c.kind === "span" && this.curves.get(c.key)?.result.dim !== c.dim) dimChanged = true;
+      // The panel lists feature points: refresh it when they change (slider released).
+      if (c.kind === "features" && r.quality === "fine" && JSON.stringify(this.curves.get(c.key)?.result.points) !== JSON.stringify(c.points)) dimChanged = true;
       this.curves.set(c.key, { result: c, range: r.range, quality: r.quality, version: this.depStamp(f.key) });
     }
     if (r.quality === "fine") {
@@ -729,6 +766,10 @@ export class Plot {
       styles.push({ color: rgba(color), width: 2.5, size: 7 });
       const r = c.result;
       const base = { id: f.key, version: f.version, source: { def: f.key }, seq: seq++, style, origin: [r.origin[0], r.origin[1], 0] as [number, number, number], dim: 2 as const, clip: true };
+      if (r.kind === "features") {
+        this.drawFeatures(f, r, base, styles, batches, color, placed);
+        continue;
+      }
       if (r.kind === "points" || (r.kind === "span" && r.dim === 0)) {
         if (r.kind === "span") styles[style]!.size = 10;
         batches.push({ ...base, layer: 3, kind: "points", coords: r.coords, pointKind: new Uint8Array(r.coords.length / 2).fill(POINT_NORMAL) });
@@ -770,6 +811,7 @@ export class Plot {
       batches.push({ id: "hover-point", version: 0, source: { def: hit.key }, layer: 3, seq: 1000, style, origin: [0, 0, 0], dim: 2, kind: "points", coords: Float32Array.from([hit.x, hit.y]), pointKind: Uint8Array.of(POINT_HOLE) });
       const d = this.decimals();
       const fmt = (v: number) => v.toFixed(d).replace("-", "\u2212");
+      const text = hit.text ?? `${hit.key}  (${fmt(hit.x)}, ${fmt(hit.y)})`;
       const right = this.view.sx(hit.x) < this.view.width - 160;
       batches.push({
         id: "hover-label",
@@ -782,11 +824,81 @@ export class Plot {
         dim: 2,
         kind: "text",
         coords: Float32Array.from([hit.x, hit.y]),
-        labels: [{ kind: "ui", text: `${hit.key}  (${fmt(hit.x)}, ${fmt(hit.y)})`, px: 13, weight: 600 }],
+        labels: [{ kind: "ui", text, px: 13, weight: 600 }],
         placement: [{ align: right ? "left" : "right", baseline: "bottom", dx: right ? 12 : -12, dy: -10, halo: true }],
       });
     }
     this.renderer.draw(this.view, batches, styles, activeClip(this.scene) && this.clipGeom ? this.clipGeom.mask : null);
+  }
+
+  /**
+   * Feature points: open circles where the function does not take the value (holes,
+   * jump sides), filled dots for values it takes, ringed dots for the features themselves;
+   * vertical asymptotes as dashed lines. Coordinates beside each point while few are on screen.
+   */
+  private drawFeatures(f: Fn, r: CurveResult, base: Omit<Extract<Batch, { kind: "points" }>, "kind" | "coords" | "pointKind" | "layer">, styles: Style[], batches: Batch[], color: string, placed: Rect[]): void {
+    const pts = r.points ?? [];
+    const [ox, oy] = r.origin;
+    const b = this.view.box();
+    const marks = pts.filter((p) => p.cls !== "Asymptote" && Number.isFinite(p.y));
+    if (marks.length) {
+      styles[base.style]!.size = 10;
+      const coords = new Float32Array(marks.length * 2);
+      const kinds = new Uint8Array(marks.length);
+      marks.forEach((p, i) => {
+        coords[2 * i] = p.x - ox;
+        coords[2 * i + 1] = p.y - oy;
+        kinds[i] = p.open ? POINT_HOLE : p.cls === "Filled" || p.cls === "Jump" || p.cls === "Endpoint" ? POINT_NORMAL : POINT_FEATURE;
+      });
+      batches.push({ ...base, layer: 3, kind: "points", coords, pointKind: kinds });
+    }
+    const asym = pts.filter((p) => p.cls === "Asymptote");
+    if (asym.length) {
+      const st = styles.length;
+      styles.push({ color: rgba(color, 0.85), width: 1.5, size: 0, dash: [6, 5] });
+      const h = b.y_max - b.y_min;
+      const coords = new Float32Array(asym.length * 4);
+      asym.forEach((p, i) => coords.set([p.x - ox, b.y_min - h - oy, p.x - ox, b.y_max + h - oy], 4 * i));
+      batches.push({ ...base, id: `${f.key}-asym`, style: st, layer: 2, kind: "polyline", coords, offsets: Uint32Array.from({ length: asym.length + 1 }, (_, i) => 2 * i) });
+    }
+    const visible = pts.filter((p) => p.x >= b.x_min && p.x <= b.x_max && (!Number.isFinite(p.y) || (p.y >= b.y_min && p.y <= b.y_max)) && this.inClip(p.x, Number.isFinite(p.y) ? p.y : (b.y_min + b.y_max) / 2));
+    // Where a point is drawn, or the top of the screen for an asymptote.
+    const anchor = (p: (typeof pts)[number]) => [p.x, Number.isFinite(p.y) ? p.y : b.y_max - 24 / this.view.scale] as const;
+    const axis = f.feature?.axes[0]?.key.replace(/^\\/, "") ?? "x";
+    if (this.coordLabels(f.key) && visible.length > 0 && visible.length <= 12) {
+      const st = styles.length;
+      styles.push({ color: rgba("#c9ccd3"), width: 0, size: 0 });
+      const coords = new Float32Array(visible.length * 2);
+      const labels: LabelRef[] = [];
+      const placement: LabelPlacement[] = [];
+      visible.forEach((p, i) => {
+        const [x, y] = anchor(p);
+        coords.set([x, y], 2 * i);
+        labels.push({ kind: "ui", text: pointText(p, axis), px: 12, weight: 500 });
+        placement.push({ align: "left", baseline: "top", dx: 9, dy: 6, halo: true });
+      });
+      batches.push({ id: `coords-${f.key}`, version: f.version, source: { def: f.key }, layer: 4, seq: 200 + base.seq, style: st, origin: [0, 0, 0], dim: 2, kind: "text", coords, labels, placement });
+    }
+    const first = visible[0];
+    if (first) {
+      const [x, y] = anchor(first);
+      const w = 14 * f.key.length + 10, px = this.view.sx(x), py = this.view.sy(y);
+      placed.push({ left: px - w - 8, top: py - 34, right: px - 8, bottom: py - 8 });
+      batches.push({
+        id: `label-${f.key}`,
+        version: f.version,
+        source: { def: f.key },
+        layer: 4,
+        seq: 100 + base.seq,
+        style: base.style,
+        origin: [0, 0, 0],
+        dim: 2,
+        kind: "text",
+        coords: Float32Array.from([x, y]),
+        labels: [{ kind: "tex", tex: identTex(f.name), px: 20 }],
+        placement: [{ align: "right", baseline: "bottom", dx: -8, dy: -8, halo: true }],
+      });
+    }
   }
 
   private drawHighlights(batches: Batch[], styles: Style[]): void {
@@ -824,21 +936,34 @@ export class Plot {
    * Closest point of a visible curve to the pointer, within a few pixels. On polylines
    * the point is interpolated between samples at the projection of the pointer.
    */
-  private nearestPoint(px: number, py: number): { key: string; color: string; x: number; y: number } | null {
+  private nearestPoint(px: number, py: number): { key: string; color: string; x: number; y: number; text?: string } | null {
     const v = this.view;
     const RADIUS = 12;
-    let best: { key: string; color: string; x: number; y: number } | null = null;
+    let best: { key: string; color: string; x: number; y: number; text?: string } | null = null;
     let bestD = RADIUS * RADIUS;
     for (const f of this.fns) {
       const c = this.curves.get(f.key);
       if (!c || this.hidden.has(f.key)) continue;
       const r = c.result;
       if (r.kind === "span" && r.dim === 2) continue;
+      if (r.kind === "features") {
+        const axis = f.feature?.axes[0]?.key.replace(/^\\/, "") ?? "x";
+        for (const p of r.points ?? []) {
+          if (!Number.isFinite(p.y)) continue;
+          const dx = v.sx(p.x) - px, dy = v.sy(p.y) - py, d = dx * dx + dy * dy;
+          // Feature points win over a curve through the same spot.
+          if (d < RADIUS * RADIUS && this.inClip(p.x, p.y) && (!best?.text || d < bestD)) {
+            bestD = Math.min(bestD, d);
+            best = { key: f.key, color: colorOf(f), x: p.x, y: p.y, text: `${f.key} ${FEATURE_WORD[p.cls]}  ${pointText(p, axis, this.decimals())}` };
+          }
+        }
+        continue;
+      }
       const [ox, oy] = r.origin;
       const X = (i: number) => ox + r.coords[2 * i]!, Y = (i: number) => oy + r.coords[2 * i + 1]!;
       const consider = (x: number, y: number) => {
         const dx = v.sx(x) - px, dy = v.sy(y) - py, d = dx * dx + dy * dy;
-        if (d < bestD && this.inClip(x, y)) {
+        if (d < bestD && !best?.text && this.inClip(x, y)) {
           bestD = d;
           best = { key: f.key, color: colorOf(f), x, y };
         }

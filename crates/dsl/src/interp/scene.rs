@@ -941,6 +941,8 @@ fn detached<'s>(src: &'s str, state: &State) -> Cx<'s> {
         stopped: false,
         seq: 0,
         declared_now: BTreeSet::new(),
+        deriv_sites: Default::default(),
+        pending_feature: None,
     }
 }
 

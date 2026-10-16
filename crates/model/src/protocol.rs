@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 /// Bumped whenever a message or state-model shape changes incompatibly.
 /// A browser with a different version is told to reload.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Browser -> server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -38,6 +38,9 @@ pub enum ClientMsg {
         /// Dimension each shown span was drawn with (stage 4).
         #[serde(default)]
         spans: Vec<SpanDim>,
+        /// Points each shown feature-point definition found (stage 5b).
+        #[serde(default)]
+        features: Vec<FeaturePoints>,
     },
 }
 
@@ -163,6 +166,8 @@ pub enum BrowserReply {
         warnings: Vec<Warning>,
         #[serde(default)]
         spans: Vec<SpanDim>,
+        #[serde(default)]
+        features: Vec<FeaturePoints>,
     },
     /// Base64 PNG.
     Png { workspace: String, data: String, width: u32, height: u32 },
@@ -222,6 +227,78 @@ pub struct ViewBox {
 pub struct SpanDim {
     pub key: String,
     pub dim: u32,
+}
+
+/// What a feature-point definition found at the current values (stage 5b), for
+/// `get_state` and the `apply` response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FeaturePoints {
+    pub key: String,
+    pub points: Vec<FeaturePoint>,
+    /// More were found than drawn (count cap).
+    #[serde(default)]
+    pub capped: bool,
+}
+
+/// One point in the scene's axes. `y` is `None` for a vertical asymptote (a line).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FeaturePoint {
+    pub x: f64,
+    pub y: Option<f64>,
+    pub class: FeatureClass,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum FeatureClass {
+    Root,
+    /// Root without a sign change (double root).
+    TangentRoot,
+    Intersection,
+    /// Intersection where the curves touch.
+    TangentIntersection,
+    YIntercept,
+    Max,
+    Min,
+    Inflection,
+    IntervalMax,
+    IntervalMin,
+    Hole,
+    /// Value at a hole that is defined elsewhere (removable discontinuity with a point).
+    Filled,
+    Asymptote,
+    Jump,
+    Endpoint,
+    Cusp,
+    HorizontalTangent,
+    VerticalTangent,
+}
+
+impl FeatureClass {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Root => "근",
+            Self::TangentRoot => "접하는 근",
+            Self::Intersection => "교점",
+            Self::TangentIntersection => "접하는 교점",
+            Self::YIntercept => "y절편",
+            Self::Max => "극대",
+            Self::Min => "극소",
+            Self::Inflection => "변곡점",
+            Self::IntervalMax => "최댓값",
+            Self::IntervalMin => "최솟값",
+            Self::Hole => "구멍",
+            Self::Filled => "구멍 자리의 값",
+            Self::Asymptote => "수직 점근선",
+            Self::Jump => "점프",
+            Self::Endpoint => "정의역 끝점",
+            Self::Cusp => "뾰족점",
+            Self::HorizontalTangent => "수평 접선",
+            Self::VerticalTangent => "수직 접선",
+        }
+    }
 }
 
 /// Render-time warning reported by the browser (shown under the definition and in `get_state`).

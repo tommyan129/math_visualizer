@@ -6,7 +6,9 @@
 
 import type { DefKind } from "../generated/DefKind";
 import type { Expr } from "../generated/Expr";
+import type { FeatureSpec } from "../generated/FeatureSpec";
 import type { Function as Fn } from "../generated/Function";
+import type { State } from "../generated/State";
 import type { Ty } from "../generated/Ty";
 import type { Runtime } from "./numeric";
 
@@ -31,12 +33,30 @@ export interface FnSpec {
   range: { lo: Expr; hi: Expr } | null;
   /** `family(...; lo <= k <= hi)`. */
   family: { index: string; lo: Expr; hi: Expr; lo_strict: boolean; hi_strict: boolean } | null;
+  /** Feature-point definition (stage 5b). */
+  feature: FeatureSpec | null;
 }
 
 export function specOf(f: Fn): FnSpec {
   const range = f.range ? { lo: f.range.lo, hi: f.range.hi } : null;
   const family = f.family ? { index: f.family.index.key, lo: f.family.lo, hi: f.family.hi, lo_strict: f.family.lo_strict, hi_strict: f.family.hi_strict } : null;
-  return { key: f.key, version: f.version, kind: f.kind, inputs: f.inputs.map((i) => i.key), body: f.body, consts: f.consts, calls: f.calls, range, family };
+  return { key: f.key, version: f.version, kind: f.kind, inputs: f.inputs.map((i) => i.key), body: f.body, consts: f.consts, calls: f.calls, range, family, feature: f.feature };
+}
+
+/**
+ * Every definition plus the server-generated derivatives `f@n` that Claude has not
+ * defined (design.md "f@n"): same kind, inputs and constants as f, never drawn.
+ */
+export function specsOf(state: State, fns: Fn[]): FnSpec[] {
+  const out = fns.map(specOf);
+  for (const f of fns) {
+    f.derivs.forEach((body, i) => {
+      const key = `${f.key}@${i + 1}`;
+      if (state.functions[key]) return;
+      out.push({ ...specOf(f), key, body, family: null, feature: null, calls: [...f.calls, f.key] });
+    });
+  }
+  return out;
 }
 
 /** A point of a parametric / polar curve at parameter `t` (`[NaN, NaN]` where undefined). */
@@ -426,6 +446,9 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
       const vecs = spec.body.args.map((a) => make(`(C) => ${expr(a, { ...env, axes: null, inputs: [] })}`) as Vec);
       return { ...base, vecs };
     }
+    case "Feature":
+      // Found by the worker (`features.ts`); the table entry is set there.
+      return base;
     case "Parametric":
     case "Polar":
     case "Equation":

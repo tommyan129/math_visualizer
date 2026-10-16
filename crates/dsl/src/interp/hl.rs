@@ -1118,6 +1118,8 @@ pub fn address_resolves(state: &State, address: &str) -> bool {
         stopped: false,
         seq: 0,
         declared_now: BTreeSet::new(),
+        deriv_sites: Default::default(),
+        pending_feature: None,
     };
     cx.resolve_address(&e).is_some() && cx.diags.is_empty()
 }

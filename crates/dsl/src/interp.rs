@@ -70,6 +70,8 @@ pub enum Note {
     /// Default scene of a coordinate system created / removed with its functions.
     DefaultSceneCreated { key: String },
     DefaultSceneRemoved { key: String },
+    /// Server-generated derivative `f@n` (new or changed), in DSL notation (stage 5b).
+    DerivativeGenerated { function: String, order: u32, src: String },
     /// Cascade inside a Claude scene: the scene stays, the reference goes.
     /// `place`: `show`, `clip`, `step 2 show`, `step 1 note` …
     SceneRefRemoved { scene: String, target: String, place: String },
@@ -122,6 +124,8 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
         stopped: false,
         seq,
         declared_now: BTreeSet::new(),
+        deriv_sites: Default::default(),
+        pending_feature: None,
     };
     for stmt in &parsed.stmts {
         if cx.stopped {
@@ -151,8 +155,10 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
         return Err(d);
     }
     let mut new = cx.state;
+    let mut notes = cx.notes;
+    notes.extend(deriv::derivative_notes(state, &new));
     let changes = new.diff_from(state, seq);
-    Ok(Applied { state: new, changes, notes: cx.notes })
+    Ok(Applied { state: new, changes, notes })
 }
 
 /// Brings a restored state up to the current model: stage 1-2 scene shapes, default
@@ -182,6 +188,10 @@ struct Cx<'s> {
     seq: u64,
     /// Constants declared in this request's `constant:` blocks.
     declared_now: BTreeSet<String>,
+    /// First place in this request that needs a generated derivative of a function (error spans).
+    deriv_sites: std::collections::HashMap<String, Span>,
+    /// Spec of the feature-point definition being resolved (`resolve_feature`).
+    pending_feature: Option<FeatureSpec>,
 }
 
 /// Name scope inside one definition body, or one range slot.
@@ -297,12 +307,7 @@ impl<'s> Cx<'s> {
     /// `f(x; a) -> y`, `R(\theta) -> matrix`, `A: [[..]]` / `v(; a): [..]`,
     /// `S: span(..)`, `p: arrow(..)`. Reports and returns None otherwise.
     fn check_shape<'d>(&mut self, def: &'d Def) -> Option<Shape<'d>> {
-        if def.name.deriv > 0 {
-            self.unsupported(def.name_span, "도함수 이름 (f@n)", 5);
-            return None;
-        }
-        if def.name.inverse {
-            self.unsupported(def.name_span, "역함수 이름 (~f)", 5);
+        if deriv::related(&def.name).is_some() && !self.check_related_head(def) {
             return None;
         }
         if let Some(r) = self.check_shape_drawn(def) {
@@ -316,6 +321,7 @@ impl<'s> Cx<'s> {
         let drawn_call = match &body.kind {
             ExprKind::Call { callee, .. } if callee.key == "span" => Some(DefKind::Span),
             ExprKind::Call { callee, .. } if callee.key == "arrow" => Some(DefKind::Arrow),
+            ExprKind::Feature { .. } => Some(DefKind::Feature),
             _ => None,
         };
         let const_sig = |key: &str| if consts.is_empty() { key.to_string() } else { format!("{key}(; {})", consts.iter().map(|(c, _)| c.key.as_str()).collect::<Vec<_>>().join(", ")) };
@@ -443,6 +449,10 @@ impl<'s> Cx<'s> {
             self.failed.insert(key);
             return;
         };
+        if deriv::related(&def.name).is_some() && !self.check_related_axes(def, &shape) {
+            self.failed.insert(key);
+            return;
+        }
         self.check_names(def, &shape);
 
         let mut scope = Scope {
@@ -469,6 +479,7 @@ impl<'s> Cx<'s> {
             DefKind::Curve | DefKind::Polar if matches!(body.kind, ExprKind::Split { .. }) => self.resolve_split(&mut body, &mut scope, &mut info),
             DefKind::Parametric => self.resolve_parametric(&mut body, shape.outputs.len() as u32, &mut scope, &mut info),
             DefKind::Equation => self.resolve_equation(&mut body, &mut scope, &mut info),
+            DefKind::Feature => self.resolve_feature(&mut body, &mut scope, &mut info),
             _ if matches!(body.kind, ExprKind::Split { .. }) => {
                 self.err(body.span, code::TYPE, format!("split은 그리는 함수(f(x) -> y)에만 씀 ({}에는 쓸 수 없음)", shape.kind.word()));
                 Ty::Unknown
@@ -488,7 +499,7 @@ impl<'s> Cx<'s> {
             _ => None,
         };
         match (shape.kind, &ty) {
-            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow | DefKind::Parametric | DefKind::Equation, _) => {}
+            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow | DefKind::Parametric | DefKind::Equation | DefKind::Feature, _) => {}
             (DefKind::Polar, Ty::Scalar) => {}
             (DefKind::Polar, t) => self.err(body.span, code::TYPE, format!("극좌표 함수의 값(r)은 숫자여야 함 (이 식은 {})", t.describe())),
             (_, Ty::Region) => self.err(body.span, code::TYPE, "부등식은 정의 값이 될 수 없음"),
@@ -569,12 +580,14 @@ impl<'s> Cx<'s> {
             outputs: shape.outputs.clone(),
             range,
             family,
+            feature: self.pending_feature.take(),
             ty,
             consts: scope.consts.clone(),
             body,
             body_src,
             calls: info.callees.iter().cloned().collect(),
             constraints: std::mem::take(&mut info.constraints),
+            derivs: old.as_ref().map_or(vec![], |o| o.derivs.clone()),
             color,
             order,
             version: old.as_ref().map_or(0, |o| o.version),
@@ -692,8 +705,14 @@ impl<'s> Cx<'s> {
                         continue;
                     }
                     self.notes.push(Note::FunctionDeleted { key: k.clone(), via });
-                    let mut callers: Vec<(u64, String)> =
-                        self.state.functions.values().filter(|h| h.calls.contains(&k)).map(|h| (h.order, h.key.clone())).collect();
+                    // Callers, and `k@n` / `~k`, which belong to k by name.
+                    let mut callers: Vec<(u64, String)> = self
+                        .state
+                        .functions
+                        .values()
+                        .filter(|h| h.calls.contains(&k) || deriv::related(&h.name).is_some_and(|(b, _)| b == k))
+                        .map(|h| (h.order, h.key.clone()))
+                        .collect();
                     callers.sort();
                     // Reverse so the earliest-created caller is deleted (and listed) first.
                     queue.extend(callers.into_iter().rev().map(|(_, h)| (h, Some(k.clone()))));
@@ -726,9 +745,14 @@ impl<'s> Cx<'s> {
             self.notes.push(Note::ConstantRemoved { key: k });
         }
         if self.diags.is_empty() {
+            self.check_related_defs();
+            self.refresh_features();
+        }
+        if self.diags.is_empty() {
             self.refresh_highlights();
             self.refresh_scenes();
             self.sync_default_scenes();
+            self.fill_derivs();
         }
     }
 
@@ -1183,6 +1207,11 @@ impl<'s> Cx<'s> {
                 self.err(span, code::TYPE, "부분식 주소는 highlight·req의 대상 칸에만 쓸 수 있음");
                 Ty::Unknown
             }
+            ExprKind::Feature { callee, .. } => {
+                let call = self.src[span.range()].to_string();
+                self.err_s(span, code::TYPE, format!("{}은(는) 식 안에 쓸 수 없음 (정의 하나로 씀)", callee.key), format!("define:\n    E: {call}"));
+                Ty::Unknown
+            }
             // Only ever a whole body (parser); `define` routes it to `resolve_split`.
             ExprKind::Split { .. } => {
                 self.err(span, code::TYPE, "split은 정의 본문 전체로만 씀");
@@ -1198,8 +1227,14 @@ impl<'s> Cx<'s> {
         if is_bad_tex(name) {
             return (NameKind::Unresolved, Ty::Unknown);
         }
-        if name.deriv > 0 || name.inverse {
-            self.unsupported(span, "도함수·역함수 이름", 5);
+        if let Some((base, _)) = deriv::related(name)
+            && !self.state.functions.contains_key(key)
+        {
+            if self.state.functions.contains_key(&base) && name.deriv > 0 {
+                self.err_s(span, code::NOT_VALUE, format!("함수 '{key}'는 불러서 써야 함"), format!("{key}({})", sc.input()));
+            } else {
+                self.err(span, code::UNDECLARED, format!("'{key}'가 정의되지 않음"));
+            }
             return (NameKind::Unresolved, Ty::Unknown);
         }
         if sc.indices.contains(key) {
@@ -1231,7 +1266,7 @@ impl<'s> Cx<'s> {
                 }
             };
         }
-        if let Some(f) = self.state.functions.get(key).filter(|f| f.kind == DefKind::Value)
+        if let Some(f) = self.state.functions.get(key).filter(|f| matches!(f.kind, DefKind::Value | DefKind::Feature))
             && *key != sc.def_key
         {
             info.callees.insert(key.clone());
@@ -1287,9 +1322,8 @@ impl<'s> Cx<'s> {
         if is_bad_tex(callee) {
             return (NameKind::Unresolved, Ty::Unknown);
         }
-        if callee.deriv > 0 || callee.inverse {
-            self.unsupported(span, "도함수·역함수 호출", 5);
-            return (NameKind::Unresolved, Ty::Unknown);
+        if let Some(r) = self.resolve_related_call(callee, argc, span, sc, info) {
+            return r;
         }
         if let Some(arity) = names::builtin_arity(key) {
             if !arity.contains(&argc) {
@@ -1328,6 +1362,10 @@ impl<'s> Cx<'s> {
                 }
                 DefKind::Span | DefKind::Arrow => {
                     self.err(span, code::TYPE, format!("{} '{key}'는 그리는 정의라 식에 쓸 수 없음", f.kind.word()));
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
+                DefKind::Feature => {
+                    self.err_s(span, code::NOT_FUNCTION, format!("특징점 '{key}'는 부를 수 없음 (점 하나일 때 좌표는 {key}_[1], {key}_[2])"), format!("{key}_[1]"));
                     return (NameKind::Unresolved, Ty::Unknown);
                 }
             }
@@ -1495,6 +1533,8 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
     Ok(Applied { state: new, changes, notes: vec![] })
 }
 
+mod deriv;
+mod feature;
 mod hl;
 mod scene;
 mod drawn;

@@ -52,6 +52,24 @@ pub const LINALG: &[(&str, &[usize])] = &[
     ("arrow", &[1, 2]),
 ];
 
+/// Feature-point functions (stage 5b), only the body of a definition (`E: extrema(f)`):
+/// name, number of targets, filter words for the third slot.
+pub const FEATURES: &[(&str, usize, &[&str])] = &[
+    ("roots", 1, &[]),
+    ("intersect", 2, &[]),
+    ("yint", 1, &[]),
+    ("extrema", 1, &["max", "min"]),
+    ("inflections", 1, &[]),
+    ("argmax", 1, &[]),
+    ("argmin", 1, &[]),
+    ("breaks", 1, &["hole", "asymptote", "jump", "endpoint", "cusp"]),
+    ("tangents", 1, &["horizontal", "vertical"]),
+];
+
+pub fn feature(name: &str) -> Option<(usize, &'static [&'static str])> {
+    FEATURES.iter().find(|(n, ..)| *n == name).map(|(_, t, f)| (*t, *f))
+}
+
 /// Largest number of rows or columns in a matrix literal (resource bound).
 pub const MAX_DIM: u32 = 32;
 
@@ -67,7 +85,7 @@ pub fn builtin_arity(name: &str) -> Option<&'static [usize]> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    builtin_arity(name).is_some() || BIG_OPS.contains(&name) || is_linalg(name)
+    builtin_arity(name).is_some() || BIG_OPS.contains(&name) || is_linalg(name) || feature(name).is_some()
 }
 
 /// Replacement for a LaTeX command that is not a name (structure commands, operators).
