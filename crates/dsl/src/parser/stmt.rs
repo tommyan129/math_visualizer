@@ -92,11 +92,22 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Tok::Kw(Keyword::Define) => self.define(),
             Tok::Kw(Keyword::Del) => self.del(),
-            Tok::Kw(Keyword::Constant) => self.unsupported(span, "constant: 블록", 2),
+            Tok::Kw(Keyword::Constant) => self.constant(),
+            Tok::Kw(Keyword::Style) => self.style(),
             Tok::Kw(Keyword::Scene) => self.unsupported(span, "scene", 3),
             Tok::Kw(Keyword::Step) => self.unsupported(span, "step", 3),
-            Tok::Ident if self.peek_at(1) == Tok::Eq => self.unsupported(span, "변수 대입 (highlight 포함)", 2),
-            Tok::Ident if matches!(self.peek_text(), "req" | "highlight") => self.unsupported(span, self.peek_text(), 2),
+            _ if self.line_has_assignment() => self.assign(),
+            Tok::Ident if self.peek_text() == "req" && self.peek_at(1) == Tok::LParen => {
+                let slots = self.slots()?;
+                self.expect_line_end()?;
+                Ok(Stmt::Req { span: slots.span, slots })
+            }
+            Tok::Ident if self.peek_text() == "highlight" && self.peek_at(1) == Tok::LParen => {
+                let slots = self.slots()?;
+                let text = &self.src[slots.span.range()];
+                self.diag(Diagnostic::new(slots.span, code::HIGHLIGHT_NAME, "highlight에는 이름이 필요함").suggest(format!("H1 = {text}")));
+                Err(())
+            }
             _ => {
                 // A definition written outside `define:`?
                 let looks_like_def = self.toks[self.pos..]
@@ -106,11 +117,175 @@ impl<'a> Parser<'a> {
                 if looks_like_def {
                     self.diag(Diagnostic::new(span, code::SYNTAX, "정의는 define: 블록 안에 써야 함").suggest("define:\n    f(x) -> y: ..."));
                 } else {
-                    self.report_unexpected("문장(define:, del)");
+                    self.report_unexpected("문장(define:, constant:, style, del, 이름 = 값, req)");
                 }
                 Err(())
             }
         }
+    }
+
+    /// Does the current line contain `=` outside brackets (an assignment)?
+    fn line_has_assignment(&self) -> bool {
+        let mut depth = 0i32;
+        for t in &self.toks[self.pos..] {
+            match t.tok {
+                Tok::Newline | Tok::Eof => return false,
+                Tok::LParen | Tok::LBracket | Tok::LBrace => depth += 1,
+                Tok::RParen | Tok::RBracket | Tok::RBrace => depth -= 1,
+                Tok::Colon | Tok::Arrow if depth == 0 => return false,
+                Tok::Eq if depth == 0 => return true,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn assign(&mut self) -> PResult<Stmt> {
+        let start = self.peek_span();
+        let (name, name_span) = self.name()?;
+        self.expect(Tok::Eq, "'='")?;
+        let value = if self.at(Tok::Ident) && self.peek_at(1) == Tok::LParen && self.peek_text() == "highlight" {
+            AssignValue::Highlight(self.slots()?)
+        } else if self.at(Tok::Ident) && self.peek_at(1) == Tok::LParen && self.peek_text() == "req" {
+            let slots = self.slots()?;
+            let text = &self.src[slots.span.range()];
+            self.diag(Diagnostic::new(start.to(slots.span), code::SYNTAX, "req에는 이름을 붙이지 않음 (번호가 자동으로 붙음)").suggest(text.to_string()));
+            return Err(());
+        } else {
+            AssignValue::Expr(self.expr()?)
+        };
+        let end = self.prev_span();
+        self.expect_line_end()?;
+        Ok(Stmt::Assign { name, name_span, value, span: start.to(end) })
+    }
+
+    /// `head(slot; slot; ...)`: `;`-separated, empty slots allowed.
+    fn slots(&mut self) -> PResult<Slots> {
+        let head = self.bump().span;
+        self.expect(Tok::LParen, "'('")?;
+        let mut items = vec![];
+        let mut spans = vec![];
+        loop {
+            if matches!(self.peek(), Tok::Semi | Tok::RParen) {
+                spans.push(self.peek_span());
+                items.push(None);
+            } else {
+                let e = self.expr()?;
+                spans.push(e.span);
+                items.push(Some(e));
+            }
+            if self.at(Tok::Comma) {
+                return self.error_here(code::SYNTAX, "칸 구분은 ','가 아니라 ';'", Some(";"));
+            }
+            if !self.eat(Tok::Semi) {
+                break;
+            }
+        }
+        let end = self.expect(Tok::RParen, "';' 또는 ')'")?;
+        Ok(Slots { items, spans, span: head.to(end) })
+    }
+
+    /// `constant:` with one indented entry per line.
+    fn constant(&mut self) -> PResult<Stmt> {
+        let start = self.bump().span;
+        self.expect(Tok::Colon, "'constant' 뒤에 ':'")?;
+        if !self.at(Tok::Newline) || self.peek_at(1) != Tok::Indent {
+            self.diag(Diagnostic::new(start, code::SYNTAX, "constant: 아래에 들여쓴 상수가 와야 함").suggest("constant:\n    a: range=(-5, 5), default=1"));
+            return Err(());
+        }
+        self.bump();
+        self.bump();
+        let mut entries = vec![];
+        self.block_lines(|p| {
+            entries.push(p.const_entry()?);
+            Ok(())
+        });
+        Ok(Stmt::Constant { entries, span: start.to(self.prev_span()) })
+    }
+
+    /// Runs `line` for each line of an indented block (already past `Indent`), with recovery.
+    fn block_lines(&mut self, mut line: impl FnMut(&mut Self) -> PResult<()>) {
+        loop {
+            match self.peek() {
+                Tok::Dedent => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => break,
+                Tok::Newline => {
+                    self.bump();
+                }
+                Tok::Indent => {
+                    let span = self.peek_span();
+                    self.diag(Diagnostic::new(span, code::INDENT, "여기서는 더 들여쓸 수 없음").suggest("앞 줄과 같은 들여쓰기"));
+                    self.skip_block();
+                }
+                _ => {
+                    if line(self).is_err() {
+                        self.sync_line();
+                    }
+                }
+            }
+        }
+    }
+
+    fn const_entry(&mut self) -> PResult<ConstEntry> {
+        let start = self.peek_span();
+        let (name, name_span) = self.name()?;
+        self.expect(Tok::Colon, "':'")?;
+        let mut kind = None;
+        let mut props = vec![];
+        loop {
+            let key_tok = self.peek();
+            let is_key = matches!(key_tok, Tok::Ident | Tok::Kw(Keyword::Step)) && self.peek_at(1) == Tok::Eq;
+            if is_key {
+                let t = self.bump();
+                let key = self.src[t.span.range()].to_string();
+                self.bump();
+                let value = self.expr()?;
+                props.push(Prop { key, key_span: t.span, value });
+            } else if self.at(Tok::Ident) && kind.is_none() && props.is_empty() {
+                let t = self.bump();
+                kind = Some((self.src[t.span.range()].to_string(), t.span));
+            } else {
+                return self.unexpected("'range=', 'default=', 'step=' 또는 종류(real, integer)");
+            }
+            if !self.eat(Tok::Comma) {
+                break;
+            }
+        }
+        let end = self.prev_span();
+        self.expect_line_end()?;
+        Ok(ConstEntry { name, name_span, kind, props, span: start.to(end) })
+    }
+
+    /// `style name:` with indented `prop: value` lines.
+    fn style(&mut self) -> PResult<Stmt> {
+        let start = self.bump().span;
+        let (name, name_span) = self.name()?;
+        self.expect(Tok::Colon, "':'")?;
+        if !self.at(Tok::Newline) || self.peek_at(1) != Tok::Indent {
+            self.diag(Diagnostic::new(start, code::SYNTAX, "style 아래에 들여쓴 속성이 와야 함").suggest(format!("style {}:\n    color: orange\n    fill: above", name.key)));
+            return Err(());
+        }
+        self.bump();
+        self.bump();
+        let mut props = vec![];
+        self.block_lines(|p| {
+            let t = p.peek_span();
+            if !p.at(Tok::Ident) {
+                return p.unexpected("속성 이름(color, fill, opacity, width)");
+            }
+            p.bump();
+            let key = p.src[t.range()].to_string();
+            p.expect(Tok::Colon, "':'")?;
+            let value = p.expr()?;
+            let span = t.to(value.span);
+            p.expect_line_end()?;
+            props.push(StyleProp { key, key_span: t, value, span });
+            Ok(())
+        });
+        Ok(Stmt::Style { name, name_span, props, span: start.to(self.prev_span()) })
     }
 
     fn define(&mut self) -> PResult<Stmt> {
@@ -335,10 +510,74 @@ mod tests {
 
     #[test]
     fn unsupported_statements() {
-        assert_eq!(errs("constant:\n    a: range=(-5, 5)\n"), vec![code::UNSUPPORTED]);
         assert_eq!(errs("scene(1):\n    space: 2D(x, y)\n"), vec![code::UNSUPPORTED]);
-        assert_eq!(errs("H1 = highlight(f;;)\n"), vec![code::UNSUPPORTED]);
-        assert_eq!(errs("req(f)\n"), vec![code::UNSUPPORTED]);
+        assert_eq!(errs("step:\n    show: +f\n"), vec![code::UNSUPPORTED]);
+    }
+
+    #[test]
+    fn constant_block() {
+        let s = ok("constant:\n    a: range=(-5, 5), default=1, step=0.1\n    n: integer, range=(1, 50)\n");
+        let Stmt::Constant { entries, .. } = &s[0] else { panic!() };
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name.key, "a");
+        assert!(entries[0].kind.is_none());
+        assert_eq!(entries[0].props.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["range", "default", "step"]);
+        assert!(matches!(entries[0].props[0].value.kind, ExprKind::Tuple { .. }));
+        assert_eq!(entries[1].kind.as_ref().unwrap().0, "integer");
+    }
+
+    #[test]
+    fn constant_block_errors() {
+        assert_eq!(errs("constant:\n    a range=(1, 2)\n"), vec![code::SYNTAX]);
+        assert_eq!(errs("constant: a: range=(1, 2)\n"), vec![code::SYNTAX]);
+        // The kind word comes first; one bad entry does not hide the next.
+        assert_eq!(errs("constant:\n    a: range=(1, 2), integer\n    b: default=+\n"), vec![code::SYNTAX, code::UNARY_PLUS, code::SYNTAX]);
+    }
+
+    #[test]
+    fn style_block() {
+        let s = ok("style up:\n    color: orange\n    fill: above\n    opacity: 0.25\n");
+        let Stmt::Style { name, props, .. } = &s[0] else { panic!() };
+        assert_eq!(name.key, "up");
+        assert_eq!(props.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["color", "fill", "opacity"]);
+        assert_eq!(errs("style s:\n    color orange\n"), vec![code::SYNTAX]);
+        assert_eq!(errs("style s: color: orange\n"), vec![code::SYNTAX]);
+    }
+
+    #[test]
+    fn assignment_and_highlight() {
+        let s = ok("R1 = 0.9 < x < 1.1\nm = \"메모\"\nH1 = highlight(f; R1; blue; m)\nH2 = highlight(; between(f, g) and 0 <= x <= 2)\nH3 = highlight(f.(b*x).coef;; orange)\n");
+        assert_eq!(s.len(), 5);
+        assert!(matches!(&s[0], Stmt::Assign { name, value: AssignValue::Expr(e), .. } if name.key == "R1" && matches!(e.kind, ExprKind::Compare { .. })));
+        assert!(matches!(&s[1], Stmt::Assign { value: AssignValue::Expr(e), .. } if matches!(&e.kind, ExprKind::Str { raw } if raw == "메모")));
+        let Stmt::Assign { value: AssignValue::Highlight(h), .. } = &s[2] else { panic!() };
+        assert_eq!(h.items.len(), 4);
+        let Stmt::Assign { value: AssignValue::Highlight(h), .. } = &s[3] else { panic!() };
+        assert!(h.items[0].is_none() && matches!(h.get(1).unwrap().kind, ExprKind::And { .. }));
+        let Stmt::Assign { value: AssignValue::Highlight(h), .. } = &s[4] else { panic!() };
+        assert_eq!(h.items.len(), 3);
+        assert!(h.items[1].is_none());
+        assert!(matches!(h.get(0).unwrap().kind, ExprKind::Address { .. }));
+    }
+
+    #[test]
+    fn req_statement() {
+        let s = ok("req(f; 0.9 < x < 1.1; \"끊겨 보임\")\nreq(g;; \"부호\")\nreq(h)\nreq(g.den; ; m)\n");
+        assert_eq!(s.len(), 4);
+        let Stmt::Req { slots, .. } = &s[2] else { panic!() };
+        assert_eq!(slots.items.len(), 1);
+        let Stmt::Req { slots, .. } = &s[3] else { panic!() };
+        assert_eq!(slots.items.len(), 3);
+        assert!(slots.items[1].is_none());
+    }
+
+    #[test]
+    fn highlight_and_req_errors() {
+        assert_eq!(errs("highlight(f;;)\n"), vec![code::HIGHLIGHT_NAME]);
+        assert_eq!(errs("H1 = highlight(f, 0 < x;;)\n"), vec![code::SYNTAX]);
+        assert_eq!(errs("R = req(f)\n"), vec![code::SYNTAX]);
+        assert_eq!(errs("H1 = highlight(f; 0 < x\n"), vec![code::SYNTAX]);
+        assert_eq!(errs("R1 = \n"), vec![code::SYNTAX]);
     }
 
     #[test]

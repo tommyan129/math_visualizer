@@ -21,6 +21,8 @@ pub enum Keyword {
     Or,
     Not,
     Del,
+    /// `style name:` block (stage 2).
+    Style,
 }
 
 impl Keyword {
@@ -36,6 +38,7 @@ impl Keyword {
             "or" => Self::Or,
             "not" => Self::Not,
             "del" => Self::Del,
+            "style" => Self::Style,
             _ => return None,
         })
     }

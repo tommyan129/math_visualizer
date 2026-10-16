@@ -2,10 +2,14 @@
 import type { Constant } from "./Constant";
 import type { Counters } from "./Counters";
 import type { Function } from "./Function";
+import type { Highlight } from "./Highlight";
+import type { Request } from "./Request";
 import type { SceneState } from "./SceneState";
+import type { StyleDef } from "./StyleDef";
+import type { UserVar } from "./UserVar";
 
 /**
  * One element of an applied result: the resolved state of a changed object.
  * Replaying changes from a checkpoint reproduces the state without re-parsing.
  */
-export type Change = { "type": "PutFunction", function: Function, } | { "type": "RemoveFunction", key: string, } | { "type": "PutConstant", constant: Constant, } | { "type": "RemoveConstant", key: string, } | { "type": "PutScene", scene: SceneState, } | { "type": "SetCounters", counters: Counters, };
+export type Change = { "type": "PutFunction", function: Function, } | { "type": "RemoveFunction", key: string, } | { "type": "PutConstant", constant: Constant, } | { "type": "RemoveConstant", key: string, } | { "type": "PutScene", scene: SceneState, } | { "type": "SetCounters", counters: Counters, } | { "type": "PutHighlight", highlight: Highlight, } | { "type": "RemoveHighlight", key: string, } | { "type": "PutStyle", style: StyleDef, } | { "type": "RemoveStyle", key: string, } | { "type": "PutVar", var: UserVar, } | { "type": "RemoveVar", key: string, } | { "type": "PutRequest", request: Request, };

@@ -1,6 +1,8 @@
 use super::*;
 use crate::span::LineIndex;
 
+mod stage2;
+
 fn run(state: &State, src: &str) -> Result<Applied, Vec<Diagnostic>> {
     apply(state, src, &Limits::default(), 1)
 }
@@ -245,7 +247,7 @@ fn stage_shape_errors() {
     assert_eq!(codes(&s, &def(&["C(x, y): x^2 + y^2 = 1"])), vec![code::UNSUPPORTED]);
     assert_eq!(codes(&s, &def(&["f@2(x) -> y: 2"])), vec![code::UNSUPPORTED]);
     assert_eq!(codes(&s, &def(&["f(x) -> y: [1, 2]"])), vec![code::UNSUPPORTED]);
-    assert_eq!(codes(&s, &def(&["f(x) -> y: \"text\""])), vec![code::UNSUPPORTED]);
+    assert_eq!(codes(&s, &def(&["f(x) -> y: \"text\""])), vec![code::TYPE]);
     let d = first_err(&s, &def(&["f(x): x^2"]));
     assert_eq!(d.code, code::ARROW);
     assert_eq!(d.suggestion.as_deref(), Some("f(x) -> y: x^2"));
@@ -325,11 +327,6 @@ fn greek_and_hangul_names() {
 }
 
 #[test]
-fn later_stage_statements_rejected() {
-    assert_eq!(codes(&State::default(), "constant:\n    a: range=(-5, 5)\n"), vec![code::UNSUPPORTED]);
-}
-
-#[test]
 fn limits() {
     let tiny = Limits { fuel: 3, ..Limits::default() };
     let d = apply(&State::default(), &def(&["f(x; a) -> y: a*x^2 + 1"]), &tiny, 1).unwrap_err();
@@ -352,12 +349,12 @@ fn user_ops() {
     assert!(apply_user_op(&s, &UserOp::SetRange { constant: "a".into(), min: 2.0, max: 2.0 }, 2).is_err());
     let r = apply_user_op(&s, &UserOp::SetRange { constant: "a".into(), min: 2.0, max: 3.0 }, 2).unwrap();
     assert_eq!(r.state.constants["a"].value, 2.0, "value moves into the new range");
-    let t = apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), function: "f".into(), visible: false }, 2).unwrap();
+    let t = apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), target: "f".into(), visible: false }, 2).unwrap();
     assert_eq!(t.state.scenes[DEFAULT_SCENE].hidden, ["f"]);
     // Deleting a hidden function clears its toggle entry.
     let d = apply(&t.state, "del f\n", &Limits::default(), 3).unwrap();
     assert!(d.state.scenes[DEFAULT_SCENE].hidden.is_empty());
-    assert!(apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), function: "q".into(), visible: false }, 2).is_err());
+    assert!(apply_user_op(&s, &UserOp::Toggle { scene: DEFAULT_SCENE.into(), target: "q".into(), visible: false }, 2).is_err());
 }
 
 #[test]

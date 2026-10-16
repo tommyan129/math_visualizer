@@ -1173,6 +1173,61 @@
       "order": 20,
       "version": 1
     },
+    "lin": {
+      "key": "lin",
+      "name": {
+        "key": "lin",
+        "base": "lin",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Name",
+        "name": {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Input"
+      },
+      "body_src": "x",
+      "calls": [],
+      "color": 21,
+      "order": 23,
+      "version": 1
+    },
     "md": {
       "key": "md",
       "name": {
@@ -1475,6 +1530,250 @@
       "calls": [],
       "color": 13,
       "order": 14,
+      "version": 1
+    },
+    "poly": {
+      "key": "poly",
+      "name": {
+        "key": "poly",
+        "base": "poly",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "consts": [
+        "a",
+        "b"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Sum",
+        "terms": [
+          {
+            "id": 1,
+            "sign": "Plus",
+            "expr": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Product",
+              "factors": [
+                {
+                  "id": 3,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "a",
+                    "base": "a",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Constant"
+                },
+                {
+                  "id": 4,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Pow",
+                  "base": {
+                    "id": 5,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  },
+                  "exp": {
+                    "id": 6,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "2",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": 7,
+            "sign": "Minus",
+            "expr": {
+              "id": 8,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Product",
+              "factors": [
+                {
+                  "id": 9,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "b",
+                    "base": "b",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Constant"
+                },
+                {
+                  "id": 10,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              ]
+            }
+          },
+          {
+            "id": 11,
+            "sign": "Plus",
+            "expr": {
+              "id": 12,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            }
+          }
+        ]
+      },
+      "body_src": "a*x^2 - b*x + 1",
+      "calls": [],
+      "color": 23,
+      "order": 25,
+      "version": 1
+    },
+    "quad": {
+      "key": "quad",
+      "name": {
+        "key": "quad",
+        "base": "quad",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Pow",
+        "base": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Input"
+        },
+        "exp": {
+          "id": 2,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "2",
+          "int": true
+        }
+      },
+      "body_src": "x^2",
+      "calls": [],
+      "color": 22,
+      "order": 24,
       "version": 1
     },
     "rnd": {
@@ -2049,7 +2348,30 @@
       "max": 10.0,
       "step": 0.1,
       "integer": false,
+      "declared": false,
+      "kind_fixed": false,
       "order": 15,
+      "version": 1
+    },
+    "b": {
+      "key": "b",
+      "name": {
+        "key": "b",
+        "base": "b",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "value": 1.0,
+      "min": -10.0,
+      "max": 10.0,
+      "step": 0.1,
+      "integer": false,
+      "declared": false,
+      "kind_fixed": false,
+      "order": 26,
       "version": 1
     },
     "n": {
@@ -2068,6 +2390,8 @@
       "max": 20.0,
       "step": 1.0,
       "integer": true,
+      "declared": false,
+      "kind_fixed": false,
       "order": 7,
       "version": 1
     }
@@ -2079,8 +2403,1510 @@
       "version": 0
     }
   },
+  "highlights": {
+    "H1": {
+      "key": "H1",
+      "name": {
+        "key": "H1",
+        "base": "H1",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "target": {
+        "type": "Function",
+        "function": "quad"
+      },
+      "range": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "Paren",
+        "inner": {
+          "id": 1,
+          "ty": {
+            "type": "Region"
+          },
+          "type": "Compare",
+          "first": {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "0",
+            "int": true
+          },
+          "rest": [
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            },
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "2",
+                "int": true
+              }
+            }
+          ]
+        }
+      },
+      "style": {
+        "color": "#6ea8ff",
+        "fill": "Axis",
+        "opacity": 0.16,
+        "width": 1.5
+      },
+      "style_name": "blue",
+      "memo": "넓이",
+      "consts": [],
+      "deps": [
+        "R1",
+        "quad"
+      ],
+      "source": {
+        "target": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "quad",
+            "base": "quad",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "range": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "R1",
+            "base": "R1",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "style": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "blue",
+            "base": "blue",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "memo": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Str",
+          "raw": "넓이"
+        }
+      },
+      "src": "highlight(quad; R1; blue; \"넓이\")",
+      "auto_color": "#5fd38a",
+      "order": 28,
+      "version": 2
+    },
+    "H2": {
+      "key": "H2",
+      "name": {
+        "key": "H2",
+        "base": "H2",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "target": {
+        "type": "Grid"
+      },
+      "range": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "And",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Region"
+            },
+            "type": "Paren",
+            "inner": {
+              "id": 2,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Or",
+              "args": [
+                {
+                  "id": 3,
+                  "ty": {
+                    "type": "Region"
+                  },
+                  "type": "Compare",
+                  "first": {
+                    "id": 4,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Call",
+                    "callee": {
+                      "key": "lin",
+                      "base": "lin",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Function",
+                    "args": [
+                      {
+                        "id": 5,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    ]
+                  },
+                  "rest": [
+                    {
+                      "op": "Lt",
+                      "rhs": {
+                        "id": 6,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "y",
+                          "base": "y",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    },
+                    {
+                      "op": "Lt",
+                      "rhs": {
+                        "id": 7,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Call",
+                        "callee": {
+                          "key": "quad",
+                          "base": "quad",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Function",
+                        "args": [
+                          {
+                            "id": 8,
+                            "ty": {
+                              "type": "Scalar"
+                            },
+                            "type": "Name",
+                            "name": {
+                              "key": "x",
+                              "base": "x",
+                              "accent": null,
+                              "sub": null,
+                              "sup": null,
+                              "deriv": 0,
+                              "inverse": false
+                            },
+                            "kind": "Input"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": 9,
+                  "ty": {
+                    "type": "Region"
+                  },
+                  "type": "Compare",
+                  "first": {
+                    "id": 10,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Call",
+                    "callee": {
+                      "key": "quad",
+                      "base": "quad",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Function",
+                    "args": [
+                      {
+                        "id": 11,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    ]
+                  },
+                  "rest": [
+                    {
+                      "op": "Lt",
+                      "rhs": {
+                        "id": 12,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "y",
+                          "base": "y",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    },
+                    {
+                      "op": "Lt",
+                      "rhs": {
+                        "id": 13,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Call",
+                        "callee": {
+                          "key": "lin",
+                          "base": "lin",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Function",
+                        "args": [
+                          {
+                            "id": 14,
+                            "ty": {
+                              "type": "Scalar"
+                            },
+                            "type": "Name",
+                            "name": {
+                              "key": "x",
+                              "base": "x",
+                              "accent": null,
+                              "sub": null,
+                              "sup": null,
+                              "deriv": 0,
+                              "inverse": false
+                            },
+                            "kind": "Input"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": 15,
+            "ty": {
+              "type": "Region"
+            },
+            "type": "Compare",
+            "first": {
+              "id": 16,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "0",
+              "int": true
+            },
+            "rest": [
+              {
+                "op": "Le",
+                "rhs": {
+                  "id": 17,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              },
+              {
+                "op": "Le",
+                "rhs": {
+                  "id": 18,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "style": {
+        "color": "#5fd38a",
+        "fill": "Region",
+        "opacity": 0.16,
+        "width": 1.5
+      },
+      "style_name": "green",
+      "memo": null,
+      "consts": [],
+      "deps": [
+        "lin",
+        "quad"
+      ],
+      "source": {
+        "target": null,
+        "range": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "And",
+          "args": [
+            {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "between",
+                "base": "between",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Unresolved",
+              "args": [
+                {
+                  "id": 0,
+                  "ty": {
+                    "type": "Unknown"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "lin",
+                    "base": "lin",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Unresolved"
+                },
+                {
+                  "id": 0,
+                  "ty": {
+                    "type": "Unknown"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "quad",
+                    "base": "quad",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Unresolved"
+                }
+              ]
+            },
+            {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 0,
+                "ty": {
+                  "type": "Unknown"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              },
+              "rest": [
+                {
+                  "op": "Le",
+                  "rhs": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Unresolved"
+                  }
+                },
+                {
+                  "op": "Le",
+                  "rhs": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Num",
+                    "text": "2",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "style": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "green",
+            "base": "green",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "memo": null
+      },
+      "src": "highlight(; between(lin, quad) and 0 <= x <= 2; green)",
+      "auto_color": "#ffa057",
+      "order": 29,
+      "version": 2
+    },
+    "H3": {
+      "key": "H3",
+      "name": {
+        "key": "H3",
+        "base": "H3",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "target": {
+        "type": "Sub",
+        "function": "poly",
+        "nodes": [
+          9
+        ],
+        "address": "poly.(-b*x).coef"
+      },
+      "range": null,
+      "style": {
+        "color": "#ffa057",
+        "fill": "Axis",
+        "opacity": 0.16,
+        "width": 1.5
+      },
+      "style_name": "orange",
+      "memo": null,
+      "consts": [
+        "a",
+        "b"
+      ],
+      "deps": [
+        "poly"
+      ],
+      "source": {
+        "target": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Address",
+          "base": {
+            "id": 0,
+            "ty": {
+              "type": "Unknown"
+            },
+            "type": "Address",
+            "base": {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Name",
+              "name": {
+                "key": "poly",
+                "base": "poly",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Unresolved"
+            },
+            "step": {
+              "type": "Term",
+              "pattern": {
+                "id": 0,
+                "ty": {
+                  "type": "Unknown"
+                },
+                "type": "Product",
+                "factors": [
+                  {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Neg",
+                    "arg": {
+                      "id": 0,
+                      "ty": {
+                        "type": "Unknown"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "b",
+                        "base": "b",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Unresolved"
+                    }
+                  },
+                  {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Unresolved"
+                  }
+                ]
+              }
+            }
+          },
+          "step": {
+            "type": "Part",
+            "part": "coef"
+          }
+        },
+        "range": null,
+        "style": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "orange",
+            "base": "orange",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "memo": null
+      },
+      "src": "highlight(poly.(-b*x).coef;; orange)",
+      "auto_color": "#c08cff",
+      "order": 30,
+      "version": 2
+    },
+    "H4": {
+      "key": "H4",
+      "name": {
+        "key": "H4",
+        "base": "H4",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "target": {
+        "type": "Sub",
+        "function": "poly",
+        "nodes": [
+          7
+        ],
+        "address": "poly.(-b*x)"
+      },
+      "range": null,
+      "style": {
+        "color": "#ff6b6b",
+        "fill": "Axis",
+        "opacity": 0.16,
+        "width": 1.5
+      },
+      "style_name": "red",
+      "memo": null,
+      "consts": [
+        "a",
+        "b"
+      ],
+      "deps": [
+        "poly"
+      ],
+      "source": {
+        "target": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Address",
+          "base": {
+            "id": 0,
+            "ty": {
+              "type": "Unknown"
+            },
+            "type": "Name",
+            "name": {
+              "key": "poly",
+              "base": "poly",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Unresolved"
+          },
+          "step": {
+            "type": "Term",
+            "pattern": {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Product",
+              "factors": [
+                {
+                  "id": 0,
+                  "ty": {
+                    "type": "Unknown"
+                  },
+                  "type": "Neg",
+                  "arg": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "b",
+                      "base": "b",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Unresolved"
+                  }
+                },
+                {
+                  "id": 0,
+                  "ty": {
+                    "type": "Unknown"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Unresolved"
+                }
+              ]
+            }
+          }
+        },
+        "range": null,
+        "style": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "red",
+            "base": "red",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "memo": null
+      },
+      "src": "highlight(poly.(-b*x);; red)",
+      "auto_color": "#6ea8ff",
+      "order": 31,
+      "version": 2
+    },
+    "H5": {
+      "key": "H5",
+      "name": {
+        "key": "H5",
+        "base": "H5",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "target": {
+        "type": "Function",
+        "function": "lin"
+      },
+      "range": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "Or",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Region"
+            },
+            "type": "Compare",
+            "first": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            },
+            "rest": [
+              {
+                "op": "Lt",
+                "rhs": {
+                  "id": 3,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Neg",
+                  "arg": {
+                    "id": 4,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "1",
+                    "int": true
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "ty": {
+              "type": "Region"
+            },
+            "type": "Compare",
+            "first": {
+              "id": 6,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            },
+            "rest": [
+              {
+                "op": "Gt",
+                "rhs": {
+                  "id": 7,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "1",
+                  "int": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "style": {
+        "color": "#f2cc60",
+        "fill": "Axis",
+        "opacity": 0.16,
+        "width": 1.5
+      },
+      "style_name": null,
+      "memo": null,
+      "consts": [],
+      "deps": [
+        "lin"
+      ],
+      "source": {
+        "target": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Name",
+          "name": {
+            "key": "lin",
+            "base": "lin",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Unresolved"
+        },
+        "range": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Or",
+          "args": [
+            {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 0,
+                "ty": {
+                  "type": "Unknown"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Unresolved"
+              },
+              "rest": [
+                {
+                  "op": "Lt",
+                  "rhs": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Neg",
+                    "arg": {
+                      "id": 0,
+                      "ty": {
+                        "type": "Unknown"
+                      },
+                      "type": "Num",
+                      "text": "1",
+                      "int": true
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 0,
+                "ty": {
+                  "type": "Unknown"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Unresolved"
+              },
+              "rest": [
+                {
+                  "op": "Gt",
+                  "rhs": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Num",
+                    "text": "1",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "style": null,
+        "memo": null
+      },
+      "src": "highlight(lin; x < -1 or x > 1)",
+      "auto_color": "#f2cc60",
+      "order": 32,
+      "version": 2
+    },
+    "H6": {
+      "key": "H6",
+      "name": {
+        "key": "H6",
+        "base": "H6",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "target": {
+        "type": "Grid"
+      },
+      "range": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "And",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Region"
+            },
+            "type": "Compare",
+            "first": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "y",
+                "base": "y",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            },
+            "rest": [
+              {
+                "op": "Lt",
+                "rhs": {
+                  "id": 3,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Call",
+                  "callee": {
+                    "key": "par",
+                    "base": "par",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Function",
+                  "args": [
+                    {
+                      "id": 4,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "x",
+                        "base": "x",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "ty": {
+              "type": "Region"
+            },
+            "type": "Not",
+            "arg": {
+              "id": 6,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Paren",
+              "inner": {
+                "id": 7,
+                "ty": {
+                  "type": "Region"
+                },
+                "type": "Compare",
+                "first": {
+                  "id": 8,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                },
+                "rest": [
+                  {
+                    "op": "Gt",
+                    "rhs": {
+                      "id": 9,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "a",
+                        "base": "a",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Constant"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "style": {
+        "color": "#ff6b6b",
+        "fill": "Region",
+        "opacity": 0.16,
+        "width": 1.5
+      },
+      "style_name": null,
+      "memo": null,
+      "consts": [
+        "a"
+      ],
+      "deps": [
+        "par"
+      ],
+      "source": {
+        "target": null,
+        "range": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "And",
+          "args": [
+            {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 0,
+                "ty": {
+                  "type": "Unknown"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "y",
+                  "base": "y",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Unresolved"
+              },
+              "rest": [
+                {
+                  "op": "Lt",
+                  "rhs": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Call",
+                    "callee": {
+                      "key": "par",
+                      "base": "par",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Unresolved",
+                    "args": [
+                      {
+                        "id": 0,
+                        "ty": {
+                          "type": "Unknown"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Unresolved"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Not",
+              "arg": {
+                "id": 0,
+                "ty": {
+                  "type": "Unknown"
+                },
+                "type": "Paren",
+                "inner": {
+                  "id": 0,
+                  "ty": {
+                    "type": "Unknown"
+                  },
+                  "type": "Compare",
+                  "first": {
+                    "id": 0,
+                    "ty": {
+                      "type": "Unknown"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Unresolved"
+                  },
+                  "rest": [
+                    {
+                      "op": "Gt",
+                      "rhs": {
+                        "id": 0,
+                        "ty": {
+                          "type": "Unknown"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "a",
+                          "base": "a",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Unresolved"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "style": null,
+        "memo": null
+      },
+      "src": "highlight(; y < par(x) and not (x > a))",
+      "auto_color": "#ff6b6b",
+      "order": 33,
+      "version": 2
+    }
+  },
+  "styles": {},
+  "vars": {
+    "R1": {
+      "key": "R1",
+      "name": {
+        "key": "R1",
+        "base": "R1",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "value": {
+        "id": 0,
+        "ty": {
+          "type": "Unknown"
+        },
+        "type": "Compare",
+        "first": {
+          "id": 0,
+          "ty": {
+            "type": "Unknown"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "rest": [
+          {
+            "op": "Le",
+            "rhs": {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Unresolved"
+            }
+          },
+          {
+            "op": "Le",
+            "rhs": {
+              "id": 0,
+              "ty": {
+                "type": "Unknown"
+              },
+              "type": "Num",
+              "text": "2",
+              "int": true
+            }
+          }
+        ]
+      },
+      "src": "0 <= x <= 2",
+      "order": 27,
+      "version": 2
+    }
+  },
+  "requests": {},
   "counters": {
-    "next_order": 23,
-    "next_color": 21
+    "next_order": 34,
+    "next_color": 24,
+    "next_hl_color": 6,
+    "next_request": 0
   }
 }

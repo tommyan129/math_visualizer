@@ -8,13 +8,17 @@ use std::time::Duration;
 use model::protocol::*;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::engine::{EngineHandle, Event};
-use crate::report::Browser;
+use crate::engine::{ApplyError, EngineHandle, Event, WsRef};
+use crate::report::{self, Browser};
 
 /// How long `apply` waits for the browser to report render warnings.
 pub const APPLY_WAIT: Duration = Duration::from_secs(3);
 /// How long `get_state` waits for the browser's view.
 pub const VIEW_WAIT: Duration = Duration::from_secs(2);
+/// How long `snapshot` waits for the PNG.
+pub const SNAPSHOT_WAIT: Duration = Duration::from_secs(5);
+/// Long side of the `snapshot` PNG (stage-2 decision).
+pub const SNAPSHOT_MAX_SIDE: u32 = 1600;
 
 #[derive(Debug, Clone)]
 struct Rendered {
@@ -166,6 +170,15 @@ impl Hub {
                 Ok(_) => ServerResponse::Ok {},
                 Err(message) => ServerResponse::Error { message },
             },
+            ClientRequest::Apply { workspace, source } => match self.engine.apply(WsRef::Id(workspace), source).await {
+                Ok(ok) => ServerResponse::Applied { lines: report::apply_lines(&ok) },
+                Err(ApplyError::Rejected(lines)) => ServerResponse::Rejected { lines },
+                Err(e) => ServerResponse::Error { message: report::apply_err(&e) },
+            },
+            ClientRequest::GetRequests { workspace } => match self.engine.requests(WsRef::Id(workspace), vec![]).await {
+                Ok(out) => ServerResponse::Requests { items: out.items },
+                Err(e) => ServerResponse::Error { message: report::apply_err(&e) },
+            },
         }
     }
 
@@ -188,29 +201,47 @@ impl Hub {
         }
     }
 
-    /// Asks the active tab for its current scene, view and warnings.
-    pub async fn get_view(&self, workspace: &str) -> Browser {
+    /// Sends `request` to the active tab if it shows `workspace`, and waits for the reply.
+    async fn ask(&self, workspace: &str, request: ServerRequest, wait: Duration) -> Result<BrowserReply, Browser> {
         let (id, rx) = {
             let mut inner = self.inner.lock().unwrap();
             let tx = match &inner.active {
-                None => return Browser::NotConnected,
-                Some(a) if a.workspace.as_deref() != Some(workspace) => return Browser::OtherWorkspace,
+                None => return Err(Browser::NotConnected),
+                Some(a) if a.workspace.as_deref() != Some(workspace) => return Err(Browser::OtherWorkspace),
                 Some(a) => a.tx.clone(),
             };
             inner.next_request += 1;
             let id = inner.next_request;
             let (otx, orx) = oneshot::channel();
             inner.pending.insert(id, otx);
-            let _ = tx.send(ServerMsg::Request { id, request: ServerRequest::GetView {} });
+            let _ = tx.send(ServerMsg::Request { id, request });
             (id, orx)
         };
-        let r = tokio::time::timeout(VIEW_WAIT, rx).await;
+        let r = tokio::time::timeout(wait, rx).await;
         self.inner.lock().unwrap().pending.remove(&id);
         match r {
-            Ok(Ok(BrowserReply::View { workspace: w, scene, view, warnings })) if w == workspace => Browser::View { scene, view, warnings },
-            Ok(Ok(_)) => Browser::OtherWorkspace,
-            Ok(Err(_)) => Browser::NotConnected,
-            Err(_) => Browser::Timeout,
+            Ok(Ok(reply)) => Ok(reply),
+            Ok(Err(_)) => Err(Browser::NotConnected),
+            Err(_) => Err(Browser::Timeout),
+        }
+    }
+
+    /// Asks the active tab for its current scene, view and warnings.
+    pub async fn get_view(&self, workspace: &str) -> Browser {
+        match self.ask(workspace, ServerRequest::GetView {}, VIEW_WAIT).await {
+            Ok(BrowserReply::View { workspace: w, scene, view, warnings }) if w == workspace => Browser::View { scene, view, warnings },
+            Ok(_) => Browser::OtherWorkspace,
+            Err(b) => b,
+        }
+    }
+
+    /// PNG of the active tab's canvas: `Ok(base64)` or why there is none.
+    pub async fn snapshot(&self, workspace: &str) -> Result<(String, u32, u32), String> {
+        match self.ask(workspace, ServerRequest::Snapshot { max_side: SNAPSHOT_MAX_SIDE }, SNAPSHOT_WAIT).await {
+            Ok(BrowserReply::Png { workspace: w, data, width, height }) if w == workspace => Ok((data, width, height)),
+            Ok(BrowserReply::Error { message }) => Err(format!("브라우저: {message}")),
+            Ok(_) => Err(report::browser_line(&Browser::OtherWorkspace)),
+            Err(b) => Err(report::browser_line(&b)),
         }
     }
 }

@@ -50,7 +50,11 @@ export const POINT_FEATURE = 2;
 export type Batch =
   | (BatchBase & { kind: "polyline"; coords: Float32Array; offsets: Uint32Array })
   | (BatchBase & { kind: "points"; coords: Float32Array; pointKind: Uint8Array })
-  | (BatchBase & { kind: "text"; coords: Float32Array; labels: LabelRef[]; placement: LabelPlacement[] });
+  | (BatchBase & { kind: "text"; coords: Float32Array; labels: LabelRef[]; placement: LabelPlacement[] })
+  // Even-odd fill. `ringOffsets`: ring starts + end (points); `polyOffsets`: polygon starts + end (rings).
+  | (BatchBase & { kind: "polygon"; coords: Float32Array; ringOffsets: Uint32Array; polyOffsets: Uint32Array })
+  // Raster (inequality regions). `origin` is the top-left world corner; `size` is the world width / height.
+  | (BatchBase & { kind: "image"; size: [number, number]; width: number; height: number; pixels: Uint8ClampedArray });
 
 export function rgba(hex: string, alpha = 1): [number, number, number, number] {
   const n = parseInt(hex.replace("#", ""), 16);

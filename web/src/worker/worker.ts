@@ -1,13 +1,29 @@
 // Evaluation worker: compiles functions, samples them, returns geometry as
 // Transferable typed arrays. Layer, order and style are attached on the main thread.
 
-import { CodegenError, compile, type Compiled, type FnSpec, type Scalar } from "./codegen";
+import type { Expr } from "../generated/Expr";
+import { CodegenError, compile, compileRegion, type Compiled, type FnSpec, type Region, type Scalar } from "./codegen";
+import { computeFill, rasterRegion, type FillRule, type RasterRect } from "./fill";
 import { makeRuntime } from "./numeric";
 import { sampleCurve, sampleDiscrete, type Quality, type SampleRange } from "./sample";
 
+/** A highlight the worker can draw: a function fill, or a targetless region. */
+export interface HlSpec {
+  key: string;
+  /** Target function (fill); null = targetless region (raster). */
+  fn: string | null;
+  range: Expr | null;
+}
+
+export type FillItem =
+  | { key: string; kind: "fill"; rule: FillRule; n: number }
+  | { key: string; kind: "raster"; rect: RasterRect; width: number; height: number };
+
 export type ToWorker =
   | { type: "functions"; fns: FnSpec[]; constKeys: string[] }
-  | { type: "sample"; id: number; keys: string[]; C: Float64Array; range: SampleRange; quality: Quality };
+  | { type: "highlights"; specs: HlSpec[] }
+  | { type: "sample"; id: number; keys: string[]; C: Float64Array; range: SampleRange; quality: Quality }
+  | { type: "fills"; id: number; items: FillItem[]; C: Float64Array; range: SampleRange; quality: Quality };
 
 export interface CurveResult {
   key: string;
@@ -25,14 +41,29 @@ export interface WorkerWarning {
   message: string;
 }
 
-export type FromWorker = {
-  type: "result";
-  id: number;
-  quality: Quality;
-  range: SampleRange;
-  curves: CurveResult[];
-  warnings: WorkerWarning[];
-};
+export interface FillResult {
+  key: string;
+  kind: "fill";
+  origin: [number, number];
+  /** Rings (relative to origin) and their offsets; one polygon per ring. */
+  coords: Float32Array;
+  rings: Uint32Array;
+  edge: Float32Array;
+  edgeOffsets: Uint32Array;
+}
+
+export interface RasterResult {
+  key: string;
+  kind: "raster";
+  rect: RasterRect;
+  width: number;
+  height: number;
+  mask: Uint8Array;
+}
+
+export type FromWorker =
+  | { type: "result"; id: number; quality: Quality; range: SampleRange; curves: CurveResult[]; warnings: WorkerWarning[] }
+  | { type: "fills"; id: number; quality: Quality; range: SampleRange; results: (FillResult | RasterResult)[]; warnings: WorkerWarning[] };
 
 /** Scene budget for 2D curve samples (design.md "2층 장면 예산"). */
 const SCENE_BUDGET = 1_000_000;
@@ -42,10 +73,60 @@ const F: Scalar[] = [];
 let compiled = new Map<string, Compiled>();
 let compileErrors = new Map<string, string>();
 let constIndex = new Map<string, number>();
+let fnIndex = new Map<string, number>();
+let hlSpecs: HlSpec[] = [];
+let regions = new Map<string, Region | null>();
+let regionErrors = new Map<string, string>();
+
+function setHighlights(specs: HlSpec[]): void {
+  hlSpecs = specs;
+  regions = new Map();
+  regionErrors = new Map();
+  for (const h of specs) {
+    try {
+      regions.set(h.key, h.range ? compileRegion(h.range, { constIndex, fnIndex }, R, F) : null);
+    } catch (e) {
+      regionErrors.set(h.key, e instanceof CodegenError ? e.message : String(e));
+    }
+  }
+}
+
+function fills(id: number, items: FillItem[], C: Float64Array, range: SampleRange, quality: Quality): Extract<FromWorker, { type: "fills" }> {
+  const results: (FillResult | RasterResult)[] = [];
+  const warnings: WorkerWarning[] = [];
+  const origin: [number, number] = [(range.x0 + range.x1) / 2, (range.y0 + range.y1) / 2];
+  for (const it of items) {
+    const err = regionErrors.get(it.key);
+    const spec = hlSpecs.find((h) => h.key === it.key);
+    if (err || !spec) {
+      warnings.push({ source: it.key, code: "W-codegen", message: `계산 코드를 만들 수 없음 (${err ?? "정의 없음"})` });
+      continue;
+    }
+    const region = regions.get(it.key) ?? null;
+    if (it.kind === "raster") {
+      if (!region) continue;
+      results.push({ key: it.key, kind: "raster", rect: it.rect, width: it.width, height: it.height, mask: rasterRegion(region, it.rect, it.width, it.height, C) });
+      continue;
+    }
+    const fn = spec.fn ? compiled.get(spec.fn) : undefined;
+    if (!fn) continue;
+    const g = computeFill(fn.scalar, region, it.rule, range, it.n, C);
+    const rel = (xy: number[]) => {
+      const out = new Float32Array(xy.length);
+      for (let i = 0; i < xy.length; i += 2) {
+        out[i] = xy[i]! - origin[0];
+        out[i + 1] = xy[i + 1]! - origin[1];
+      }
+      return out;
+    };
+    results.push({ key: it.key, kind: "fill", origin, coords: rel(g.xy), rings: Uint32Array.from(g.rings), edge: rel(g.edge), edgeOffsets: Uint32Array.from(g.edgeOffsets) });
+  }
+  return { type: "fills", id, quality, range, results, warnings };
+}
 
 function setFunctions(fns: FnSpec[], constKeys: string[]): void {
   constIndex = new Map(constKeys.map((k, i) => [k, i]));
-  const fnIndex = new Map(fns.map((f, i) => [f.key, i]));
+  fnIndex = new Map(fns.map((f, i) => [f.key, i]));
   F.length = fns.length;
   // Discrete-ness flows from callees to callers.
   const own = new Map<string, boolean>();
@@ -75,7 +156,7 @@ function setFunctions(fns: FnSpec[], constKeys: string[]): void {
   }
 }
 
-function sample(id: number, keys: string[], C: Float64Array, range: SampleRange, quality: Quality): FromWorker {
+function sample(id: number, keys: string[], C: Float64Array, range: SampleRange, quality: Quality): Extract<FromWorker, { type: "result" }> {
   const curves: CurveResult[] = [];
   const warnings: WorkerWarning[] = [];
   const origin: [number, number] = [(range.x0 + range.x1) / 2, (range.y0 + range.y1) / 2];
@@ -120,6 +201,14 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
   const m = ev.data;
   if (m.type === "functions") {
     setFunctions(m.fns, m.constKeys);
+    // Regions index the same constant and function tables.
+    setHighlights(hlSpecs);
+  } else if (m.type === "highlights") {
+    setHighlights(m.specs);
+  } else if (m.type === "fills") {
+    const r = fills(m.id, m.items, m.C, m.range, m.quality);
+    const transfer = r.results.flatMap((x) => (x.kind === "fill" ? [x.coords.buffer, x.rings.buffer, x.edge.buffer, x.edgeOffsets.buffer] : [x.mask.buffer]));
+    (self as unknown as Worker).postMessage(r, transfer);
   } else {
     const r = sample(m.id, m.keys, m.C, m.range, m.quality);
     const transfer = r.curves.flatMap((c) => [c.coords.buffer, c.offsets.buffer]);

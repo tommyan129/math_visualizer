@@ -125,3 +125,39 @@ input { font-family: inherit; }
 .zoom { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 2px; background: rgba(23,24,28,0.9); border-radius: 14px; padding: 4px; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
 .cursor { position: absolute; left: 14px; bottom: 12px; font-size: 12px; font-weight: 500; color: var(--text-2); background: rgba(23,24,28,0.9); border-radius: 999px; padding: 5px 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-2); font-size: 14px; pointer-events: none; text-align: center; padding: 24px; line-height: 1.6; }
+
+/* ----- highlight list ----- */
+.def.hl { position: relative; }
+.hl-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-1); flex-wrap: wrap; }
+.chip { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.chip.sub { width: 4px; height: 14px; border-radius: 2px; }
+.hl-what { display: inline-flex; align-items: center; gap: 2px; font-size: 16px; color: var(--text-15); }
+.hl-what code { font: 12px "JetBrains Mono", monospace; color: var(--text-15); }
+.def.hl.off .hl-head { opacity: 0.45; }
+.memo { background: transparent; border: 0; padding: 0; text-align: left; font-size: 12px; color: var(--text-2); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.memo.open { white-space: normal; }
+.def .del { position: absolute; right: 6px; top: 8px; opacity: 0; }
+.def:hover .del, .def .del:focus-visible { opacity: 1; }
+
+/* ----- drawer ----- */
+.drawer { flex: 0 0 auto; border-radius: var(--radius); background: var(--panel); }
+.drawer-tabs { display: flex; align-items: center; gap: 4px; padding: 8px 10px; }
+.dtab { background: transparent; border: 0; border-radius: 999px; padding: 6px 14px; font-size: 13px; color: var(--text-2); }
+.dtab.on { background: var(--card); color: var(--text-1); font-weight: 500; }
+.dtab .count { color: var(--warn); margin-left: 4px; }
+.drawer-body { height: 196px; padding: 0 14px 14px; overflow-y: auto; }
+.dsl-box { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.dsl-input { flex: 1; resize: none; background: var(--bg); border: 0; border-radius: 12px; color: var(--text-1); font: 13px/1.7 "JetBrains Mono", monospace; padding: 10px 14px; outline: none; }
+.dsl-foot { display: flex; align-items: flex-start; gap: 12px; }
+.dsl-msg { flex: 1; font: 12px/1.6 "JetBrains Mono", monospace; color: var(--text-2); white-space: pre-wrap; max-height: 60px; overflow-y: auto; }
+.dsl-msg.err { color: var(--error); }
+.apply-btn { background: var(--text-1); color: var(--bg); border: 0; border-radius: 999px; padding: 8px 18px; font-size: 13px; font-weight: 600; }
+.reqs { display: flex; flex-direction: column; gap: 6px; }
+.req { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--card); }
+.req code { flex: 1; font: 12px "JetBrains Mono", monospace; color: var(--text-1); word-break: break-all; }
+.req .num { font-size: 12px; color: var(--text-3); }
+.req .st { font-size: 12px; font-weight: 500; color: var(--text-2); white-space: nowrap; }
+.req .st.changed { color: var(--warn); }
+.req .st.gone { color: var(--error); }
+.req.done code { color: var(--text-3); text-decoration: line-through; }
+.req input { accent-color: var(--text-1); }

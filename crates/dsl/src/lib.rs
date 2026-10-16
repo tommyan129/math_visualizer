@@ -7,6 +7,7 @@ pub mod interp;
 pub mod lexer;
 pub mod names;
 pub mod parser;
+pub mod print;
 pub mod span;
 pub mod state;
 pub mod stmt;

@@ -2,4 +2,4 @@
 import type { ViewBox } from "./ViewBox";
 import type { Warning } from "./Warning";
 
-export type BrowserReply = { "type": "View", workspace: string, scene: string, view: ViewBox, warnings: Array<Warning>, } | { "type": "Error", message: string, };
+export type BrowserReply = { "type": "View", workspace: string, scene: string, view: ViewBox, warnings: Array<Warning>, } | { "type": "Png", workspace: string, data: string, width: number, height: number, } | { "type": "Error", message: string, };

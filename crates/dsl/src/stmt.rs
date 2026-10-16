@@ -9,6 +9,65 @@ pub enum Stmt {
     Define { defs: Vec<Def>, span: Span },
     /// `del f, g`.
     Del { names: Vec<(Ident, Span)>, span: Span },
+    /// `constant:` block: slider conditions.
+    Constant { entries: Vec<ConstEntry>, span: Span },
+    /// `style name:` block with indented `prop: value` lines.
+    Style { name: Ident, name_span: Span, props: Vec<StyleProp>, span: Span },
+    /// `name = value`: a user variable, or a highlight when the value is `highlight(...)`.
+    Assign { name: Ident, name_span: Span, value: AssignValue, span: Span },
+    /// `req(target; range; memo)`.
+    Req { slots: Slots, span: Span },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignValue {
+    Expr(Expr),
+    /// `highlight(target; range; style; memo)`.
+    Highlight(Slots),
+}
+
+/// `;`-separated argument slots of `highlight(...)` / `req(...)`; an empty slot is `None`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Slots {
+    pub items: Vec<Option<Expr>>,
+    /// Span of each slot (an empty slot gets the position of its separator).
+    pub spans: Vec<Span>,
+    /// `highlight(...)` including the head.
+    pub span: Span,
+}
+
+impl Slots {
+    pub fn get(&self, i: usize) -> Option<&Expr> {
+        self.items.get(i).and_then(|e| e.as_ref())
+    }
+}
+
+/// `a: integer, range=(-5, 5), default=1, step=0.1`
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstEntry {
+    pub name: Ident,
+    pub name_span: Span,
+    /// `real` / `integer` written first.
+    pub kind: Option<(String, Span)>,
+    pub props: Vec<Prop>,
+    pub span: Span,
+}
+
+/// `key=value` in a constant entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Prop {
+    pub key: String,
+    pub key_span: Span,
+    pub value: Expr,
+}
+
+/// `color: orange` inside a style block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StyleProp {
+    pub key: String,
+    pub key_span: Span,
+    pub value: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]

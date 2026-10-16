@@ -3,6 +3,14 @@ import type { Ident } from "./Ident";
 
 export type Constant = { key: string, name: Ident, value: number, min: number, max: number, step: number, 
 /**
- * Integer-only (used in a `sum`/`prod` bound).
+ * Integer-only (declared `integer`, or used in a `sum`/`prod` bound).
  */
-integer: boolean, order: number, version: number, };
+integer: boolean, 
+/**
+ * Declared in a `constant:` block (otherwise auto-created).
+ */
+declared: boolean, 
+/**
+ * The kind word (`real` / `integer`) was written; a `sum` bound cannot change it.
+ */
+kind_fixed: boolean, order: number, version: number, };

@@ -9,6 +9,8 @@ const HALO = "#212329";
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
+  /** Image batches turned into bitmaps once per id + version. */
+  private images = new Map<string, { version: number; pixels: Uint8ClampedArray; canvas: HTMLCanvasElement }>();
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -43,8 +45,58 @@ export class Renderer {
         case "text":
           this.text(view, b, st);
           break;
+        case "polygon":
+          this.polygon(view, b, st);
+          break;
+        case "image":
+          this.image(view, b);
+          break;
       }
     }
+    const live = new Set(batches.filter((b) => b.kind === "image").map((b) => b.id));
+    for (const k of [...this.images.keys()]) if (!live.has(k)) this.images.delete(k);
+  }
+
+  /** The drawn canvas (snapshot). */
+  element(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
+  private polygon(view: View, b: Extract<Batch, { kind: "polygon" }>, st: Style): void {
+    const ctx = this.ctx;
+    const [ox, oy] = b.origin;
+    const c = b.coords;
+    ctx.fillStyle = cssColor(st.color);
+    for (let p = 0; p + 1 < b.polyOffsets.length; p++) {
+      ctx.beginPath();
+      for (let r = b.polyOffsets[p]!; r < b.polyOffsets[p + 1]!; r++) {
+        const s = b.ringOffsets[r]!, e = b.ringOffsets[r + 1]!;
+        for (let i = s; i < e; i++) {
+          const x = view.sx(ox + c[2 * i]!), y = view.sy(oy + c[2 * i + 1]!);
+          if (i === s) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+      }
+      ctx.fill("evenodd");
+    }
+  }
+
+  private image(view: View, b: Extract<Batch, { kind: "image" }>): void {
+    let hit = this.images.get(b.id);
+    if (!hit || hit.version !== b.version || hit.pixels !== b.pixels) {
+      const canvas = hit?.canvas ?? document.createElement("canvas");
+      canvas.width = b.width;
+      canvas.height = b.height;
+      canvas.getContext("2d")!.putImageData(new ImageData(b.pixels as Uint8ClampedArray<ArrayBuffer>, b.width, b.height), 0, 0);
+      hit = { version: b.version, pixels: b.pixels, canvas };
+      this.images.set(b.id, hit);
+    }
+    const [ox, oy] = b.origin;
+    const x = view.sx(ox), y = view.sy(oy);
+    const w = b.size[0] * view.scale, h = b.size[1] * view.scale;
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.drawImage(hit.canvas, x, y, w, h);
   }
 
   private polyline(view: View, b: Extract<Batch, { kind: "polyline" }>, st: Style): void {

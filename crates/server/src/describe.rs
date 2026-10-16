@@ -4,16 +4,22 @@
 use dsl::names;
 
 const INDEX: &str = "\
-쓸 수 있는 명령 (1단계). describe(name)으로 자세히:
-  define   함수 정의·수정 (같은 이름에 다시 쓰면 수정)
-  del      정의 삭제 (부르는 함수도 함께 지워짐)
+쓸 수 있는 명령 (2단계). describe(name)으로 자세히:
+  define     함수 정의·수정 (같은 이름에 다시 쓰면 수정)
+  del        정의·강조·style·변수 삭제 (참조하는 것도 함께 지워짐)
+  constant   슬라이더 조건 선언 (범위, 기본값, 간격, 정수)
+  highlight  강조: 함수 아래 넓이, 부등식 영역, 식의 일부 색칠
+  주소       식의 일부 가리키기 f.(b*x).coef
+  style      강조 모양 (기본 style, 사용자 style)
+  변수       이름 = 값 (부등식, 문자열)
+  req        사용자 요청사항 (get_requests로 확인)
   식       연산자, 우선순위, 괄호
   이름     이름 규칙, 그리스 문자, 첨자
   함수     기본 함수 목록
   sum      sum / prod
   상수     슬라이더 상수 규칙
   오류     오류 형식
-아직 없음: constant:, highlight, req, scene, step, 행렬, split, 매개변수·극좌표·음함수";
+아직 없음: scene, step, 행렬, split, 매개변수·극좌표·음함수, 특징점(roots 등)";
 
 const DEFINE: &str = "\
 define: 블록 안에 한 줄에 정의 하나 (스페이스 4칸 들여쓰기).
@@ -54,7 +60,62 @@ sum(식; 아래 <= 인덱스 <= 위), prod(...)도 같은 모양.
 const CONSTANTS: &str = "\
 - 상수는 전역, 이름이 같으면 슬라이더 공유. 처음 쓰이면 자동 생성 (값 1, 범위 -10..10; 정수는 5, 0..20).
 - 사용자가 슬라이더 값과 범위를 바꿀 수 있음. 현재 값은 get_state로 확인.
-- 조건 선언(constant: 블록)은 2단계.";
+- 조건은 constant: 블록으로 선언 (describe constant).";
+
+const CONSTANT_BLOCK: &str = "\
+constant:
+    a: range=(-5, 5), default=1, step=0.1
+    n: integer, range=(1, 50), default=4
+- 종류는 맨 앞에 real(생략 시) 또는 integer. integer는 범위·default·step이 모두 정수 (step 생략 시 1).
+- 값은 숫자만 (2*\\pi 같은 식은 안 됨, 6.2832로). step 생략 시 범위 폭의 약 1/100.
+- 상수는 여전히 함수 괄호 ';' 뒤에 적어야 함. 쓰는 함수가 없는 상수를 선언하면 오류.
+- sum 범위에 쓰인 상수를 real로 선언하면 오류.";
+
+const HIGHLIGHT: &str = "\
+이름 = highlight(대상; 범위; style; memo)   이름 필수, 대상 외에는 빈칸 가능
+  H1 = highlight(f; 0 <= x <= 2; blue; \"정적분 넓이\")   # f와 x축 사이
+  H2 = highlight(; between(f, g) and 0 <= x <= 2; green)   # 대상 없음: 영역 칠하기
+  H3 = highlight(; f(x) < y < g(x) and y < 1)
+  H4 = highlight(f.(b*x).coef;; orange)                    # 식 속의 b만 색칠
+- 범위는 부등식 (and / or / not). 범위 생략 = 대상 전체 (무한하면 보이는 범위만).
+- 대상 없는 highlight는 범위 칸이 곧 칠할 영역 (x, y, 상수, 함수 호출).
+- between(f, g) = f(x) < y < g(x) or g(x) < y < f(x). 인자는 함수 이름만.
+- 부분식 대상은 식 색칠만, 범위 없음. 겹치는 채우기는 반투명으로 섞임.
+- style 생략 시 자동 색 (만들 때 고정). 가리키던 함수·부분식·변수·style이 없어지면 강조도 지워지고 응답에 나옴.
+- 다시 대입하면 수정, del H1로 삭제. 새 강조는 켜진 채로 시작.";
+
+const ADDRESS: &str = "\
+식의 일부를 모양으로 가리킴 (위치 번호가 아님):
+  f.(b*x)          항 (부호 포함: a - b*x의 둘째 항은 f.(-b*x))
+  f.(b*x).coef     입력 변수가 없는 인수 (b)     .var  입력 변수가 든 인수 (x)
+  g.den  g.num     분모, 분자          .base  .exp  거듭제곱의 밑, 지수
+  h.(sin(3*x)).arg 함수 인자
+- 괄호는 무시하고 비교. 같은 모양이 두 곳이면 오류 → 더 큰 항을 가리킨 뒤 내려가기.
+- 함수를 수정해도 같은 모양을 다시 찾음. 사라지면 그 강조는 지워짐.";
+
+const STYLE: &str = "\
+기본 style: blue orange green red purple yellow gray (축까지 채우기)
+사용자 style:
+  style up:
+      color: orange        # 기본 색 이름 또는 \"#rrggbb\"
+      fill: above          # axis(축까지) above(y > f) below(y < f) region(영역)
+      opacity: 0.25        # 채우기 투명도 0..1 (기본 0.16)
+      width: 2             # 경계선 px (기본 1.5)
+- 이름에 '_'는 못 씀 (아래첨자). style을 바꾸면 쓰는 강조도 바뀜.";
+
+const VARS: &str = "\
+이름 = 값. 값은 부등식, 문자열 등 아무거나. 참조라서 다시 대입하면 쓰는 강조도 바뀜.
+  R1 = 0.9 < x < 1.1
+  memo1 = \"x = 1 근처에서 선이 끊겨 보임\"
+  H1 = highlight(f; R1;; memo1)
+- 함수 식 안에서는 못 씀 (범위·memo 칸에서만). 문자열 이스케이프는 \\\" 와 \\\\ 만.";
+
+const REQ: &str = "\
+req(대상; 범위; memo)   사용자가 브라우저에서 남기는 요청사항. 대상만 필수.
+  req(f; 0.9 < x < 1.1; \"선이 끊겨 보임\")   req(g.den;; \"부호가 반대 같음\")   req(H1)
+- 대상: 함수, 강조, 부분식. 요청 당시 단계에 고정 (대상이 지워져도 남음).
+- get_requests: 대기 중인 요청사항 + 당시 대상 + 변경 상태(그대로 / 수정됨 / 삭제됨, 간접 원인 포함).
+  처리한 것은 get_requests(done=[번호])로 표시.";
 
 const ERRORS: &str = "\
 오류 한 줄 형식: 줄:열 [오류 코드] 설명 → 후보
@@ -72,7 +133,13 @@ pub fn describe(name: Option<&str>) -> String {
         "식" | "연산" | "expr" | "operators" => EXPR.into(),
         "이름" | "names" => NAMES.into(),
         "sum" | "prod" => SUM.into(),
-        "상수" | "constant" | "slider" => CONSTANTS.into(),
+        "상수" | "slider" => CONSTANTS.into(),
+        "constant" | "constant:" => CONSTANT_BLOCK.into(),
+        "highlight" | "강조" | "between" => HIGHLIGHT.into(),
+        "주소" | "address" | "부분식" => ADDRESS.into(),
+        "style" => STYLE.into(),
+        "변수" | "variable" | "vars" => VARS.into(),
+        "req" | "요청사항" | "get_requests" => REQ.into(),
         "오류" | "errors" => ERRORS.into(),
         "함수" | "functions" | "builtins" => {
             let list: Vec<String> = names::BUILTINS
@@ -100,7 +167,9 @@ mod tests {
     /// Examples in the help text must be valid DSL.
     #[test]
     fn examples_parse() {
-        let src = "define:\n    f(x; a, b) -> y: a*x^2 + b*x + 1\n    g(x; a, b) -> y: f(x) + 1\n    s(x; n) -> y: sum(x^k/k!; 0 <= k <= n)\n";
-        dsl::interp::apply(&Default::default(), src, &Default::default(), 1).unwrap();
+        let src = "define:\n    f(x; a, b) -> y: a*x^2 + b*x + 1\n    g(x; a, b) -> y: f(x) + 1\n    s(x; n) -> y: sum(x^k/k!; 0 <= k <= n)\n    h(x) -> y: sin(3*x)\n    q(x) -> y: x^2/(x - 1)\n";
+        let s = dsl::interp::apply(&Default::default(), src, &Default::default(), 1).unwrap().state;
+        let stage2 = "constant:\n    a: range=(-5, 5), default=1, step=0.1\n    n: integer, range=(1, 50), default=4\ndefine:\n    t(x; n) -> y: sum(x^k; 1 <= k <= n)\nstyle up:\n    color: orange\n    fill: above\n    opacity: 0.25\n    width: 2\nR1 = 0.9 < x < 1.1\nmemo1 = \"x = 1 근처에서 선이 끊겨 보임\"\nH1 = highlight(f; 0 <= x <= 2; blue; \"정적분 넓이\")\nH2 = highlight(; between(f, g) and 0 <= x <= 2; green)\nH3 = highlight(; f(x) < y < g(x) and y < 1)\nH4 = highlight(f.(b*x).coef;; orange)\nH5 = highlight(f; R1;; memo1)\nH6 = highlight(g;; up)\nA = highlight(h.(sin(3*x)).arg)\nB = highlight(q.den)\nreq(f; 0.9 < x < 1.1; \"선이 끊겨 보임\")\nreq(H1)\n";
+        dsl::interp::apply(&s, stage2, &Default::default(), 2).unwrap();
     }
 }

@@ -27,6 +27,17 @@ impl Actor {
             Actor::User => "user",
         }
     }
+
+    fn parse(s: &str) -> Self {
+        if s == "user" { Actor::User } else { Actor::Claude }
+    }
+}
+
+/// One stored log row, as read back for req change status.
+pub struct StoredEntry {
+    pub seq: u64,
+    pub actor: Actor,
+    pub result: AppliedResult,
 }
 
 /// Stored applied result.
@@ -140,6 +151,21 @@ impl Store {
             tx.execute("INSERT INTO checkpoints (workspace, seq, state) VALUES (?1, ?2, ?3)", params![e.workspace, e.seq as i64, state])?;
         }
         tx.commit()
+    }
+
+    /// Log rows of `workspace` with `seq >= from`, in order.
+    pub fn entries_from(&self, workspace: &str, from: u64) -> Result<Vec<StoredEntry>, String> {
+        let mut q = self.conn.prepare("SELECT seq, actor, result FROM log WHERE workspace = ?1 AND seq >= ?2 ORDER BY seq").map_err(|e| e.to_string())?;
+        let rows = q
+            .query_map(params![workspace, from as i64], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+            .map_err(|e| e.to_string())?;
+        let mut out = vec![];
+        for row in rows {
+            let (seq, actor, json) = row.map_err(|e| e.to_string())?;
+            let result: AppliedResult = from_json(&json).map_err(|e| format!("log {workspace}#{seq}: {e}"))?;
+            out.push(StoredEntry { seq: seq as u64, actor: Actor::parse(&actor), result });
+        }
+        Ok(out)
     }
 
     /// Restores every workspace from its nearest checkpoint plus later applied results.

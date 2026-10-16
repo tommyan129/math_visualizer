@@ -11,6 +11,8 @@ import type { Ident } from "../generated/Ident";
 export interface LatexCtx {
   /** CSS hex color per user function key, for coloring its name. */
   colors: Map<string, string>;
+  /** Subexpression highlights: node id (Sum term ids included) → CSS hex color. */
+  nodes?: Map<number, string>;
 }
 
 const TRIG = new Set(["sin", "cos", "tan", "sinh", "cosh", "tanh"]);
@@ -32,6 +34,8 @@ const BUILTIN_TEX: Record<string, string> = {
   round: "\\operatorname{round}",
   gamma: "\\Gamma",
 };
+
+const BUILTIN_NAMES = new Set([...Object.keys(BUILTIN_TEX), "sqrt", "abs", "floor", "ceil", "log", "mod", "deg"]);
 
 const SAFE_SUP = /^[A-Za-z0-9*+\-'(), ]*$/;
 const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힣]/;
@@ -80,6 +84,13 @@ function unparen(e: Expr): Expr {
 }
 
 export function exprTex(e: Expr, ctx: LatexCtx, script = false): string {
+  const t = nodeTex(e, ctx, script);
+  return colored(t, ctx.nodes?.get(e.id));
+}
+
+const CMP_TEX = { Lt: "<", Le: "\\le", Gt: ">", Ge: "\\ge", Eq: "=" } as const;
+
+function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
   const go = (c: Expr, s = script) => exprTex(c, ctx, s);
   switch (e.type) {
     case "Num":
@@ -91,8 +102,11 @@ export function exprTex(e: Expr, ctx: LatexCtx, script = false): string {
         .map((t, i) => {
           let s = go(t.expr);
           if (t.expr.type === "Sum" || (i > 0 && t.expr.type === "Neg")) s = paren(s);
-          if (i === 0) return t.sign === "Minus" ? `-${s}` : s;
-          return (t.sign === "Minus" ? " - " : " + ") + s;
+          // A highlighted term is colored with its sign; \mathbin keeps binary spacing.
+          const c = ctx.nodes?.get(t.id);
+          if (i === 0) return c ? colored(t.sign === "Minus" ? `-${s}` : s, c) : t.sign === "Minus" ? `-${s}` : s;
+          const op = t.sign === "Minus" ? "-" : "+";
+          return c ? ` \\mathbin{${colored(op, c)}} ${colored(s, c)}` : ` ${op} ${s}`;
         })
         .join("");
     case "Product": {
@@ -143,7 +157,8 @@ export function exprTex(e: Expr, ctx: LatexCtx, script = false): string {
     case "Call": {
       const key = e.callee.key;
       const args = e.args.map((a) => go(unparen(a)));
-      if (e.kind === "Builtin") {
+      // Slot ASTs kept as written are unresolved; builtins are known by name.
+      if (e.kind === "Builtin" || (e.kind === "Unresolved" && BUILTIN_NAMES.has(key))) {
         switch (key) {
           case "sqrt":
             return `\\sqrt{${args[0]}}`;
@@ -176,6 +191,19 @@ export function exprTex(e: Expr, ctx: LatexCtx, script = false): string {
       const range = !e.lo_strict && !e.hi_strict ? `_{${k}=${lo}}^{${hi}}` : `_{${lo}${e.lo_strict ? "<" : "\\le "}${k}${e.hi_strict ? "<" : "\\le "}${hi}}`;
       return `${op}${range} ${body}`;
     }
+    case "Compare": {
+      let out = go(e.first);
+      for (const l of e.rest) out += ` ${CMP_TEX[l.op]} ${go(l.rhs)}`;
+      return out;
+    }
+    case "And":
+      return e.args.map((a) => (a.type === "Or" ? paren(go(a)) : go(a))).join(" \\;\\text{and}\\; ");
+    case "Or":
+      return e.args.map((a) => go(a)).join(" \\;\\text{or}\\; ");
+    case "Not":
+      return `\\text{not}\\,${["Compare", "And", "Or"].includes(e.arg.type) ? paren(go(e.arg)) : go(e.arg)}`;
+    case "Str":
+      return `\\text{${e.raw.replace(/[\\{}$&#^_%~]/g, "")}}`;
     default:
       return "\\text{?}";
   }

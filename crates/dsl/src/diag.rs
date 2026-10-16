@@ -39,6 +39,21 @@ pub mod code {
     pub const ARROW: &str = "E-arrow";
     pub const AXES: &str = "E-axes";
     pub const DEL_CONSTANT: &str = "E-del-constant";
+    // stage 2
+    pub const HIGHLIGHT_NAME: &str = "E-highlight-name";
+    pub const SLOTS: &str = "E-slots";
+    pub const CONST_PROP: &str = "E-const-prop";
+    pub const CONST_RANGE: &str = "E-const-range";
+    pub const CONST_KIND: &str = "E-const-kind";
+    pub const UNUSED_CONST: &str = "E-unused-const";
+    pub const STYLE: &str = "E-style";
+    pub const TARGET: &str = "E-target";
+    pub const RANGE: &str = "E-range";
+    pub const MEMO: &str = "E-memo";
+    pub const ADDRESS_MISSING: &str = "E-address-missing";
+    pub const ADDRESS_AMBIGUOUS: &str = "E-address-ambiguous";
+    pub const ADDRESS_SIGN: &str = "E-address-sign";
+    pub const ADDRESS_PART: &str = "E-address-part";
     /// Syntax of a later stage.
     pub const UNSUPPORTED: &str = "E-unsupported";
 }

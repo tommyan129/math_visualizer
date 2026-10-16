@@ -50,6 +50,36 @@ pub enum Note {
     ConstantRemoved { key: String },
     SignatureConstAdded { function: String, constant: String, via: String },
     SignatureConstRemoved { function: String, constant: String, via: String },
+    /// `constant:` entry created or changed the constant.
+    ConstantDeclared { key: String },
+    ObjectCreated { kind: ObjKind, key: String },
+    ObjectModified { kind: ObjKind, key: String },
+    ObjectUnchanged { kind: ObjKind, key: String },
+    /// `via`: deleted object this depended on; `reason`: why it could not be kept otherwise.
+    /// Both `None` = named in `del`.
+    ObjectDeleted { kind: ObjKind, key: String, via: Option<String>, reason: Option<String> },
+    RequestAdded {
+        #[ts(type = "number")]
+        number: u64,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum ObjKind {
+    Highlight,
+    Style,
+    Var,
+}
+
+impl ObjKind {
+    pub fn word(self) -> &'static str {
+        match self {
+            ObjKind::Highlight => "강조",
+            ObjKind::Style => "style",
+            ObjKind::Var => "변수",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +109,8 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
         deadline: Instant::now() + limits.wall_clock,
         wall_clock: limits.wall_clock,
         stopped: false,
+        seq,
+        declared_now: BTreeSet::new(),
     };
     for stmt in &parsed.stmts {
         if cx.stopped {
@@ -87,6 +119,10 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
         match stmt {
             Stmt::Define { defs, .. } => defs.iter().for_each(|d| cx.define(d)),
             Stmt::Del { names, .. } => cx.del(names),
+            Stmt::Constant { entries, .. } => entries.iter().for_each(|e| cx.declare_constant(e)),
+            Stmt::Style { name, name_span, props, span } => cx.style(name, *name_span, props, *span),
+            Stmt::Assign { name, name_span, value, span } => cx.assign(name, *name_span, value, *span),
+            Stmt::Req { slots, span } => cx.req(slots, *span),
         }
     }
     cx.finish();
@@ -119,14 +155,21 @@ struct Cx<'s> {
     deadline: Instant,
     wall_clock: Duration,
     stopped: bool,
+    /// Log sequence this request will get (history step of a `req`).
+    seq: u64,
+    /// Constants declared in this request's `constant:` blocks.
+    declared_now: BTreeSet<String>,
 }
 
-/// Name scope inside one definition body.
+/// Name scope inside one definition body, or one range slot.
 struct Scope {
+    /// Definition key; empty for a range slot.
     def_key: String,
-    input: String,
+    inputs: Vec<String>,
     output: String,
     consts: Vec<String>,
+    /// Range slots may use any existing constant without listing it.
+    free_consts: bool,
     /// Enclosing `sum`/`prod` indices, innermost last.
     indices: Vec<String>,
 }
@@ -139,13 +182,25 @@ impl Scope {
                 consts.push(e.clone());
             }
         }
-        if consts.is_empty() { format!("{}({})", self.def_key, self.input) } else { format!("{}({}; {})", self.def_key, self.input, consts.join(", ")) }
+        let inputs = self.inputs.join(", ");
+        if consts.is_empty() { format!("{}({inputs})", self.def_key) } else { format!("{}({inputs}; {})", self.def_key, consts.join(", ")) }
+    }
+
+    fn input(&self) -> &str {
+        self.inputs.first().map_or("x", |s| s.as_str())
+    }
+
+    /// Scope of a range slot: the given axes, any existing constant.
+    fn range(inputs: &[&str]) -> Self {
+        Scope { def_key: String::new(), inputs: inputs.iter().map(|s| s.to_string()).collect(), output: String::new(), consts: vec![], free_consts: true, indices: vec![] }
     }
 }
 
 #[derive(Default)]
 struct DefInfo {
     callees: BTreeSet<String>,
+    /// Constants used directly (range slots).
+    used_consts: BTreeSet<String>,
     /// Constants used inside a `sum`/`prod` bound (must be integers).
     int_consts: BTreeSet<String>,
     /// Depth inside `sum`/`prod` bounds.
@@ -267,7 +322,9 @@ impl<'s> Cx<'s> {
     fn check_names(&mut self, def: &Def, params: &Params, output: &Ident) {
         let key = &def.name.key;
         let input = &params.inputs[0].0.key;
-        if names::is_builtin(key) {
+        if let Some(kind) = self.state.kind_of(key).filter(|k| !matches!(*k, "함수" | "상수")) {
+            self.err_s(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 이미 {kind} 이름임"), format!("del {key} 후 정의하거나 다른 이름"));
+        } else if names::is_builtin(key) || is_stage2_word(key) {
             self.err_s(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 기본 함수 이름이라 쓸 수 없음"), format!("{key}_{{1}} 같은 다른 이름"));
         } else if is_reserved(&def.name) {
             self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 예약어라 이름으로 쓸 수 없음"));
@@ -294,6 +351,8 @@ impl<'s> Cx<'s> {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 축 이름이라 상수로 쓸 수 없음"));
             } else if ck == key || self.is_function_name(ck) {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 이미 함수 이름임"));
+            } else if let Some(kind) = self.state.kind_of(ck).filter(|k| *k != "상수") {
+                self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 이미 {kind} 이름이라 상수로 쓸 수 없음"));
             }
         }
     }
@@ -309,9 +368,10 @@ impl<'s> Cx<'s> {
 
         let mut scope = Scope {
             def_key: key.clone(),
-            input: params.inputs[0].0.key.clone(),
+            inputs: vec![params.inputs[0].0.key.clone()],
             output: output.key.clone(),
             consts: params.consts.iter().map(|(c, _)| c.key.clone()).collect(),
+            free_consts: false,
             indices: vec![],
         };
         let mut info = DefInfo::default();
@@ -345,6 +405,15 @@ impl<'s> Cx<'s> {
             let list = missing.iter().map(|(k, via)| format!("{via}의 {k}")).collect::<Vec<_>>().join(", ");
             let extra: Vec<String> = missing.iter().map(|(k, _)| k.clone()).collect();
             self.err_s(def.name_span, code::MISSING_CONST, format!("부르는 함수가 쓰는 상수를 적지 않음 ({list})"), scope.signature_with(&extra));
+        }
+
+        for c in &info.int_consts {
+            if let Some(k) = self.state.constants.get(c)
+                && k.kind_fixed
+                && !k.integer
+            {
+                self.err_s(def.name_span, code::CONST_KIND, format!("상수 '{c}'는 real로 선언됐는데 sum/prod 범위에 쓰임 (범위는 정수만)"), format!("constant:\n    {c}: integer, ..."));
+            }
         }
 
         if self.diags.len() > before {
@@ -493,6 +562,12 @@ impl<'s> Cx<'s> {
                     // Reverse so the earliest-created caller is deleted (and listed) first.
                     queue.extend(callers.into_iter().rev().map(|(_, h)| (h, Some(k.clone()))));
                 }
+            } else if self.state.highlights.remove(key).is_some() {
+                self.notes.push(Note::ObjectDeleted { kind: ObjKind::Highlight, key: key.clone(), via: None, reason: None });
+            } else if self.state.styles.remove(key).is_some() {
+                self.notes.push(Note::ObjectDeleted { kind: ObjKind::Style, key: key.clone(), via: None, reason: None });
+            } else if self.state.vars.remove(key).is_some() {
+                self.notes.push(Note::ObjectDeleted { kind: ObjKind::Var, key: key.clone(), via: None, reason: None });
             } else if self.state.constants.contains_key(key) {
                 self.err(*span, code::DEL_CONSTANT, format!("상수 '{key}'는 직접 지울 수 없음 (쓰는 함수가 없어지면 자동으로 지워짐)"));
             } else {
@@ -501,17 +576,25 @@ impl<'s> Cx<'s> {
         }
     }
 
-    /// Drops constants no function uses and toggle entries for deleted functions.
+    /// Drops constants no function uses, re-resolves highlights (cascade), and drops
+    /// toggle entries of deleted objects.
     fn finish(&mut self) {
-        let used: HashSet<&String> = self.state.functions.values().flat_map(|f| f.consts.iter()).collect();
-        let orphans: Vec<String> = self.state.constants.keys().filter(|k| !used.contains(k)).cloned().collect();
+        let used: HashSet<String> = self.state.functions.values().flat_map(|f| f.consts.iter().cloned()).collect();
+        let orphans: Vec<String> = self.state.constants.keys().filter(|k| !used.contains(*k)).cloned().collect();
         for k in orphans {
+            if self.declared_now.contains(&k) {
+                self.err_s(Span::new(0, 0), code::UNUSED_CONST, format!("상수 '{k}'를 쓰는 함수가 없음"), format!("f(x; {k}) -> y: ...처럼 함수 괄호의 ';' 뒤에 적기"));
+                continue;
+            }
             self.state.constants.remove(&k);
             self.notes.push(Note::ConstantRemoved { key: k });
         }
-        let functions = &self.state.functions;
+        if self.diags.is_empty() {
+            self.refresh_highlights();
+        }
+        let (functions, highlights) = (&self.state.functions, &self.state.highlights);
         for s in self.state.scenes.values_mut() {
-            s.hidden.retain(|k| functions.contains_key(k));
+            s.hidden.retain(|k| functions.contains_key(k) || highlights.contains_key(k));
         }
     }
 
@@ -542,6 +625,10 @@ impl<'s> Cx<'s> {
                 *kind = k;
                 t
             }
+            ExprKind::Call { callee, .. } if callee.key == "between" => {
+                self.err_s(span, code::TYPE, "between은 대상 없는 highlight의 범위 칸에서만 쓸 수 있음", "H1 = highlight(; between(f, g))");
+                Ty::Unknown
+            }
             ExprKind::Call { callee, kind, args } => {
                 let mut arg_tys = vec![];
                 for a in args.iter_mut() {
@@ -562,7 +649,8 @@ impl<'s> Cx<'s> {
                 }
                 Ty::Scalar
             }
-            ExprKind::Product { .. } | ExprKind::Div { .. } | ExprKind::Pow { .. } | ExprKind::Neg { .. } | ExprKind::Factorial { .. } | ExprKind::Paren { .. } => {
+            ExprKind::Paren { inner } => self.resolve(inner, sc, info),
+            ExprKind::Product { .. } | ExprKind::Div { .. } | ExprKind::Pow { .. } | ExprKind::Neg { .. } | ExprKind::Factorial { .. } => {
                 for c in e.children_mut() {
                     let ty = self.resolve(c, sc, info);
                     self.expect_scalar(&ty, c.span);
@@ -571,7 +659,7 @@ impl<'s> Cx<'s> {
             }
             ExprKind::BigOp { body, index, lo, hi, .. } => {
                 let ik = index.key.clone();
-                let clash = ik == sc.input
+                let clash = sc.inputs.contains(&ik)
                     || sc.consts.contains(&ik)
                     || sc.indices.contains(&ik)
                     || ik == sc.def_key
@@ -611,7 +699,7 @@ impl<'s> Cx<'s> {
                 Ty::Region
             }
             ExprKind::Str { .. } => {
-                self.unsupported(span, "식 안의 문자열", 2);
+                self.err(span, code::TYPE, "문자열은 memo 칸이나 변수 값으로만 쓸 수 있음");
                 Ty::Unknown
             }
             ExprKind::Tuple { .. } => {
@@ -627,7 +715,7 @@ impl<'s> Cx<'s> {
                 Ty::Unknown
             }
             ExprKind::Address { .. } => {
-                self.unsupported(span, "부분식 주소", 2);
+                self.err(span, code::TYPE, "부분식 주소는 highlight·req의 대상 칸에만 쓸 수 있음");
                 Ty::Unknown
             }
         };
@@ -647,13 +735,14 @@ impl<'s> Cx<'s> {
         if sc.indices.contains(key) {
             return (NameKind::Index, Ty::Scalar);
         }
-        if *key == sc.input {
+        if sc.inputs.contains(key) {
             return (NameKind::Input, Ty::Scalar);
         }
-        if sc.consts.contains(key) {
+        if sc.consts.contains(key) || (sc.free_consts && self.state.constants.contains_key(key)) {
             if info.in_bound > 0 {
                 info.int_consts.insert(key.clone());
             }
+            info.used_consts.insert(key.clone());
             return (NameKind::Constant, Ty::Scalar);
         }
         if is_reserved(name) {
@@ -672,8 +761,18 @@ impl<'s> Cx<'s> {
         if !info.reported.insert(key.clone()) {
             return (NameKind::Unresolved, Ty::Unknown);
         }
-        if *key == sc.def_key || self.is_function_name(key) || names::is_builtin(key) {
-            self.err_s(span, code::NOT_VALUE, format!("함수 '{key}'는 불러서 써야 함"), format!("{key}({})", sc.input));
+        if (!sc.def_key.is_empty() && *key == sc.def_key) || self.is_function_name(key) || names::is_builtin(key) {
+            self.err_s(span, code::NOT_VALUE, format!("함수 '{key}'는 불러서 써야 함"), format!("{key}({})", sc.input()));
+            return (NameKind::Unresolved, Ty::Unknown);
+        }
+        if let Some(kind) = self.state.kind_of(key).filter(|k| *k != "상수") {
+            let place = if sc.def_key.is_empty() { "범위 칸" } else { "함수 식" };
+            self.err(span, code::TYPE, format!("{kind} '{key}'는 {place}에 쓸 수 없음"));
+            return (NameKind::Unresolved, Ty::Unknown);
+        }
+        if sc.def_key.is_empty() {
+            let axes = sc.inputs.join(", ");
+            self.err(span, code::UNDECLARED, format!("'{key}'가 선언되지 않음 (범위 칸에는 축 {axes}, 상수, 변수, 함수 호출을 씀)"));
             return (NameKind::Unresolved, Ty::Unknown);
         }
         if *key == sc.output {
@@ -711,7 +810,7 @@ impl<'s> Cx<'s> {
             }
             return (NameKind::Builtin, Ty::Scalar);
         }
-        if *key == sc.def_key {
+        if !sc.def_key.is_empty() && *key == sc.def_key {
             self.err(span, code::CYCLE, format!("'{key}'가 자기 자신을 부름 (재귀는 쓸 수 없음)"));
             return (NameKind::Function, Ty::Unknown);
         }
@@ -726,7 +825,7 @@ impl<'s> Cx<'s> {
         if self.failed.contains(key) {
             return (NameKind::Function, Ty::Unknown);
         }
-        if *key == sc.input || sc.consts.contains(key) || sc.indices.contains(key) {
+        if sc.inputs.contains(key) || sc.consts.contains(key) || sc.indices.contains(key) {
             let args = &self.src[span.range()][key.len()..];
             self.err_s(span, code::NOT_FUNCTION, format!("'{key}'는 함수가 아님"), format!("{key}*{args}"));
             return (NameKind::Unresolved, Ty::Unknown);
@@ -736,6 +835,11 @@ impl<'s> Cx<'s> {
         }
         (NameKind::Unresolved, Ty::Unknown)
     }
+}
+
+/// Words with a stage-2 meaning that cannot be names.
+fn is_stage2_word(key: &str) -> bool {
+    matches!(key, "highlight" | "req" | "between") || base_style_color(key).is_some()
 }
 
 fn is_reserved(name: &Ident) -> bool {
@@ -772,7 +876,7 @@ fn split_known(key: &str, sc: &Scope) -> Option<String> {
     if key.chars().count() < 2 || !key.chars().all(|c| c.is_ascii_alphabetic()) {
         return None;
     }
-    let known = |s: &str| s == sc.input || sc.consts.iter().any(|c| c == s) || sc.indices.iter().any(|c| c == s);
+    let known = |s: &str| sc.inputs.iter().any(|i| i == s) || sc.consts.iter().any(|c| c == s) || sc.indices.iter().any(|c| c == s);
     let parts: Vec<String> = key.chars().map(|c| c.to_string()).collect();
     parts.iter().all(|p| known(p)).then(|| parts.join("*"))
 }
@@ -784,19 +888,31 @@ fn split_known(key: &str, sc: &Scope) -> Option<String> {
 #[serde(tag = "type")]
 #[ts(export)]
 pub enum UserOp {
-    Toggle { scene: String, function: String, visible: bool },
+    /// Show / hide a function or highlight in a scene.
+    Toggle {
+        scene: String,
+        target: String,
+        visible: bool,
+    },
     /// Slider released / value typed.
     SetValue { constant: String, value: f64 },
     SetRange { constant: String, min: f64, max: f64 },
+    /// Mark a req done / pending (user in the browser, or Claude via `get_requests`).
+    SetRequestDone {
+        #[ts(type = "number")]
+        number: u64,
+        done: bool,
+    },
 }
 
 impl UserOp {
     /// Short DSL-like text for the history view and responses.
     pub fn describe(&self) -> String {
         match self {
-            UserOp::Toggle { function, visible, .. } => format!("{} {function}", if *visible { "켜기" } else { "끄기" }),
+            UserOp::Toggle { target, visible, .. } => format!("{} {target}", if *visible { "켜기" } else { "끄기" }),
             UserOp::SetValue { constant, value } => format!("slider {constant} = {}", fmt_num(*value)),
             UserOp::SetRange { constant, min, max } => format!("range {constant}: {} .. {}", fmt_num(*min), fmt_num(*max)),
+            UserOp::SetRequestDone { number, done } => format!("req #{number} {}", if *done { "처리됨" } else { "대기" }),
         }
     }
 }
@@ -810,15 +926,19 @@ pub fn fmt_num(v: f64) -> String {
 pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, String> {
     let mut new = state.clone();
     match op {
-        UserOp::Toggle { scene, function, visible } => {
-            if !new.functions.contains_key(function) {
-                return Err(format!("'{function}'라는 정의가 없음"));
+        UserOp::Toggle { scene, target, visible } => {
+            if !new.functions.contains_key(target) && !new.highlights.contains_key(target) {
+                return Err(format!("'{target}'라는 정의가 없음"));
             }
             let s = new.scenes.get_mut(scene).ok_or_else(|| format!("scene '{scene}'이 없음"))?;
-            s.hidden.retain(|k| k != function);
+            s.hidden.retain(|k| k != target);
             if !visible {
-                s.hidden.push(function.clone());
+                s.hidden.push(target.clone());
             }
+        }
+        UserOp::SetRequestDone { number, done } => {
+            let r = new.requests.get_mut(number).ok_or_else(|| format!("요청사항 #{number}이 없음"))?;
+            r.done = *done;
         }
         UserOp::SetValue { constant, value } => {
             let c = new.constants.get_mut(constant).ok_or_else(|| format!("상수 '{constant}'가 없음"))?;
@@ -848,5 +968,7 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
     Ok(Applied { state: new, changes, notes: vec![] })
 }
 
+mod hl;
+pub use hl::{address_resolves, unescape};
 #[cfg(test)]
 mod tests;

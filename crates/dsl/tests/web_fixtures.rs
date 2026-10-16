@@ -26,12 +26,27 @@ const DEFS: &[&str] = &[
     "lg(x) -> y: log(x, 2) + ln(\\e) + deg(180) - \\pi",
     "fl(x) -> y: floor(x)",
     "big(x) -> y: sum(1; 1 <= k <= 1000000)",
+    "lin(x) -> y: x",
+    "quad(x) -> y: x^2",
+    "poly(x; a, b) -> y: a*x^2 - b*x + 1",
 ];
+
+/// Stage 2: highlights over the functions above.
+const HIGHLIGHTS: &str = "\
+R1 = 0 <= x <= 2
+H1 = highlight(quad; R1; blue; \"넓이\")
+H2 = highlight(; between(lin, quad) and 0 <= x <= 2; green)
+H3 = highlight(poly.(-b*x).coef;; orange)
+H4 = highlight(poly.(-b*x);; red)
+H5 = highlight(lin; x < -1 or x > 1)
+H6 = highlight(; y < par(x) and not (x > a))
+";
 
 #[test]
 fn write_web_fixtures() {
     let src = format!("define:\n{}", DEFS.iter().map(|d| format!("    {d}\n")).collect::<String>());
     let state = apply(&State::default(), &src, &Limits::default(), 1).unwrap_or_else(|d| panic!("{d:?}")).state;
+    let state = apply(&state, HIGHLIGHTS, &Limits::default(), 2).unwrap_or_else(|d| panic!("{d:?}")).state;
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/state.json");
     std::fs::create_dir_all(out.parent().unwrap()).unwrap();
     std::fs::write(out, serde_json::to_string_pretty(&state).unwrap()).unwrap();

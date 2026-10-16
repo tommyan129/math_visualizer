@@ -4,19 +4,29 @@
 
 import type { Constant } from "../generated/Constant";
 import type { Function as Fn } from "../generated/Function";
+import type { Highlight } from "../generated/Highlight";
 import type { State } from "../generated/State";
 import type { Warning } from "../generated/Warning";
+import { resolveHighlights, sortedHighlights } from "../canvas/highlight";
 import { colorOf } from "../canvas/plot";
-import { definitionTex, identTex, type LatexCtx } from "../math/latex";
+import { definitionTex, exprTex, identTex, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon, ICONS } from "./dom";
 
 export interface PanelActions {
-  toggle(fn: string, visible: boolean): void;
+  /** Show / hide a function or highlight. */
+  toggle(key: string, visible: boolean): void;
+  /** `del key` through the DSL path. */
+  remove(key: string): void;
   drag(constant: string, value: number): void;
   /** Resolves to an error message, or null. */
   setValue(constant: string, value: number): Promise<string | null>;
   setRange(constant: string, min: number, max: number): Promise<string | null>;
+}
+
+function hexAlpha(hex: string, a: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
 function decimals(step: number): number {
@@ -127,13 +137,18 @@ class ConstantCard {
 export class Panel {
   readonly el = h("aside", { class: "panel", "aria-label": "정의와 상수" });
   private defs = h("div");
+  private hlSec = h("div", { class: "sec" }, "강조");
+  private hls = h("div");
+  private hlKey = "";
+  /** Highlight memos the user expanded. */
+  private open = new Set<string>();
   private consts = h("div");
   private hint = h("div", { class: "hint" });
   private cards = new Map<string, ConstantCard>();
   private defKey = "";
 
   constructor(private actions: PanelActions) {
-    this.el.append(this.hint, h("div", { class: "sec" }, "정의"), this.defs, h("div", { class: "sec" }, "상수"), this.consts);
+    this.el.append(this.hint, h("div", { class: "sec" }, "정의"), this.defs, this.hlSec, this.hls, h("div", { class: "sec" }, "상수"), this.consts);
   }
 
   isDragging(key: string): boolean {
@@ -141,6 +156,7 @@ export class Panel {
   }
 
   render(state: State | null, hasKey: boolean, warnings: (key: string) => Warning[]): void {
+    this.render0 = () => this.renderHighlights(state, warnings);
     this.hint.textContent = !state
       ? "왼쪽에서 작업 공간을 만들거나 고르세요."
       : !hasKey
@@ -148,20 +164,84 @@ export class Panel {
         : "";
     this.hint.hidden = this.hint.textContent === "";
     this.renderDefs(state, warnings);
+    this.renderHighlights(state, warnings);
     this.renderConsts(state);
   }
+
+  private renderHighlights(state: State | null, warnings: (key: string) => Warning[]): void {
+    const hs = state ? sortedHighlights(state) : [];
+    const hidden = new Set(state ? Object.values(state.scenes).flatMap((s) => s!.hidden) : []);
+    const key = JSON.stringify([hs.map((x) => [x.key, x.version, hidden.has(x.key), warnings(x.key).map((w) => w.message)]), [...this.open]]);
+    if (key === this.hlKey) return;
+    this.hlKey = key;
+    this.hlSec.hidden = hs.length === 0;
+    const fns = state ? Object.values(state.functions).map((f) => f!) : [];
+    const ctx: LatexCtx = { colors: new Map(fns.map((f) => [f.key, colorOf(f)])) };
+    this.hls.replaceChildren(...hs.map((x) => this.hlEl(x, state!, ctx, !hidden.has(x.key), warnings(x.key))));
+  }
+
+  private hlEl(x: Highlight, state: State, ctx: LatexCtx, visible: boolean, warns: Warning[]): HTMLElement {
+    const id = `h-${x.order}`;
+    const box = h("input", { type: "checkbox", id, checked: visible, "aria-label": `${x.key} 보이기` });
+    box.addEventListener("change", () => this.actions.toggle(x.key, box.checked));
+    const sub = x.target.type === "Sub";
+    const chip = h("span", { class: `chip${sub ? " sub" : ""}` });
+    chip.style.background = sub ? x.style.color : hexAlpha(x.style.color, Math.min(1, x.style.opacity * 2.5));
+    const parts: Node[] = [];
+    const t = x.target;
+    if (t.type === "Function") {
+      const f = state.functions[t.function];
+      if (f) parts.push(texElement(identTex(f.name, colorOf(f))));
+    } else if (t.type === "Sub") {
+      parts.push(h("code", {}, t.address));
+    }
+    if (x.source.range) {
+      if (parts.length) parts.push(document.createTextNode(", "));
+      try {
+        parts.push(texElement(exprTex(x.source.range, ctx)));
+      } catch {
+        parts.push(h("code", {}, x.src));
+      }
+    }
+    const del = h("button", { class: "iconbtn small del", "aria-label": `${x.key} 지우기`, title: `del ${x.key}`, onclick: () => this.actions.remove(x.key) }, icon(ICONS.close));
+    const memo = x.memo
+      ? h("button", { class: `memo${this.open.has(x.key) ? " open" : ""}`, title: x.memo, onclick: () => {
+          if (this.open.has(x.key)) this.open.delete(x.key);
+          else this.open.add(x.key);
+          this.hlKey = "";
+          this.render0();
+        } }, x.memo)
+      : null;
+    return h(
+      "div",
+      { class: `def hl${visible ? "" : " off"}`, title: `${x.key} = ${x.src}` },
+      box,
+      h(
+        "div",
+        { class: "body-col" },
+        h("label", { class: "hl-head", for: id }, chip, h("span", { class: "hl-name" }, x.key), h("span", { class: "hl-what" }, ...parts)),
+        memo,
+        ...warns.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message)),
+      ),
+      del,
+    );
+  }
+
+  /** Re-render after a local UI change (memo expand); set by `render`. */
+  private render0: () => void = () => {};
 
   private renderDefs(state: State | null, warnings: (key: string) => Warning[]): void {
     const fns = state ? Object.values(state.functions).map((f) => f!).sort((a, b) => a.order - b.order) : [];
     const hidden = new Set(state ? Object.values(state.scenes).flatMap((s) => s!.hidden) : []);
     // Re-render only when something visible changed (MathJax output is cached anyway).
-    const key = JSON.stringify(fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message)]));
+    const nodes = state ? resolveHighlights(state, hidden).nodeColors : new Map<string, Map<number, string>>();
+    const key = JSON.stringify(fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])]]));
     if (key === this.defKey) return;
     this.defKey = key;
-    const ctx: LatexCtx = { colors: new Map(fns.map((f) => [f.key, colorOf(f)])) };
+    const colors = new Map(fns.map((f) => [f.key, colorOf(f)]));
     this.defs.replaceChildren();
     if (state && fns.length === 0) this.defs.append(h("div", { class: "hint" }, "아직 정의가 없음. Claude가 apply로 보내면 여기에 나타남."));
-    for (const f of fns) this.defs.append(this.defEl(f, ctx, !hidden.has(f.key), warnings(f.key)));
+    for (const f of fns) this.defs.append(this.defEl(f, { colors, nodes: nodes.get(f.key) }, !hidden.has(f.key), warnings(f.key)));
   }
 
   private defEl(f: Fn, ctx: LatexCtx, visible: boolean, warns: Warning[]): HTMLElement {

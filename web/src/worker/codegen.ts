@@ -8,6 +8,8 @@ import type { Expr } from "../generated/Expr";
 import type { Runtime } from "./numeric";
 
 export type Scalar = (x: number, C: Float64Array) => number;
+/** Inequality region over (x, y); `y` is ignored for x-only conditions. */
+export type Region = (x: number, y: number, C: Float64Array) => boolean;
 export type Batch = (xs: Float64Array, out: Float64Array, C: Float64Array) => void;
 
 export interface FnSpec {
@@ -148,7 +150,8 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
     case "Name":
       switch (e.kind) {
         case "Input":
-          return "x";
+          // Range slots of targetless highlights use both axes.
+          return e.name.key === "y" ? "y" : "x";
         case "Index": {
           const i = indices.lastIndexOf(e.name.key);
           if (i < 0) throw new CodegenError("unbound index");
@@ -203,10 +206,35 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
       const op = e.op === "Sum" ? "sum" : "prod";
       return `R.${op}(${go(e.lo)}, ${go(e.hi)}, ${e.lo_strict}, ${e.hi_strict}, (${k}) => ${body})`;
     }
+    case "Compare": {
+      // Chains compare each neighbor pair: a < b <= c → (a < b) && (b <= c).
+      const parts: string[] = [];
+      let lhs = go(e.first);
+      for (const l of e.rest) {
+        const rhs = go(l.rhs);
+        parts.push(`(${lhs} ${CMP[l.op]} ${rhs})`);
+        lhs = rhs;
+      }
+      return `(${parts.join(" && ")})`;
+    }
+    case "And":
+      return `(${e.args.map(go).join(" && ")})`;
+    case "Or":
+      return `(${e.args.map(go).join(" || ")})`;
+    case "Not":
+      return `(!${go(e.arg)})`;
     default:
-      // Regions, strings, matrices, addresses: never in a stage-1 function body.
+      // Strings, matrices, addresses: never in an evaluated expression.
       throw new CodegenError(`unsupported node ${e.type}`);
   }
+}
+
+const CMP = { Lt: "<", Le: "<=", Gt: ">", Ge: ">=", Eq: "===" } as const;
+
+/** Compiles a resolved inequality region (highlight range slot). */
+export function compileRegion(e: Expr, env: CodegenEnv, R: Runtime, F: Scalar[]): Region {
+  const src = `"use strict";\nreturn (x, y, C) => ${expr(e, env)};`;
+  return new Function("R", "F", src)(R, F) as Region;
 }
 
 /**

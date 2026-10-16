@@ -8,6 +8,7 @@ mod keys;
 mod mcp;
 mod private;
 mod report;
+mod requests;
 mod store;
 
 use std::path::PathBuf;
