@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MathJax 비교</title>
+<style>
+  body { margin: 0; padding: 24px 32px; background: #0d0e11; color: #ecedf0; font-family: "SUIT", sans-serif; }
+  h1 { font-size: 18px; font-weight: 600; }
+  p { color: #a3a6af; font-size: 14px; line-height: 1.6; max-width: 820px; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 12px 10px; border-top: 1px solid #212329; vertical-align: middle; }
+  td.key { color: #858993; font-size: 12px; width: 80px; }
+  td.math { font-size: 18px; width: 45%; }
+  td.math.big { font-size: 24px; }
+  code { font: 12px "JetBrains Mono", monospace; color: #b8bbc3; user-select: all; word-break: break-all; }
+  .size { display: flex; gap: 8px; align-items: center; margin: 12px 0 20px; font-size: 13px; color: #a3a6af; }
+</style>
+</head>
+<body>
+<h1>MathJax 렌더 비교 (TeX 글꼴)</h1>
+<p>각 줄의 수식은 서버가 실제로 해석한 정의(web/test/fixtures/state.json)에서 만든 LaTeX입니다. 오른쪽 코드를 claude.ai 채팅에 <code>$$ ... $$</code>로 붙여 넣고 간격·크기를 나란히 비교하세요. 코드는 클릭 한 번으로 전체 선택됩니다.</p>
+<div class="size"><label><input type="checkbox" id="big"> 큰 글자 (24px)</label></div>
+<table id="rows"></table>
+<script type="module" src="./mathjax-compare.ts"></script>
+</body>
+</html>
