@@ -164,3 +164,118 @@ export function buildSpace(view: View, axisTex: [string, string] = ["x", "y"]): 
   });
   return out;
 }
+
+/** Angle label for k·π/6 (k = 0..11): `0`, `\frac{\pi}{6}`, `\pi`, … */
+function angleTex(k: number): string {
+  if (k === 0) return "0";
+  const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+  const d = g(k, 6);
+  const num = k / d, den = 6 / d;
+  const top = num === 1 ? "\\pi" : `${num}\\pi`;
+  return den === 1 ? top : `\\frac{${top}}{${den}}`;
+}
+
+/**
+ * Space for `polar(r, \theta)`: circles at the radius grid step, rays every π/12
+ * (major every π/6), the θ = 0 ray as the axis with radius ticks, angle labels near
+ * the edge of the view (stage-5a decision).
+ */
+export function buildPolarSpace(view: View, axisTex: [string, string] = ["r", "\\theta"]): Batch[] {
+  const { major, minor, decimals } = gridStep(view.scale);
+  const b = view.box();
+  const ox = view.cx, oy = view.cy;
+  const px = 1 / view.scale;
+  // Radii that can be visible: from the box's nearest point to its farthest corner.
+  const nx = Math.min(Math.max(0, b.x_min), b.x_max), ny = Math.min(Math.max(0, b.y_min), b.y_max);
+  const rNear = Math.hypot(nx, ny);
+  const rFar = Math.max(...[[b.x_min, b.y_min], [b.x_min, b.y_max], [b.x_max, b.y_min], [b.x_max, b.y_max]].map(([x, y]) => Math.hypot(x!, y!)));
+  const minorSegs: number[] = [], majorSegs: number[] = [];
+  const ratio = Math.round(major / minor);
+  for (let i = Math.max(1, Math.floor(rNear / minor)); i * minor <= rFar; i++) {
+    const r = i * minor;
+    const n = Math.min(720, Math.max(48, Math.ceil((2 * Math.PI * r) / (6 * px))));
+    const out = i % ratio === 0 ? majorSegs : minorSegs;
+    for (let k = 0; k < n; k++) {
+      const a0 = (2 * Math.PI * k) / n, a1 = (2 * Math.PI * (k + 1)) / n;
+      out.push(r * Math.cos(a0) - ox, r * Math.sin(a0) - oy, r * Math.cos(a1) - ox, r * Math.sin(a1) - oy);
+    }
+  }
+  for (let k = 0; k < 24; k++) {
+    const a = (Math.PI * k) / 12;
+    (k % 2 === 0 ? majorSegs : minorSegs).push(-ox, -oy, rFar * Math.cos(a) - ox, rFar * Math.sin(a) - oy);
+  }
+  const grid = [lines("grid-minor", SPACE_STYLES.minor, 0, minorSegs), lines("grid-major", SPACE_STYLES.major, 0, majorSegs)];
+  for (const g of grid) g.origin = [ox, oy, 0];
+
+  // θ = 0 ray as the axis, with radius ticks and labels.
+  const axisSegs: number[] = [];
+  const labelCoords: number[] = [];
+  const labels: LabelRef[] = [];
+  const place: LabelPlacement[] = [];
+  const tick = 4 * px;
+  const rayVisible = b.y_min <= 0 && 0 <= b.y_max && b.x_max > 0;
+  if (rayVisible) {
+    const x0 = Math.max(0, b.x_min), x1 = b.x_max;
+    axisSegs.push(x0 - ox, -oy, x1 - ox, -oy);
+    const ex = x1 - 6 * px, arrow = 7 * px;
+    axisSegs.push(ex - arrow - ox, arrow * 0.6 - oy, ex - ox, -oy, ex - ox, -oy, ex - arrow - ox, -arrow * 0.6 - oy);
+    for (let i = Math.max(1, Math.ceil(x0 / major)); i * major <= x1 - 20 * px; i++) {
+      const x = i * major;
+      axisSegs.push(x - ox, tick - oy, x - ox, -tick - oy);
+      labelCoords.push(x - ox, -oy);
+      labels.push({ kind: "ui", text: formatTick(x, decimals), px: 14, weight: 500 });
+      place.push({ align: "center", baseline: "top", dx: 0, dy: 10, halo: true });
+    }
+  }
+  if (b.x_min <= 0 && 0 <= b.x_max && b.y_min <= 0 && 0 <= b.y_max) {
+    labelCoords.push(-ox, -oy);
+    labels.push({ kind: "ui", text: "0", px: 14, weight: 500 });
+    place.push({ align: "right", baseline: "top", dx: -12, dy: 6, halo: true });
+  }
+  const axes = lines("axes", SPACE_STYLES.axis, 2, axisSegs);
+  axes.origin = [ox, oy, 0];
+  axes.layer = 0;
+  axes.seq = 10;
+
+  // Angle labels on a ring inside the view (only while the origin is on screen).
+  const angleCoords: number[] = [];
+  const angleLabels: LabelRef[] = [];
+  const anglePlace: LabelPlacement[] = [];
+  if (b.x_min < 0 && 0 < b.x_max && b.y_min < 0 && 0 < b.y_max) {
+    const ring = 0.86 * Math.min(-b.x_min, b.x_max, -b.y_min, b.y_max);
+    for (let k = 0; k < 12; k++) {
+      if (k === 0) continue; // the θ = 0 ray carries the radius ticks
+      const a = (Math.PI * k) / 6;
+      angleCoords.push(ring * Math.cos(a) - ox, ring * Math.sin(a) - oy);
+      angleLabels.push({ kind: "tex", tex: angleTex(k), px: 16 });
+      anglePlace.push({ align: "center", baseline: "middle", dx: 0, dy: 0, halo: true });
+    }
+  }
+  const text = (id: string, style: number, seq: number, coords: number[], ls: LabelRef[], pl: LabelPlacement[]): Batch => ({
+    id,
+    version: 0,
+    source: { def: "space" },
+    layer: 4,
+    seq,
+    style,
+    origin: [ox, oy, 0],
+    dim: 2,
+    kind: "text",
+    coords: Float32Array.from(coords),
+    labels: ls,
+    placement: pl,
+  });
+  const names: number[] = [], nameLabels: LabelRef[] = [], namePlace: LabelPlacement[] = [];
+  if (rayVisible) {
+    names.push(b.x_max - 14 * px - ox, -oy);
+    nameLabels.push({ kind: "tex", tex: axisTex[0], px: 22 });
+    namePlace.push({ align: "right", baseline: "bottom", dx: 0, dy: -8, halo: true });
+  }
+  return [
+    ...grid,
+    axes,
+    text(`ticks-${SPACE_STYLES.tickLabel}`, SPACE_STYLES.tickLabel, SPACE_STYLES.tickLabel, labelCoords, labels, place),
+    text("angle-labels", SPACE_STYLES.tickLabel, SPACE_STYLES.tickLabel + 1, angleCoords, angleLabels, anglePlace),
+    text("axis-names", SPACE_STYLES.axisName, 20, names, nameLabels, namePlace),
+  ];
+}

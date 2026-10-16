@@ -27,11 +27,22 @@ export interface FnSpec {
   body: Expr;
   consts: string[];
   calls: string[];
+  /** Parameter range of a parametric / polar function. */
+  range: { lo: Expr; hi: Expr } | null;
+  /** `family(...; lo <= k <= hi)`. */
+  family: { index: string; lo: Expr; hi: Expr; lo_strict: boolean; hi_strict: boolean } | null;
 }
 
 export function specOf(f: Fn): FnSpec {
-  return { key: f.key, version: f.version, kind: f.kind, inputs: f.inputs.map((i) => i.key), body: f.body, consts: f.consts, calls: f.calls };
+  const range = f.range ? { lo: f.range.lo, hi: f.range.hi } : null;
+  const family = f.family ? { index: f.family.index.key, lo: f.family.lo, hi: f.family.hi, lo_strict: f.family.lo_strict, hi_strict: f.family.hi_strict } : null;
+  return { key: f.key, version: f.version, kind: f.kind, inputs: f.inputs.map((i) => i.key), body: f.body, consts: f.consts, calls: f.calls, range, family };
 }
+
+/** A point of a parametric / polar curve at parameter `t` (`[NaN, NaN]` where undefined). */
+export type Param = (t: number, C: Float64Array) => number[];
+/** Implicit curve `lhs - rhs` over the scene's horizontal and vertical axis. */
+export type Implicit = (x: number, y: number, C: Float64Array) => number;
 
 export interface Compiled {
   key: string;
@@ -48,6 +59,14 @@ export interface Compiled {
   vecs: Vec[];
   /** Defined only at integer x (x appears in a sum/prod bound, here or in a callee). */
   discrete: boolean;
+  /** Parametric and polar curves (polar: the point r(θ)·(cos θ, sin θ)). */
+  param?: Param;
+  /** Parameter range at the current constants; polar default 0..2π. */
+  trange?: (C: Float64Array) => [number, number];
+  /** Equations. */
+  implicit?: Implicit;
+  /** `family`: members per integer k, and the index bounds at the current constants. */
+  family?: { at: (k: number) => DrawnMembers; krange: (C: Float64Array) => [number, number]; loStrict: boolean; hiStrict: boolean };
 }
 
 export interface CodegenEnv {
@@ -179,6 +198,8 @@ export function children(e: Expr): Expr[] {
       return [e.base, ...e.indices];
     case "Address":
       return e.step.type === "Term" ? [e.base, e.step.pattern] : [e.base];
+    case "Split":
+      return [e.subject, ...e.at, ...e.pieces.flatMap((p) => [p.value, p.cond])];
     default:
       return [];
   }
@@ -218,6 +239,8 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
           if (i === undefined) throw new CodegenError("unknown value");
           return `F[${i}](C)`;
         }
+        case "SplitName":
+          return "s0";
         case "Reserved":
           if (e.name.key === "\\pi") return "R.PI";
           if (e.name.key === "\\e") return "R.E";
@@ -297,6 +320,9 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
       return `(${e.args.map(go).join(" || ")})`;
     case "Not":
       return `(!${go(e.arg)})`;
+    case "Tuple":
+      // Output slots of a parametric body: one number per axis.
+      return `[${e.items.map(go).join(", ")}]`;
     case "List": {
       // Rows of a matrix literal are flattened row-major.
       const leaves = e.items.flatMap((it) => (it.type === "List" ? it.items : [it]));
@@ -309,6 +335,12 @@ export function expr(e: Expr, env: CodegenEnv, indices: string[] = []): string {
       if (e.base.ty.type === "Vector" && e.indices.length === 1) return `R.at(${b}, ${int(m)}, ${go(e.indices[0]!)})`;
       if (e.base.ty.type === "Matrix" && e.indices.length === 2) return `R.at2(${b}, ${int(m)}, ${int(n)}, ${go(e.indices[0]!)}, ${go(e.indices[1]!)})`;
       throw new CodegenError("bad index");
+    }
+    case "Split": {
+      // Every line's condition is checked: more than one true at a point means the
+      // boundary order broke at the current values (design.md "split"): undefined + warning.
+      const lines = e.pieces.map((p) => `if (${go(p.cond)}) { v = ${go(p.value)}; n++; }`).join(" ");
+      return `((s0) => { let v = NaN, n = 0; ${lines} if (n > 1) { R.overlap = true; return NaN; } return v; })(${go(e.subject)})`;
     }
     default:
       // Strings, matrices, addresses: never in an evaluated expression.
@@ -358,6 +390,13 @@ export function compileConst(e: Expr, R: Runtime): () => number {
   return new Function("R", "F", src)(R, []) as () => number;
 }
 
+/** `lo < hi` over the constants (split boundary order); throws if it needs more than constants. */
+export function compileOrder(lo: Expr, hi: Expr, constIndex: Map<string, number>, R: Runtime): (C: Float64Array) => boolean {
+  const env: CodegenEnv = { constIndex, fnIndex: new Map(), axes: null, inputs: [] };
+  const src = `"use strict";\nreturn (C) => ${expr(lo, env)} < ${expr(hi, env)};`;
+  return new Function("R", "F", src)(R, []) as (C: Float64Array) => boolean;
+}
+
 /** Compiles a resolved inequality region (highlight range slot, clip). */
 export function compileRegion(e: Expr, env: CodegenEnv, R: Runtime, F: Scalar[]): Region {
   const src = `"use strict";\nreturn (x, y, C) => ${expr(e, env)};`;
@@ -387,22 +426,64 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
       const vecs = spec.body.args.map((a) => make(`(C) => ${expr(a, { ...env, axes: null, inputs: [] })}`) as Vec);
       return { ...base, vecs };
     }
+    case "Parametric":
+    case "Polar":
+    case "Equation":
     case "Curve":
       break;
   }
-  const e = expr(spec.body, { ...env, axes: null });
-  const src =
-    `"use strict";\n` +
-    `return {\n` +
-    `  scalar(x, C) { return ${e}; },\n` +
-    `  batch(xs, out, C) { const n = xs.length; for (let i = 0; i < n; i++) { const x = xs[i]; out[i] = ${e}; } },\n` +
-    `};`;
-  const made = new Function("R", "F", src)(R, F) as { scalar: Scalar; batch: Batch };
-  return {
-    ...base,
-    scalar: made.scalar,
-    batch: made.batch,
-    table: made.scalar,
-    discrete: discreteCallee || boundUsesInput(spec.body),
-  };
+  if (spec.family) {
+    // One set of members per integer k: a factory with k bound to `k0`.
+    const benv = { ...env, axes: null, inputs: [] };
+    const at = make(`(k0) => (${drawnSource(spec, env, [spec.family.index])})`) as (k: number) => DrawnMembers;
+    const krange = make(`(C) => [${expr(spec.family.lo, benv)}, ${expr(spec.family.hi, benv)}]`) as (C: Float64Array) => [number, number];
+    return { ...base, family: { at, krange, loStrict: spec.family.lo_strict, hiStrict: spec.family.hi_strict } };
+  }
+  const m = make(drawnSource(spec, env, [])) as DrawnMembers;
+  switch (spec.kind) {
+    case "Parametric":
+      return { ...base, ...m, table: m.param as unknown as Scalar };
+    case "Polar":
+      // Called as a number (r) from other functions.
+      return { ...base, ...m, table: m.scalar! };
+    case "Equation":
+      return { ...base, ...m };
+    default:
+      return { ...base, ...m, table: m.scalar!, discrete: discreteCallee || boundUsesInput(spec.body) };
+  }
+}
+
+/** What a drawn definition evaluates (per k for `family`). */
+export interface DrawnMembers {
+  scalar?: Scalar;
+  batch?: Batch;
+  param?: Param;
+  trange?: (C: Float64Array) => [number, number];
+  implicit?: Implicit;
+}
+
+/** Object-literal source of a drawn definition's members; `idx` = the family index (→ `k0`). */
+function drawnSource(spec: FnSpec, env: CodegenEnv, idx: string[]): string {
+  switch (spec.kind) {
+    case "Parametric":
+    case "Polar": {
+      if (spec.inputs.length !== 1) throw new CodegenError("one parameter");
+      const body = expr(spec.body, { ...env, axes: null, inputs: spec.inputs }, idx);
+      const benv = { ...env, axes: null, inputs: [] };
+      const trange = spec.range ? `(C) => [${expr(spec.range.lo, benv, idx)}, ${expr(spec.range.hi, benv, idx)}]` : `() => [0, 2 * Math.PI]`;
+      if (spec.kind === "Parametric") return `{ param: (x0, C) => ${body}, trange: ${trange} }`;
+      return `{ scalar: (x0, C) => ${body}, param: (x0, C) => { const r = ${body}; return [r * Math.cos(x0), r * Math.sin(x0)]; }, trange: ${trange} }`;
+    }
+    case "Equation": {
+      if (spec.inputs.length !== 2 || spec.body.type !== "Compare" || spec.body.rest.length !== 1) throw new CodegenError("equation shape");
+      const env2 = { ...env, axes: null, inputs: spec.inputs };
+      return `{ implicit: (x0, x1, C) => (${expr(spec.body.first, env2, idx)}) - (${expr(spec.body.rest[0]!.rhs, env2, idx)}) }`;
+    }
+    case "Curve": {
+      const e = expr(spec.body, { ...env, axes: null }, idx);
+      return `{ scalar(x, C) { return ${e}; }, batch(xs, out, C) { const n = xs.length; for (let i = 0; i < n; i++) { const x = xs[i]; out[i] = ${e}; } } }`;
+    }
+    default:
+      throw new CodegenError("not a drawn curve");
+  }
 }

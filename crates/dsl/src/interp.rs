@@ -189,12 +189,19 @@ struct Scope {
     /// Definition key; empty for a range slot.
     def_key: String,
     inputs: Vec<String>,
-    output: String,
+    /// Output axes (`y`; `x, y` of a parametric function; `r` of a polar function).
+    outputs: Vec<String>,
     consts: Vec<String>,
     /// Range slots may use any existing constant without listing it.
     free_consts: bool,
     /// Enclosing `sum`/`prod` indices, innermost last.
     indices: Vec<String>,
+    /// Name of the enclosing split's subject (`split r = ... at`).
+    split_name: Option<String>,
+    /// The next node is a parametric body as a whole, where a parametric call fits.
+    tuple_ok: bool,
+    /// Resolving one output slot of a parametric body (for messages).
+    in_slot: bool,
 }
 
 impl Scope {
@@ -215,7 +222,7 @@ impl Scope {
 
     /// Scope of a range slot: the given axes, any existing constant.
     fn range(inputs: &[&str]) -> Self {
-        Scope { def_key: String::new(), inputs: inputs.iter().map(|s| s.to_string()).collect(), output: String::new(), consts: vec![], free_consts: true, indices: vec![] }
+        Scope { def_key: String::new(), inputs: inputs.iter().map(|s| s.to_string()).collect(), outputs: vec![], consts: vec![], free_consts: true, indices: vec![], split_name: None, tuple_ok: false, in_slot: false }
     }
 }
 
@@ -224,9 +231,13 @@ struct Shape<'d> {
     kind: DefKind,
     inputs: &'d [(Ident, Span)],
     consts: &'d [(Ident, Span)],
-    /// Output axis of a curve.
+    /// Output axis of a curve (`y`) or polar function (`r`).
     output: Option<&'d Ident>,
-    body: &'d Expr,
+    /// Output axes of a parametric function.
+    outputs: Vec<Ident>,
+    body: Expr,
+    /// `0 <= t <= 2*\pi` after the body (parametric, polar).
+    range: Option<&'d Expr>,
 }
 
 #[derive(Default)]
@@ -238,6 +249,8 @@ struct DefInfo {
     int_consts: BTreeSet<String>,
     /// Depth inside `sum`/`prod` bounds.
     in_bound: u32,
+    /// Order of split boundary points that use constants.
+    constraints: Vec<OrderConstraint>,
     /// Names already reported in this definition (one error per name).
     reported: HashSet<String>,
 }
@@ -292,21 +305,10 @@ impl<'s> Cx<'s> {
             self.unsupported(def.name_span, "역함수 이름 (~f)", 5);
             return None;
         }
-        let body = match &def.body {
-            DefBody::Expr(e) => e,
-            DefBody::Equation { .. } => {
-                self.unsupported(def.span, "방정식 정의 (음함수)", 5);
-                return None;
-            }
-            DefBody::WithRange { range, .. } => {
-                self.unsupported(range.span, "매개변수 범위", 5);
-                return None;
-            }
-            DefBody::Block(span) => {
-                self.unsupported(*span, "정의 아래 블록 (split)", 5);
-                return None;
-            }
-        };
+        if let Some(r) = self.check_shape_drawn(def) {
+            return r;
+        }
+        let DefBody::Expr(body) = &def.body else { unreachable!("routed by check_shape_drawn") };
         let inputs: &[(Ident, Span)] = def.params.as_ref().map_or(&[], |p| &p.inputs);
         let consts: &[(Ident, Span)] = def.params.as_ref().map_or(&[], |p| &p.consts);
         let head = def.params.as_ref().map_or(def.name_span, |p| def.name_span.to(p.span));
@@ -321,14 +323,7 @@ impl<'s> Cx<'s> {
         let (kind, output) = match &def.output {
             Some(Output::Axis(o, _)) => (DefKind::Curve, Some(o)),
             Some(Output::Matrix(_)) => (DefKind::Matrix, None),
-            Some(Output::Tuple(_, span)) => {
-                self.unsupported(*span, "매개변수 함수 출력 (x, y)", 5);
-                return None;
-            }
-            Some(Output::Coord { span, .. }) => {
-                self.unsupported(*span, "극좌표 함수", 5);
-                return None;
-            }
+            Some(Output::Tuple(..) | Output::Coord { .. }) => unreachable!("routed by check_shape_drawn"),
             None => {
                 let kind = drawn_call.unwrap_or(DefKind::Value);
                 if !inputs.is_empty() {
@@ -387,13 +382,13 @@ impl<'s> Cx<'s> {
             self.err(*s, code::AXES, format!("'{}'는 {what} 이름으로 쓸 수 없음", i.key));
             return None;
         }
-        Some(Shape { kind, inputs, consts, output, body })
+        Some(Shape { kind, inputs, consts, output, outputs: vec![], body: body.clone(), range: None })
     }
 
     fn check_names(&mut self, def: &Def, shape: &Shape) {
         let key = &def.name.key;
         let is_input = |k: &str| shape.inputs.iter().any(|(i, _)| i.key == k);
-        let output = shape.output.map(|o| o.key.as_str());
+        let is_output = |k: &str| shape.output.is_some_and(|o| o.key == k) || shape.outputs.iter().any(|o| o.key == k);
         if let Some(kind) = self.state.kind_of(key).filter(|k| !matches!(*k, "함수" | "상수")) {
             self.err_s(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 이미 {kind} 이름임"), format!("del {key} 후 정의하거나 다른 이름"));
         } else if names::is_builtin(key) || is_stage2_word(key) {
@@ -402,7 +397,7 @@ impl<'s> Cx<'s> {
             self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 예약어라 이름으로 쓸 수 없음"));
         } else if self.state.constants.contains_key(key) {
             self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 이미 상수 이름임"));
-        } else if is_input(key) || output == Some(key.as_str()) {
+        } else if is_input(key) || is_output(key) {
             self.err(def.name_span, code::NAME_CONFLICT, format!("'{key}'는 축 이름이라 정의 이름으로 쓸 수 없음"));
         }
         let mut seen: Vec<&str> = vec![];
@@ -426,7 +421,7 @@ impl<'s> Cx<'s> {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 기본 함수 이름이라 상수로 쓸 수 없음"));
             } else if is_reserved(c) {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 예약어라 상수로 쓸 수 없음"));
-            } else if is_input(ck) || output == Some(ck) {
+            } else if is_input(ck) || is_output(ck) {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 축 이름이라 상수로 쓸 수 없음"));
             } else if ck == key || self.is_function_name(ck) {
                 self.err(*span, code::NAME_CONFLICT, format!("'{ck}'는 이미 정의 이름임"));
@@ -439,6 +434,11 @@ impl<'s> Cx<'s> {
     fn define(&mut self, def: &Def) {
         let before = self.diags.len();
         let key = def.name.key.clone();
+        if matches!(&def.body, DefBody::Expr(e) if matches!(e.kind, ExprKind::Error {})) {
+            // A split block that failed to parse (already reported).
+            self.failed.insert(key);
+            return;
+        }
         let Some(shape) = self.check_shape(def) else {
             self.failed.insert(key);
             return;
@@ -448,20 +448,49 @@ impl<'s> Cx<'s> {
         let mut scope = Scope {
             def_key: key.clone(),
             inputs: shape.inputs.iter().map(|(i, _)| i.key.clone()).collect(),
-            output: shape.output.map_or(String::new(), |o| o.key.clone()),
+            outputs: shape.output.iter().map(|o| o.key.clone()).chain(shape.outputs.iter().map(|o| o.key.clone())).collect(),
             consts: shape.consts.iter().map(|(c, _)| c.key.clone()).collect(),
             free_consts: false,
             indices: vec![],
+            split_name: None,
+            tuple_ok: false,
+            in_slot: false,
         };
         let mut info = DefInfo::default();
         let mut body = shape.body.clone();
-        let body_src = self.src[body.span.range()].to_string();
+        let body_src = if matches!(body.kind, ExprKind::Split { .. }) { crate::print::expr_dsl(&body) } else { self.src[body.span.range()].to_string() };
+        // `family`: the index is in scope for the body and the parameter range.
+        let family_ok = match &def.family {
+            Some(h) => self.open_family(h, shape.kind, &mut scope),
+            None => false,
+        };
         let ty = match shape.kind {
             DefKind::Span | DefKind::Arrow => self.resolve_drawn(&mut body, shape.kind, &mut scope, &mut info),
+            DefKind::Curve | DefKind::Polar if matches!(body.kind, ExprKind::Split { .. }) => self.resolve_split(&mut body, &mut scope, &mut info),
+            DefKind::Parametric => self.resolve_parametric(&mut body, shape.outputs.len() as u32, &mut scope, &mut info),
+            DefKind::Equation => self.resolve_equation(&mut body, &mut scope, &mut info),
+            _ if matches!(body.kind, ExprKind::Split { .. }) => {
+                self.err(body.span, code::TYPE, format!("split은 그리는 함수(f(x) -> y)에만 씀 ({}에는 쓸 수 없음)", shape.kind.word()));
+                Ty::Unknown
+            }
             _ => self.resolve(&mut body, &mut scope, &mut info),
         };
+        let range = shape.range.and_then(|r| self.resolve_param_range(r, &mut scope, &mut info));
+        let family = match (&def.family, family_ok) {
+            (Some(h), true) => {
+                scope.indices.pop();
+                self.resolve_family(h, &mut scope, &mut info)
+            }
+            (Some(_), false) => {
+                scope.indices.pop();
+                None
+            }
+            _ => None,
+        };
         match (shape.kind, &ty) {
-            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow, _) => {}
+            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow | DefKind::Parametric | DefKind::Equation, _) => {}
+            (DefKind::Polar, Ty::Scalar) => {}
+            (DefKind::Polar, t) => self.err(body.span, code::TYPE, format!("극좌표 함수의 값(r)은 숫자여야 함 (이 식은 {})", t.describe())),
             (_, Ty::Region) => self.err(body.span, code::TYPE, "부등식은 정의 값이 될 수 없음"),
             (DefKind::Curve, Ty::Scalar) => {}
             (DefKind::Curve, t) if t.is_array() => {
@@ -537,11 +566,15 @@ impl<'s> Cx<'s> {
             kind: shape.kind,
             inputs: shape.inputs.iter().map(|(i, _)| i.clone()).collect(),
             output: shape.output.cloned(),
+            outputs: shape.outputs.clone(),
+            range,
+            family,
             ty,
             consts: scope.consts.clone(),
             body,
             body_src,
             calls: info.callees.iter().cloned().collect(),
+            constraints: std::mem::take(&mut info.constraints),
             color,
             order,
             version: old.as_ref().map_or(0, |o| o.version),
@@ -965,6 +998,8 @@ impl<'s> Cx<'s> {
         if !self.tick() {
             return Ty::Unknown;
         }
+        // Only the node itself may be a parametric call, never its children.
+        let tuple_ok = std::mem::take(&mut sc.tuple_ok);
         let span = e.span;
         let ty = match &mut e.kind {
             ExprKind::Num { .. } => Ty::Scalar,
@@ -991,7 +1026,7 @@ impl<'s> Cx<'s> {
                     for (t, s) in &arg_tys {
                         self.expect_scalar(t, *s);
                     }
-                    let (k, t) = self.resolve_call(callee, args.len(), span, sc, info);
+                    let (k, t) = self.resolve_call(callee, args.len(), span, sc, info, tuple_ok);
                     *kind = k;
                     t
                 }
@@ -1124,7 +1159,7 @@ impl<'s> Cx<'s> {
                 Ty::Unknown
             }
             ExprKind::Tuple { .. } => {
-                self.unsupported(span, "튜플 (매개변수 함수 출력)", 5);
+                self.err_s(span, code::TYPE, "튜플 (a, b)는 매개변수 함수의 출력 칸에만 씀", "p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi");
                 Ty::Unknown
             }
             ExprKind::List { items } => {
@@ -1148,6 +1183,11 @@ impl<'s> Cx<'s> {
                 self.err(span, code::TYPE, "부분식 주소는 highlight·req의 대상 칸에만 쓸 수 있음");
                 Ty::Unknown
             }
+            // Only ever a whole body (parser); `define` routes it to `resolve_split`.
+            ExprKind::Split { .. } => {
+                self.err(span, code::TYPE, "split은 정의 본문 전체로만 씀");
+                Ty::Unknown
+            }
         };
         e.ty = ty.clone();
         ty
@@ -1164,6 +1204,9 @@ impl<'s> Cx<'s> {
         }
         if sc.indices.contains(key) {
             return (NameKind::Index, Ty::Scalar);
+        }
+        if sc.split_name.as_ref() == Some(key) {
+            return (NameKind::SplitName, Ty::Scalar);
         }
         if sc.inputs.contains(key) {
             return (NameKind::Input, Ty::Scalar);
@@ -1223,7 +1266,7 @@ impl<'s> Cx<'s> {
             self.err(span, code::UNDECLARED, format!("'{key}'가 선언되지 않음 (여기에는 축 {axes}, 상수, 변수, 함수 호출을 씀)"));
             return (NameKind::Unresolved, Ty::Unknown);
         }
-        if *key == sc.output {
+        if sc.outputs.contains(key) {
             self.err(span, code::UNDECLARED, format!("출력 축 '{key}'는 식에 쓸 수 없음"));
             return (NameKind::Unresolved, Ty::Unknown);
         }
@@ -1239,7 +1282,7 @@ impl<'s> Cx<'s> {
         (NameKind::Unresolved, Ty::Unknown)
     }
 
-    fn resolve_call(&mut self, callee: &Ident, argc: usize, span: Span, sc: &Scope, info: &mut DefInfo) -> (NameKind, Ty) {
+    fn resolve_call(&mut self, callee: &Ident, argc: usize, span: Span, sc: &Scope, info: &mut DefInfo, tuple_ok: bool) -> (NameKind, Ty) {
         let key = &callee.key;
         if is_bad_tex(callee) {
             return (NameKind::Unresolved, Ty::Unknown);
@@ -1264,7 +1307,21 @@ impl<'s> Cx<'s> {
         }
         if let Some(f) = self.state.functions.get(key).cloned() {
             match f.kind {
-                DefKind::Curve | DefKind::Matrix => {}
+                _ if f.family.is_some() => {
+                    self.err(span, code::TYPE, format!("반복 정의 '{key}'는 값이 여럿이라 식 안에서 부를 수 없음"));
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
+                DefKind::Curve | DefKind::Matrix | DefKind::Polar => {}
+                DefKind::Parametric if tuple_ok => {}
+                DefKind::Parametric => {
+                    let msg = if sc.in_slot { format!("매개변수 함수 '{key}'는 출력이 여럿이라 출력 칸 하나에 넣을 수 없음") } else { format!("매개변수 함수 '{key}'는 출력이 여럿이라 식 안에서 부를 수 없음") };
+                    self.err(span, code::TYPE, msg);
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
+                DefKind::Equation => {
+                    self.err(span, code::TYPE, format!("방정식 '{key}'는 값이 없어 부를 수 없음"));
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
                 DefKind::Value => {
                     self.err_s(span, code::NOT_FUNCTION, format!("'{key}'는 {}라 부를 수 없음", f.ty.describe()), key.clone());
                     return (NameKind::Unresolved, Ty::Unknown);
@@ -1296,9 +1353,9 @@ impl<'s> Cx<'s> {
     }
 }
 
-/// Words with a stage-2 meaning that cannot be names.
+/// Words with a meaning of their own (stage 2, `family` of stage 5) that cannot be names.
 fn is_stage2_word(key: &str) -> bool {
-    matches!(key, "highlight" | "req" | "between") || base_style_color(key).is_some()
+    matches!(key, "highlight" | "req" | "between" | "family") || base_style_color(key).is_some()
 }
 
 fn is_reserved(name: &Ident) -> bool {
@@ -1440,6 +1497,8 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
 
 mod hl;
 mod scene;
+mod drawn;
+mod split;
 pub use hl::{address_resolves, unescape};
 pub use scene::navigate;
 #[cfg(test)]

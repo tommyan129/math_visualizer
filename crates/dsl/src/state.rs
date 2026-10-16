@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::ast::{Expr, Ident, Ty};
+use crate::ast::{Expr, ExprKind, Ident, Ty};
 
 /// Key of the default scene of the `2D(x, y)` system.
 pub const DEFAULT_SCENE: &str = "2D(x, y)";
@@ -27,12 +27,18 @@ pub enum DefKind {
     Span,
     /// `a: arrow(v)`, `arrow(v; P)`: drawn as an arrow.
     Arrow,
+    /// `p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\pi`: drawn as a curve over its range.
+    Parametric,
+    /// `h(\theta) -> polar(r): 1 + cos(\theta)`: drawn in a `polar(r, \theta)` scene.
+    Polar,
+    /// `C(x, y; r): x^2 + y^2 = r^2`: implicit curve, no value (cannot be called).
+    Equation,
 }
 
 impl DefKind {
     /// Shown in a scene (toggle list) at all.
     pub fn is_drawn(self) -> bool {
-        matches!(self, DefKind::Curve | DefKind::Span | DefKind::Arrow)
+        !matches!(self, DefKind::Matrix | DefKind::Value)
     }
 
     pub fn word(self) -> &'static str {
@@ -42,6 +48,9 @@ impl DefKind {
             DefKind::Value => "벡터·행렬",
             DefKind::Span => "span",
             DefKind::Arrow => "arrow",
+            DefKind::Parametric => "매개변수 함수",
+            DefKind::Polar => "극좌표 함수",
+            DefKind::Equation => "방정식",
         }
     }
 }
@@ -55,8 +64,18 @@ pub struct Function {
     pub kind: DefKind,
     /// Empty for `Value`, `Span`, `Arrow`.
     pub inputs: Vec<Ident>,
-    /// Output axis of a curve; `None` for every other kind.
+    /// Output axis of a curve (`y`) or polar function (`r`); `None` for every other kind.
     pub output: Option<Ident>,
+    /// Output axes of a parametric function (`x`, `y`); empty for every other kind.
+    #[serde(default)]
+    pub outputs: Vec<Ident>,
+    /// Parameter range of a parametric function (required) or polar function (optional;
+    /// `None` = 0 <= θ <= 2π).
+    #[serde(default)]
+    pub range: Option<ParamRange>,
+    /// `family(...; 0 <= k <= n)`: one copy per integer k (stage 5). Body and range use k.
+    #[serde(default)]
+    pub family: Option<FamilyIndex>,
     /// Value type of the body: scalar for a curve, vector / matrix for `Matrix` and
     /// `Value`; for `Span` / `Arrow` the vector type of their arguments.
     #[serde(default = "scalar_ty")]
@@ -69,6 +88,10 @@ pub struct Function {
     pub body_src: String,
     /// Direct references to other definitions: called functions and named vectors / matrices.
     pub calls: Vec<String>,
+    /// `lo < hi` between neighboring split boundary points that use constants (design.md
+    /// "경계점 순서가 곧 상수 조건"). The browser keeps sliders from breaking them.
+    #[serde(default)]
+    pub constraints: Vec<OrderConstraint>,
     /// Data color index, fixed at creation.
     pub color: u32,
     /// Creation order, for listing.
@@ -77,6 +100,41 @@ pub struct Function {
     /// Log sequence of the last change; the browser recomputes only changed objects.
     #[ts(type = "number")]
     pub version: u64,
+}
+
+/// `lo <= t <= hi` of a parametric / polar function. Bounds use constants (and function
+/// calls), never the parameter; strict and non-strict draw the same.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ParamRange {
+    pub lo: Expr,
+    pub hi: Expr,
+    /// As written.
+    pub src: String,
+}
+
+/// Index range of a repeated definition. Bounds are integers (constants in them are
+/// integer sliders, as in `sum`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FamilyIndex {
+    pub index: Ident,
+    pub lo: Expr,
+    pub lo_strict: bool,
+    pub hi: Expr,
+    pub hi_strict: bool,
+    /// `0 <= k <= n` as written.
+    pub src: String,
+}
+
+/// `lo < hi`, both constant expressions (numbers and constants only).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OrderConstraint {
+    pub lo: Expr,
+    pub hi: Expr,
+    /// `a < b` in DSL notation.
+    pub src: String,
 }
 
 fn scalar_ty() -> Ty {
@@ -90,6 +148,11 @@ impl Function {
         let consts = if self.consts.is_empty() { String::new() } else { format!("; {}", self.consts.join(", ")) };
         match (&self.kind, &self.output) {
             (DefKind::Curve, Some(o)) => format!("{}({inputs}{consts}) -> {}", self.key, o.key),
+            (DefKind::Polar, Some(o)) => format!("{}({inputs}{consts}) -> polar({})", self.key, o.key),
+            (DefKind::Parametric, _) => {
+                format!("{}({inputs}{consts}) -> ({})", self.key, self.outputs.iter().map(|o| o.key.as_str()).collect::<Vec<_>>().join(", "))
+            }
+            (DefKind::Equation, _) => format!("{}({inputs}{consts})", self.key),
             (DefKind::Matrix, _) => format!("{}({inputs}{consts}) -> matrix", self.key),
             _ if self.consts.is_empty() => self.key.clone(),
             _ => format!("{}({inputs}{consts})", self.key),
@@ -104,6 +167,19 @@ impl Function {
         }
     }
 
+    /// Coordinate system it is drawn in: `(polar, axes)` — `2D(x, y)` for curves
+    /// (input, output), parametric functions (outputs) and equations (inputs);
+    /// `polar(r, \theta)` for polar functions. `None` for spans, arrows and undrawn kinds.
+    pub fn system(&self) -> Option<(bool, Vec<&Ident>)> {
+        match self.kind {
+            DefKind::Curve => self.curve_axes().map(|(i, o)| (false, vec![i, o])),
+            DefKind::Parametric => Some((false, self.outputs.iter().collect())),
+            DefKind::Equation => Some((false, self.inputs.iter().collect())),
+            DefKind::Polar => Some((true, vec![self.output.as_ref()?, self.inputs.first()?])),
+            _ => None,
+        }
+    }
+
     /// Number of axes a span / arrow needs (its vector length).
     pub fn vector_dim(&self) -> Option<u32> {
         match (self.kind, &self.ty) {
@@ -112,9 +188,20 @@ impl Function {
         }
     }
 
-    /// Full definition line in DSL notation.
+    /// Full definition in DSL notation. A split body goes on indented lines under the head.
     pub fn source(&self) -> String {
-        format!("{}: {}", self.signature(), self.body_src)
+        if matches!(self.body.kind, ExprKind::Split { .. }) {
+            let lines: Vec<String> = self.body_src.lines().enumerate().map(|(i, l)| format!("{}{l}", if i == 0 { "    " } else { "        " })).collect();
+            return format!("{}:\n{}", self.signature(), lines.join("\n"));
+        }
+        let body = match &self.range {
+            Some(r) => format!("{}, {}", self.body_src, r.src),
+            None => self.body_src.clone(),
+        };
+        match &self.family {
+            Some(e) => format!("{}: family({body}; {})", self.signature(), e.src),
+            None => format!("{}: {body}", self.signature()),
+        }
     }
 }
 
@@ -165,8 +252,10 @@ pub struct Scene {
     pub key: String,
     /// `None` = default scene (one per coordinate system, managed by the server).
     pub number: Option<u32>,
-    /// Horizontal and vertical axis.
+    /// Horizontal and vertical axis; for a polar scene the radius and the angle.
     pub axes: Vec<Ident>,
+    /// `polar(r, \theta)` system (otherwise `2D`).
+    pub polar: bool,
     /// Functions and highlights that fit the coordinate system, in creation order: the
     /// toggle list. Computed by the server; the browser does not apply placement rules.
     pub members: Vec<String>,
@@ -226,6 +315,11 @@ impl Scene {
 /// `2D(x, y)` with the given axis keys.
 pub fn system_key(axes: &[&str]) -> String {
     format!("2D({})", axes.join(", "))
+}
+
+/// `2D(x, y)` or `polar(r, \theta)`.
+pub fn any_system_key(polar: bool, axes: &[&str]) -> String {
+    if polar { format!("polar({})", axes.join(", ")) } else { system_key(axes) }
 }
 
 /// A resolved clip region over the scene axes.
@@ -322,6 +416,8 @@ pub enum NoteSeg {
 #[ts(export)]
 pub struct SceneSource {
     pub axes: Vec<Ident>,
+    #[serde(default)]
+    pub polar: bool,
     pub show: Vec<Ident>,
     pub hide: Vec<Ident>,
     pub clip: Option<Expr>,
@@ -617,11 +713,11 @@ impl State {
         }
     }
 
-    /// Coordinate system of a curve: `2D(input, output)`. Spans and arrows fit any
-    /// system with as many axes as their vectors have; other kinds are not drawn.
+    /// Coordinate system key of a drawn definition (`Function::system`). Spans and arrows
+    /// fit any 2D system with as many axes as their vectors have; other kinds are not drawn.
     pub fn function_system(&self, key: &str) -> Option<String> {
-        let (i, o) = self.functions.get(key)?.curve_axes()?;
-        Some(system_key(&[i.key.as_str(), o.key.as_str()]))
+        let (polar, axes) = self.functions.get(key)?.system()?;
+        Some(any_system_key(polar, &axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>()))
     }
 
     /// Stage 1-2 states: the always-present default scene with `hidden` lists. Moves

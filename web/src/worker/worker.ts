@@ -2,10 +2,12 @@
 // Transferable typed arrays. Layer, order and style are attached on the main thread.
 
 import type { Expr } from "../generated/Expr";
-import { CodegenError, compile, compileRegion, type Compiled, type FnSpec, type Region, type Scalar, type Vec } from "./codegen";
+import { CodegenError, compile, compileRegion, type Compiled, type DrawnMembers, type FnSpec, type Region, type Scalar, type Vec } from "./codegen";
 import { computeFill, rasterRegion, type FillRule, type RasterRect } from "./fill";
 import { clipLine, spanShape } from "./linalg";
 import { makeRuntime } from "./numeric";
+import { sampleImplicit } from "./implicit";
+import { sampleParametric } from "./paramsample";
 import { sampleCurve, sampleDiscrete, type Quality, type SampleRange } from "./sample";
 
 /** A highlight the worker can draw: a function fill, or a targetless region. */
@@ -27,7 +29,7 @@ export type ToWorker =
   | { type: "functions"; fns: FnSpec[]; constKeys: string[] }
   | { type: "highlights"; specs: HlSpec[] }
   /** Current scene: axis names (regions map them to x, y) and the clip region. */
-  | { type: "scene"; axes: [string, string]; clip: Expr | null }
+  | { type: "scene"; axes: [string, string]; polar: boolean; clip: Expr | null }
   | { type: "sample"; id: number; keys: string[]; C: Float64Array; range: SampleRange; quality: Quality }
   | { type: "fills"; id: number; items: FillItem[]; C: Float64Array; range: SampleRange; quality: Quality };
 
@@ -90,7 +92,22 @@ let hlSpecs: HlSpec[] = [];
 let regions = new Map<string, Region | null>();
 let regionErrors = new Map<string, string>();
 let axes: [string, string] = ["x", "y"];
+let polar = false;
 let clipExpr: Expr | null = null;
+
+/**
+ * A region written in (r, θ) evaluated on the Cartesian screen: a point belongs when
+ * it holds for θ in [0, 2π) or the same angle one turn lower (`-\pi/2 <= \theta <= 0`).
+ */
+function polarRegion(reg: Region): Region {
+  const TAU = 2 * Math.PI;
+  return (x, y, C) => {
+    const r = Math.hypot(x, y);
+    let t = Math.atan2(y, x);
+    if (t < 0) t += TAU;
+    return reg(r, t, C) || reg(r, t - TAU, C);
+  };
+}
 
 function setHighlights(specs: HlSpec[]): void {
   hlSpecs = specs;
@@ -100,7 +117,8 @@ function setHighlights(specs: HlSpec[]): void {
   const all = clipExpr ? [...specs, { key: CLIP_KEY, fn: null, range: clipExpr }] : specs;
   for (const h of all) {
     try {
-      regions.set(h.key, h.range ? compileRegion(h.range, env, R, F) : null);
+      const reg = h.range ? compileRegion(h.range, env, R, F) : null;
+      regions.set(h.key, reg && polar ? polarRegion(reg) : reg);
     } catch (e) {
       regionErrors.set(h.key, e instanceof CodegenError ? e.message : String(e));
     }
@@ -196,18 +214,42 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
       continue;
     }
     R.capped = false;
+    R.overlap = false;
     let xs: Float64Array, ys: Float64Array, offsets: number[], truncated: boolean;
     let kind: CurveResult["kind"];
-    if (c.discrete) {
-      ({ xs, ys, truncated } = sampleDiscrete(c.batch, C, range));
-      offsets = [0, xs.length];
-      kind = "points";
-    } else {
-      ({ xs, ys, offsets, truncated } = sampleCurve(c.batch, c.scalar, C, range, quality));
+    if (c.family) {
+      // One copy per integer k, joined as pieces of one polyline batch.
+      const [a, b] = c.family.krange(C);
+      const lo = c.family.loStrict ? a! + 1 : a!, hi = c.family.hiStrict ? b! - 1 : b!;
+      const parts: Pieces[] = [];
+      truncated = false;
+      if (!Number.isInteger(lo) || !Number.isInteger(hi)) {
+        warnings.push({ source: key, code: "W-family-range", message: "family 범위 끝이 정수가 아니라 그리지 않음" });
+      } else {
+        const last = Math.min(hi, lo + MAX_FAMILY - 1);
+        if (hi > last) warnings.push({ source: key, code: "W-family-cap", message: `family 반복이 ${MAX_FAMILY}개를 넘어 앞의 ${MAX_FAMILY}개만 그림` });
+        for (let k = lo; k <= last; k++) parts.push(samplePieces(key, c.family.at(k), false, C, range, quality, warnings));
+      }
+      const n = parts.reduce((s, p) => s + p.xs.length, 0);
+      xs = new Float64Array(n);
+      ys = new Float64Array(n);
+      offsets = [];
+      let at = 0;
+      for (const p of parts) {
+        xs.set(p.xs, at);
+        ys.set(p.ys, at);
+        for (let i = 0; i + 1 < p.offsets.length; i++) offsets.push(at + p.offsets[i]!);
+        at += p.xs.length;
+        truncated ||= p.truncated;
+      }
+      offsets.push(at);
       kind = "polyline";
+    } else {
+      ({ xs, ys, offsets, truncated, kind } = samplePieces(key, c, c.discrete, C, range, quality, warnings));
     }
     if (truncated) warnings.push({ source: key, code: "W-budget", message: "점이 너무 많아 품질을 낮춤" });
     if (R.capped) warnings.push({ source: key, code: "W-sum-terms", message: "sum/prod 항이 10만 개를 넘는 점은 그리지 않음" });
+    if (R.overlap) warnings.push({ source: key, code: "W-split-overlap", message: "현재 값에서 split 구간이 겹치는 점이 있어 그 점은 정의 안 됨 (경계점 순서 확인)" });
     total += xs.length;
     const coords = new Float32Array(xs.length * 2);
     for (let i = 0; i < xs.length; i++) {
@@ -217,6 +259,32 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
     curves.push({ key, kind, origin, coords, offsets: Uint32Array.from(offsets) });
   }
   return { type: "result", id, quality, range, curves, warnings };
+}
+
+/** Most copies one `family` definition draws. */
+const MAX_FAMILY = 500;
+
+interface Pieces {
+  xs: Float64Array;
+  ys: Float64Array;
+  offsets: number[];
+  truncated: boolean;
+  kind: "polyline" | "points";
+}
+
+/** Samples one drawn curve: parametric / polar, implicit, discrete, or y = f(x). */
+function samplePieces(key: string, m: DrawnMembers, discrete: boolean, C: Float64Array, range: SampleRange, quality: Quality, warnings: WorkerWarning[]): Pieces {
+  if (m.param) {
+    const [t0, t1] = m.trange ? m.trange(C) : [0, 2 * Math.PI];
+    if (!(t0! <= t1!)) warnings.push({ source: key, code: "W-range", message: "매개변수 범위가 비어 있거나 정의되지 않아 그리지 않음" });
+    return { ...sampleParametric(m.param, C, t0!, t1!, range, quality), kind: "polyline" };
+  }
+  if (m.implicit) return { ...sampleImplicit(m.implicit, C, range, quality), kind: "polyline" };
+  if (discrete) {
+    const d = sampleDiscrete(m.batch!, C, range);
+    return { ...d, offsets: [0, d.xs.length], kind: "points" };
+  }
+  return { ...sampleCurve(m.batch!, m.scalar!, C, range, quality), kind: "polyline" };
 }
 
 function rel(xy: number[], origin: [number, number]): Float32Array {
@@ -264,6 +332,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     setHighlights(m.specs);
   } else if (m.type === "scene") {
     axes = m.axes;
+    polar = m.polar;
     clipExpr = m.clip;
     setHighlights(hlSpecs);
   } else if (m.type === "fills") {

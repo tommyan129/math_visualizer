@@ -6,4 +6,4 @@ import type { StepSource } from "./StepSource";
 /**
  * Scene fields as written (spans cleared), for re-resolution and cascade.
  */
-export type SceneSource = { axes: Array<Ident>, show: Array<Ident>, hide: Array<Ident>, clip: Expr | null, view: Expr | null, steps: Array<StepSource>, };
+export type SceneSource = { axes: Array<Ident>, polar: boolean, show: Array<Ident>, hide: Array<Ident>, clip: Expr | null, view: Expr | null, steps: Array<StepSource>, };

@@ -24,7 +24,7 @@ export class Topbar {
     for (const s of sortedScenes(sc.scenes)) {
       const on = s.key === sc.current;
       const [, tex] = sceneAxes(s);
-      const label: Node = s.number === null ? texElement(`\\mathrm{2D}(${tex[0]}, ${tex[1]})`) : document.createTextNode(`scene ${s.number}`);
+      const label: Node = s.number === null ? texElement(`\\mathrm{${s.polar ? "polar" : "2D"}}(${tex[0]}, ${tex[1]})`) : document.createTextNode(`scene ${s.number}`);
       const dot = sc.updated.has(s.key) ? h("span", { class: "updated", "aria-label": "갱신됨", title: "갱신됨" }) : null;
       tabs.append(h("button", { class: `stab${on ? " on" : ""}`, role: "tab", "aria-selected": on ? "true" : "false", onclick: () => sc.select(s.key) }, label, dot));
     }

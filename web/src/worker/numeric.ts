@@ -9,6 +9,8 @@ export interface Runtime {
   E: number;
   /** Set when a sum/prod hit TERM_CAP since the last reset. */
   capped: boolean;
+  /** Set when two split lines held at one point since the last reset. */
+  overlap: boolean;
   pow(b: number, e: number): number;
   powRat(b: number, p: number, q: number): number;
   fact(n: number): number;
@@ -177,6 +179,7 @@ export function makeRuntime(): Runtime {
     PI: Math.PI,
     E: Math.E,
     capped: false,
+    overlap: false,
     // 0^0 = 1 (Math.pow already does this).
     pow: Math.pow,
     // Negative base with a reduced rational exponent p/q: real root when q is odd.

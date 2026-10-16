@@ -4,6 +4,7 @@ import type { BigOpKind } from "./BigOpKind";
 import type { CompareLink } from "./CompareLink";
 import type { Ident } from "./Ident";
 import type { NameKind } from "./NameKind";
+import type { Piece } from "./Piece";
 import type { Term } from "./Term";
 import type { Ty } from "./Ty";
 
@@ -11,4 +12,4 @@ export type Expr = { id: number,
 /**
  * Static type from the type checker; `Unknown` until resolution.
  */
-ty: Ty, } & ({ "type": "Num", text: string, int: boolean, } | { "type": "Name", name: Ident, kind: NameKind, } | { "type": "Sum", terms: Array<Term>, } | { "type": "Product", factors: Array<Expr>, } | { "type": "Div", num: Expr, den: Expr, } | { "type": "Pow", base: Expr, exp: Expr, } | { "type": "Neg", arg: Expr, } | { "type": "Factorial", arg: Expr, } | { "type": "Paren", inner: Expr, } | { "type": "Call", callee: Ident, kind: NameKind, args: Array<Expr>, } | { "type": "BigOp", op: BigOpKind, body: Expr, index: Ident, lo: Expr, lo_strict: boolean, hi: Expr, hi_strict: boolean, } | { "type": "Compare", first: Expr, rest: Array<CompareLink>, } | { "type": "Not", arg: Expr, } | { "type": "And", args: Array<Expr>, } | { "type": "Or", args: Array<Expr>, } | { "type": "Str", raw: string, } | { "type": "Tuple", items: Array<Expr>, } | { "type": "List", items: Array<Expr>, } | { "type": "Index", base: Expr, indices: Array<Expr>, } | { "type": "Address", base: Expr, step: AddressStep, } | { "type": "Error", });
+ty: Ty, } & ({ "type": "Num", text: string, int: boolean, } | { "type": "Name", name: Ident, kind: NameKind, } | { "type": "Sum", terms: Array<Term>, } | { "type": "Product", factors: Array<Expr>, } | { "type": "Div", num: Expr, den: Expr, } | { "type": "Pow", base: Expr, exp: Expr, } | { "type": "Neg", arg: Expr, } | { "type": "Factorial", arg: Expr, } | { "type": "Paren", inner: Expr, } | { "type": "Call", callee: Ident, kind: NameKind, args: Array<Expr>, } | { "type": "BigOp", op: BigOpKind, body: Expr, index: Ident, lo: Expr, lo_strict: boolean, hi: Expr, hi_strict: boolean, } | { "type": "Compare", first: Expr, rest: Array<CompareLink>, } | { "type": "Not", arg: Expr, } | { "type": "And", args: Array<Expr>, } | { "type": "Or", args: Array<Expr>, } | { "type": "Str", raw: string, } | { "type": "Tuple", items: Array<Expr>, } | { "type": "List", items: Array<Expr>, } | { "type": "Index", base: Expr, indices: Array<Expr>, } | { "type": "Address", base: Expr, step: AddressStep, } | { "type": "Split", name: Ident | null, subject: Expr, at: Array<Expr>, pieces: Array<Piece>, } | { "type": "Error", });

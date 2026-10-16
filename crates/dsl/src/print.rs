@@ -104,6 +104,16 @@ fn print(e: &Expr) -> String {
             AddressStep::Term { pattern } => format!("{}.({})", wrap(base, 10), expr_dsl(pattern)),
             AddressStep::Part { part } => format!("{}.{part}", wrap(base, 10)),
         },
+        // One line per piece, unindented (`Function::source` indents).
+        ExprKind::Split { name, subject, at, pieces } => {
+            let name = name.as_ref().map_or(String::new(), |n| format!("{} = ", n.key));
+            let at = at.iter().map(expr_dsl).collect::<Vec<_>>().join(", ");
+            let mut s = format!("split {name}{} at {at}", expr_dsl(subject));
+            for p in pieces {
+                s.push_str(&format!("\n{}, {}", expr_dsl(&p.value), expr_dsl(&p.cond)));
+            }
+            s
+        }
     }
 }
 

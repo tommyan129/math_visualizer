@@ -43,11 +43,6 @@ fn cleared(e: &Expr) -> Expr {
     e
 }
 
-/// `2D(x, y)` of the given axes.
-fn key_of(axes: &[Ident]) -> String {
-    system_key(&axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>())
-}
-
 /// Literal number bounds of an axis interval in a clip or view: `lo <= a <= hi`.
 fn literal_intervals(e: &Expr) -> Vec<(String, f64, f64)> {
     let parts: Vec<&Expr> = match &unparen(e).kind {
@@ -90,13 +85,14 @@ impl<'s> Cx<'s> {
     // ----- placement -------------------------------------------------------
 
     /// Can `key` (a function or highlight) be shown in a scene over `axes`?
-    fn placement(&self, key: &str, axes: &[String]) -> Result<(), String> {
-        let sys = system_key(&axes.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+    fn placement(&self, key: &str, axes: &[String], polar: bool) -> Result<(), String> {
+        let sys = any_system_key(polar, &axes.iter().map(|s| s.as_str()).collect::<Vec<_>>());
         if let Some(own) = self.state.function_system(key) {
             return if own == sys { Ok(()) } else { Err(format!("'{key}'는 {own} 좌표계 함수라 {sys} scene에 넣을 수 없음")) };
         }
         if let Some(f) = self.state.functions.get(key) {
             return match f.vector_dim() {
+                Some(_) if polar => Err(format!("{} '{key}'는 극좌표 scene에 넣을 수 없음", f.kind.word())),
                 Some(n) if n as usize == axes.len() => Ok(()),
                 Some(n) => Err(format!("{} '{key}'의 벡터 길이가 {n}이라 축 {}개인 {sys} scene에 넣을 수 없음", f.kind.word(), axes.len())),
                 None => Err(format!("{} '{key}'는 그리는 정의가 아님", f.kind.word())),
@@ -104,7 +100,7 @@ impl<'s> Cx<'s> {
         }
         if let Some(h) = self.state.highlights.get(key) {
             if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &h.target {
-                return self.placement(function, axes).map_err(|_| format!("'{key}'는 {} 좌표계 함수 {function}의 강조라 {sys} scene에 넣을 수 없음", self.state.function_system(function).unwrap_or_default()));
+                return self.placement(function, axes, polar).map_err(|_| format!("'{key}'는 {} 좌표계 함수 {function}의 강조라 {sys} scene에 넣을 수 없음", self.state.function_system(function).unwrap_or_default()));
             }
             return match h.axes.iter().find(|a| !axes.contains(a)) {
                 None => Ok(()),
@@ -115,7 +111,7 @@ impl<'s> Cx<'s> {
     }
 
     /// A `show` / `hide` / step-show name, with spans: reports and returns false when it cannot be placed.
-    fn check_target(&mut self, name: &Ident, span: Span, axes: &[String]) -> bool {
+    fn check_target(&mut self, name: &Ident, span: Span, axes: &[String], polar: bool) -> bool {
         let k = &name.key;
         if self.failed.contains(k) {
             return false;
@@ -132,7 +128,7 @@ impl<'s> Cx<'s> {
             self.err(span, code::TARGET, format!("{word} '{k}'는 그리는 정의가 아니라 scene에 넣을 수 없음 (함수, span, arrow, 강조)"));
             return false;
         }
-        match self.placement(k, axes) {
+        match self.placement(k, axes, polar) {
             Ok(()) => true,
             Err(m) => {
                 let sug = match (self.state.function_system(k), self.state.functions.get(k).and_then(|f| f.vector_dim())) {
@@ -181,7 +177,10 @@ impl<'s> Cx<'s> {
     }
 
     /// `-5 <= x <= 5 and -3 <= y <= 3`: one interval per axis, constant-free bounds.
-    fn resolve_view(&mut self, e: &Expr, axes: &[String]) -> Option<ViewSpec> {
+    fn resolve_view(&mut self, e: &Expr, axes: &[String], polar: bool) -> Option<ViewSpec> {
+        if polar {
+            return self.resolve_polar_view(e, &axes[0]);
+        }
         let shape = |cx: &mut Self, at: Span| {
             cx.err_s(at, code::VIEW, "view는 축별 구간 (카메라 창은 직사각형)", format!("-5 <= {} <= 5 and -3 <= {} <= 3", axes[0], axes[1]));
         };
@@ -255,6 +254,49 @@ impl<'s> Cx<'s> {
             *slot = Some(ViewRange { lo, hi });
         }
         Some(spec)
+    }
+
+    /// Polar scene camera: `r <= 3` (or `0 <= r <= 3`) is the square window of radius 3
+    /// around the origin, stored as `-3 <= h <= 3`, `-3 <= v <= 3` (stage-5a decision).
+    fn resolve_polar_view(&mut self, e: &Expr, r: &str) -> Option<ViewSpec> {
+        let sug = format!("{r} <= 3");
+        let hi = match &unparen(e).kind {
+            ExprKind::Compare { first, rest } => {
+                let is_r = |x: &Expr| matches!(&unparen(x).kind, ExprKind::Name { name, .. } if name.key == r);
+                let le = |op: CmpOp| matches!(op, CmpOp::Lt | CmpOp::Le);
+                match rest.as_slice() {
+                    [l] if is_r(first) && le(l.op) => Some(l.rhs.clone()),
+                    [a, b] if is_r(&a.rhs) && le(a.op) && le(b.op) && literal(first) == Some(0.0) => Some(b.rhs.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let Some(mut hi) = hi else {
+            self.err_s(e.span, code::VIEW, format!("극좌표 scene의 view는 반지름 범위 ({r} <= 반지름)"), sug);
+            return None;
+        };
+        let mut bad = false;
+        hi.walk(&mut |n| bad |= matches!(&n.kind, ExprKind::Name { name, .. } if !is_reserved(name)));
+        let mut sc = Scope::range(&[]);
+        let mut info = DefInfo::default();
+        let before = self.diags.len();
+        let ty = if bad { Ty::Unknown } else { self.resolve(&mut hi, &mut sc, &mut info) };
+        if bad || self.diags.len() > before || ty != Ty::Scalar {
+            if self.diags.len() == before {
+                self.err_s(hi.span, code::VIEW, "view 경계에는 숫자만 씀", sug);
+            }
+            return None;
+        }
+        if literal(&hi).is_some_and(|v| v <= 0.0) {
+            self.err(hi.span, code::VIEW, "view 반지름은 0보다 커야 함");
+            return None;
+        }
+        hi.assign_ids();
+        hi.clear_spans();
+        let lo = Expr { id: 0, ty: Ty::Scalar, span: Span::default(), kind: ExprKind::Neg { arg: Box::new(hi.clone()) } };
+        let range = ViewRange { lo, hi };
+        Some(ViewSpec { h: Some(range.clone()), v: Some(range), src: expr_dsl(e) })
     }
 
     /// Note string (or a string variable): `{expr}` is DSL, `$...$` LaTeX, `{{` `}}` `$$` literal.
@@ -450,16 +492,17 @@ impl<'s> Cx<'s> {
                 _ => {}
             }
         }
+        let mut inferred_polar = false;
         let axes: Vec<Ident> = match space {
             Some(sp) => {
                 match sp.kind.as_str() {
-                    "2D" => {}
+                    "2D" | "polar" => {}
                     "3D" => self.unsupported(sp.span, "3D 좌표계", 6),
-                    "polar" => self.unsupported(sp.span, "극좌표계", 5),
                     k => self.err_s(sp.span, code::SCENE, format!("좌표계 '{k}'는 없음"), "2D(x, y)"),
                 }
-                if sp.axes.len() != 2 && sp.kind == "2D" {
-                    self.err_s(sp.span, code::SCENE, format!("2D 좌표계에는 축 이름 두 개가 필요함 ({}개 줌)", sp.axes.len()), "2D(x, y)");
+                if sp.axes.len() != 2 && matches!(sp.kind.as_str(), "2D" | "polar") {
+                    let sug = if sp.kind == "polar" { "polar(r, \\theta)" } else { "2D(x, y)" };
+                    self.err_s(sp.span, code::SCENE, format!("{} 좌표계에는 축 이름 두 개가 필요함 ({}개 줌)", sp.kind, sp.axes.len()), sug);
                 } else if sp.axes.len() == 2 && sp.axes[0].0.key == sp.axes[1].0.key {
                     self.err_s(sp.span, code::SCENE, "두 축의 이름이 같음", "2D(x, y)");
                 } else if let Some((a, s)) = sp.axes.iter().find(|(a, _)| a.deriv > 0 || a.inverse || is_reserved(a)) {
@@ -471,8 +514,12 @@ impl<'s> Cx<'s> {
                 // One coordinate system among the `show` targets: take it.
                 let systems: BTreeSet<String> = show.into_iter().flatten().filter_map(|(n, _)| self.state.function_system(&n.key)).collect();
                 let flat_2d = show.into_iter().flatten().any(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.vector_dim()) == Some(2));
-                match (systems.len(), show.into_iter().flatten().find_map(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.curve_axes()))) {
-                    (1, Some((i, o))) => vec![i.clone(), o.clone()],
+                let first = show.into_iter().flatten().find_map(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.system()));
+                match (systems.len(), first) {
+                    (1, Some((p, ax))) => {
+                        inferred_polar = p;
+                        ax.into_iter().cloned().collect()
+                    }
                     // Only spans / arrows of length-2 vectors: the plain plane.
                     (0, _) if flat_2d => vec![Ident::plain("x"), Ident::plain("y")],
                     _ => {
@@ -485,16 +532,17 @@ impl<'s> Cx<'s> {
         if self.diags.len() > before {
             return;
         }
+        let polar = space.map_or(inferred_polar, |sp| sp.kind == "polar");
         let ak: Vec<String> = axes.iter().map(|a| a.key.clone()).collect();
-        let mut src = SceneSource { axes: axes.clone(), ..Default::default() };
+        let mut src = SceneSource { axes: axes.clone(), polar, ..Default::default() };
         let mut deps = BTreeSet::new();
         for (name, span) in show.into_iter().flatten() {
-            if self.check_target(name, *span, &ak) && !src.show.iter().any(|n| n.key == name.key) {
+            if self.check_target(name, *span, &ak, polar) && !src.show.iter().any(|n| n.key == name.key) {
                 src.show.push(name.clone());
             }
         }
         for (name, span) in hide.into_iter().flatten() {
-            if !self.check_target(name, *span, &ak) {
+            if !self.check_target(name, *span, &ak, polar) {
                 continue;
             }
             if src.show.iter().any(|n| n.key == name.key) {
@@ -510,7 +558,7 @@ impl<'s> Cx<'s> {
         }
         let mut views: Vec<(&Expr, Span)> = vec![];
         if let Some(e) = view
-            && self.resolve_view(e, &ak).is_some()
+            && self.resolve_view(e, &ak, polar).is_some()
         {
             src.view = Some(cleared(e));
             views.push((e, e.span));
@@ -527,7 +575,7 @@ impl<'s> Cx<'s> {
                 match &f.value {
                     FieldValue::Toggles(v) => {
                         for (on, name, span) in v {
-                            if self.check_target(name, *span, &ak) {
+                            if self.check_target(name, *span, &ak, polar) {
                                 ss.show.retain(|t| t.name.key != name.key);
                                 ss.show.push(StepToggle { on: *on, name: name.clone() });
                             }
@@ -562,7 +610,7 @@ impl<'s> Cx<'s> {
                         }
                     }
                     FieldValue::Expr(e) => {
-                        if self.resolve_view(e, &ak).is_some() {
+                        if self.resolve_view(e, &ak, polar).is_some() {
                             ss.view = Some(cleared(e));
                             views.push((e, e.span));
                         }
@@ -597,6 +645,7 @@ impl<'s> Cx<'s> {
             key: key.clone(),
             number: Some(n),
             axes,
+            polar,
             clip: built.clip,
             view: built.view,
             steps: built.steps,
@@ -654,7 +703,8 @@ impl<'s> Cx<'s> {
         let ak: Vec<String> = src.axes.iter().map(|a| a.key.clone()).collect();
         let mut deps: BTreeSet<String> = BTreeSet::new();
         let mut removed: Vec<(String, String)> = vec![];
-        let place_ok = |cx: &Self, n: &Ident| cx.placement(&n.key, &ak).is_ok();
+        let polar = src.polar;
+        let place_ok = |cx: &Self, n: &Ident| cx.placement(&n.key, &ak, polar).is_ok();
         for (list, place) in [(&mut src.show, "show"), (&mut src.hide, "hide")] {
             list.retain(|n| {
                 let ok = place_ok(self, n);
@@ -682,7 +732,7 @@ impl<'s> Cx<'s> {
                 }
             }
         };
-        let view = src.view.clone().and_then(|e| self.quiet(|cx| cx.resolve_view(&e, &ak)));
+        let view = src.view.clone().and_then(|e| self.quiet(|cx| cx.resolve_view(&e, &ak, src.polar)));
 
         let mut cur = StepState::default();
         for n in &src.show {
@@ -738,7 +788,7 @@ impl<'s> Cx<'s> {
                 }
             }
             if let Some(e) = st.view.clone()
-                && let Some(v) = self.quiet(|cx| cx.resolve_view(&e, &ak))
+                && let Some(v) = self.quiet(|cx| cx.resolve_view(&e, &ak, src.polar))
             {
                 next.view = Some(v);
                 next.changed_view = true;
@@ -824,31 +874,31 @@ impl<'s> Cx<'s> {
 
     /// One default scene per coordinate system in use; members and toggles of every scene.
     pub(super) fn sync_default_scenes(&mut self) {
-        let mut systems: Vec<(u64, String, Vec<Ident>)> = vec![];
+        let mut systems: Vec<(u64, String, Vec<Ident>, bool)> = vec![];
         let mut fns: Vec<&Function> = self.state.functions.values().filter(|f| f.kind.is_drawn()).collect();
         fns.sort_by_key(|f| f.order);
         for f in fns {
             // Spans and arrows of length-2 vectors go in the default `2D(x, y)`; length 3
             // waits for 3D (stage 6).
-            let axes = match (f.curve_axes(), f.vector_dim()) {
-                (Some((i, o)), _) => vec![i.clone(), o.clone()],
-                (None, Some(2)) => vec![Ident::plain("x"), Ident::plain("y")],
+            let (polar, axes) = match (f.system(), f.vector_dim()) {
+                (Some((p, ax)), _) => (p, ax.into_iter().cloned().collect::<Vec<_>>()),
+                (None, Some(2)) => (false, vec![Ident::plain("x"), Ident::plain("y")]),
                 _ => continue,
             };
-            let k = key_of(&axes);
-            if !systems.iter().any(|(_, s, _)| *s == k) {
-                systems.push((f.order, k, axes));
+            let k = any_system_key(polar, &axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>());
+            if !systems.iter().any(|(_, s, _, _)| *s == k) {
+                systems.push((f.order, k, axes, polar));
             }
         }
-        let gone: Vec<String> = self.state.scenes.values().filter(|s| s.is_default() && !systems.iter().any(|(_, k, _)| *k == s.key)).map(|s| s.key.clone()).collect();
+        let gone: Vec<String> = self.state.scenes.values().filter(|s| s.is_default() && !systems.iter().any(|(_, k, _, _)| *k == s.key)).map(|s| s.key.clone()).collect();
         for k in gone {
             self.state.scenes.remove(&k);
             self.notes.push(Note::DefaultSceneRemoved { key: k });
         }
-        for (_, k, axes) in systems {
+        for (_, k, axes, polar) in systems {
             if !self.state.scenes.contains_key(&k) {
                 let order = self.next_scene_order();
-                self.state.scenes.insert(k.clone(), Scene { key: k.clone(), axes, steps: vec![StepState::default()], defined: self.seq, order, ..Default::default() });
+                self.state.scenes.insert(k.clone(), Scene { key: k.clone(), axes, polar, steps: vec![StepState::default()], defined: self.seq, order, ..Default::default() });
                 self.notes.push(Note::DefaultSceneCreated { key: k });
             }
         }
@@ -858,7 +908,8 @@ impl<'s> Cx<'s> {
         let keys: Vec<String> = self.state.scenes.keys().cloned().collect();
         for k in keys {
             let ak: Vec<String> = self.state.scenes[&k].axes.iter().map(|a| a.key.clone()).collect();
-            let members: Vec<String> = items.iter().filter(|(_, i)| self.placement(i, &ak).is_ok()).map(|(_, i)| i.clone()).collect();
+            let polar = self.state.scenes[&k].polar;
+            let members: Vec<String> = items.iter().filter(|(_, i)| self.placement(i, &ak, polar).is_ok()).map(|(_, i)| i.clone()).collect();
             let fnset: Vec<String> = members.iter().filter(|m| self.state.functions.contains_key(*m)).cloned().collect();
             let s = self.state.scenes.get_mut(&k).unwrap();
             if s.is_default() {

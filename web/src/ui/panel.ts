@@ -11,7 +11,7 @@ import type { Warning } from "../generated/Warning";
 import { resolveHighlights, sortedHighlights } from "../canvas/highlight";
 import { colorOf } from "../canvas/plot";
 import { activeClip, concealedAt, visibleAt } from "../canvas/scene";
-import { definitionTex, exprTex, identTex, isVectorName, latexCtx, type LatexCtx } from "../math/latex";
+import { exprTex, functionTex, identTex, isVectorName, latexCtx, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon, ICONS } from "./dom";
 
@@ -21,6 +21,8 @@ export interface PanelActions {
   /** `del key` through the DSL path. */
   remove(key: string): void;
   drag(constant: string, value: number): void;
+  /** Split boundary order the value would break (`"a < b"`), or null. */
+  blocked(constant: string, value: number): string | null;
   /** Resolves to an error message, or null. */
   setValue(constant: string, value: number): Promise<string | null>;
   setRange(constant: string, min: number, max: number): Promise<string | null>;
@@ -43,7 +45,7 @@ export interface PanelView {
 const SPAN_DIM = ["점 (원점)", "직선", "평면"];
 
 /** Vectors, matrices and matrix functions: listed in every scene, never toggled. */
-const drawn = (f: Fn) => f.kind === "Curve" || f.kind === "Span" || f.kind === "Arrow";
+const drawn = (f: Fn) => f.kind !== "Matrix" && f.kind !== "Value";
 
 function hexAlpha(hex: string, a: number): string {
   const n = parseInt(hex.replace("#", ""), 16);
@@ -79,10 +81,13 @@ class ConstantCard {
   private max: HTMLInputElement;
   private err: HTMLElement;
   private c: Constant;
+  /** Last value shown while dragging (kept when the boundary order blocks a step). */
+  private last: number;
   dragging = false;
 
   constructor(c: Constant, private actions: PanelActions) {
     this.c = c;
+    this.last = c.value;
     const id = `c-${c.order}`;
     this.val = h("input", { class: "val", "aria-label": `${c.key} 값`, inputmode: "decimal" });
     this.rng = h("input", { class: "rng", type: "range", id, title: "Shift를 누른 채 끌면 한 칸(step)씩" });
@@ -103,6 +108,12 @@ class ConstantCard {
     this.rng.addEventListener("input", () => {
       this.dragging = true;
       const v = Number(this.rng.value);
+      if (this.actions.blocked(this.c.key, v)) {
+        // Keyboard steps stop at the boundary order (pointer drags never get here).
+        this.rng.value = String(this.last);
+        return;
+      }
+      this.last = v;
       this.show(v);
       this.actions.drag(this.c.key, v);
     });
@@ -141,7 +152,12 @@ class ConstantCard {
       raw = Math.min(c.max, Math.max(c.min, raw));
       const v = Math.min(c.max, Number((c.min + Math.round((raw - c.min) / c.step) * c.step).toFixed(12)));
       if (v === sent) return;
-      sent = v;
+      if (this.actions.blocked(this.c.key, v)) {
+        // Split boundary order: the thumb stops at the last allowed value.
+        raw = sent;
+        return;
+      }
+      sent = this.last = v;
       this.rng.value = String(v);
       this.show(v);
       this.actions.drag(this.c.key, v);
@@ -179,6 +195,11 @@ class ConstantCard {
   }
 
   private async commit(v: number): Promise<void> {
+    const order = this.actions.blocked(this.c.key, v);
+    if (order) {
+      this.dragging = false;
+      return this.fail(`경계점 순서 ${order.replace(/-/g, "−")}를 넘을 수 없음`);
+    }
     this.previewing = false;
     const e = await this.actions.setValue(this.c.key, v);
     this.dragging = false;
@@ -220,6 +241,7 @@ class ConstantCard {
     this.rng.step = String(c.step);
     if (!this.dragging && !this.previewing) {
       this.rng.value = String(c.value);
+      this.last = c.value;
       this.show(c.value);
     }
     if (document.activeElement !== this.min) this.min.value = fmtEnd(c.min);
@@ -323,7 +345,8 @@ export class Panel {
     const c = activeClip(sc);
     this.clipSrc = c?.src ?? "";
     if (document.activeElement !== this.clipInput) this.clipInput.value = this.clipSrc;
-    this.clipInput.placeholder = "clip 없음 (예: 0 <= x <= 10)";
+    const a = sc.axes[0]?.key ?? "x";
+    this.clipInput.placeholder = `clip 없음 (예: ${sc.polar ? `${a} <= 2` : `0 <= ${a} <= 10`})`;
     this.clipReset.hidden = !sc.user_clip;
   }
 
@@ -422,7 +445,7 @@ export class Panel {
     const badge = dim !== undefined ? h("span", { class: "span-dim" }, `${SPAN_DIM[dim] ?? `${dim}차원`} · ${dim}차원`) : null;
     let math: Node;
     try {
-      math = texElement(definitionTex(f.name, f.inputs, f.body, ctx));
+      math = texElement(functionTex(f, ctx));
     } catch {
       math = document.createTextNode(f.key);
     }

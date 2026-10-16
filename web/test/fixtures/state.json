@@ -14,6 +14,9 @@
       "kind": "Arrow",
       "inputs": [],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -91,9 +94,464 @@
       "calls": [
         "vv"
       ],
+      "constraints": [],
       "color": 34,
       "order": 38,
       "version": 1
+    },
+    "Ci": {
+      "key": "Ci",
+      "name": {
+        "key": "Ci",
+        "base": "Ci",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Equation",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "y",
+          "base": "y",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Region"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "Compare",
+        "first": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Sum",
+          "terms": [
+            {
+              "id": 2,
+              "sign": "Plus",
+              "expr": {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Pow",
+                "base": {
+                  "id": 4,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                },
+                "exp": {
+                  "id": 5,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              }
+            },
+            {
+              "id": 6,
+              "sign": "Plus",
+              "expr": {
+                "id": 7,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Pow",
+                "base": {
+                  "id": 8,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "y",
+                    "base": "y",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                },
+                "exp": {
+                  "id": 9,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              }
+            }
+          ]
+        },
+        "rest": [
+          {
+            "op": "Eq",
+            "rhs": {
+              "id": 10,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            }
+          }
+        ]
+      },
+      "body_src": "x^2 + y^2 = 1",
+      "calls": [],
+      "constraints": [],
+      "color": 42,
+      "order": 57,
+      "version": 5
+    },
+    "Dv": {
+      "key": "Dv",
+      "name": {
+        "key": "Dv",
+        "base": "Dv",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Parametric",
+      "inputs": [
+        {
+          "key": "t",
+          "base": "t",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "outputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "y",
+          "base": "y",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "range": {
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Call",
+          "callee": {
+            "key": "quad",
+            "base": "quad",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Function",
+          "args": [
+            {
+              "id": 1,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "j",
+                "base": "j",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Index"
+            }
+          ]
+        },
+        "src": "0 <= t <= quad(j)"
+      },
+      "family": {
+        "index": {
+          "key": "j",
+          "base": "j",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "lo_strict": false,
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "n",
+            "base": "n",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Constant"
+        },
+        "hi_strict": false,
+        "src": "0 <= j <= n"
+      },
+      "ty": {
+        "type": "Tuple",
+        "n": 2
+      },
+      "consts": [
+        "n"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Tuple",
+          "n": 2
+        },
+        "type": "Tuple",
+        "items": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "j",
+              "base": "j",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Index"
+          },
+          {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "t",
+              "base": "t",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Input"
+          }
+        ]
+      },
+      "body_src": "(j, t)",
+      "calls": [
+        "quad"
+      ],
+      "constraints": [],
+      "color": 44,
+      "order": 59,
+      "version": 5
+    },
+    "Hy": {
+      "key": "Hy",
+      "name": {
+        "key": "Hy",
+        "base": "Hy",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Equation",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "y",
+          "base": "y",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Region"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "Compare",
+        "first": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Product",
+          "factors": [
+            {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            },
+            {
+              "id": 3,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "y",
+                "base": "y",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            }
+          ]
+        },
+        "rest": [
+          {
+            "op": "Eq",
+            "rhs": {
+              "id": 4,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            }
+          }
+        ]
+      },
+      "body_src": "x*y = 1",
+      "calls": [],
+      "constraints": [],
+      "color": 43,
+      "order": 58,
+      "version": 5
     },
     "M2": {
       "key": "M2",
@@ -109,6 +567,9 @@
       "kind": "Value",
       "inputs": [],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Matrix",
         "m": 2,
@@ -184,9 +645,216 @@
       },
       "body_src": "[[1, 2], [3, 4]]",
       "calls": [],
+      "constraints": [],
       "color": 25,
       "order": 28,
       "version": 1
+    },
+    "Oc": {
+      "key": "Oc",
+      "name": {
+        "key": "Oc",
+        "base": "Oc",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Equation",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "y",
+          "base": "y",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": {
+        "index": {
+          "key": "j",
+          "base": "j",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "1",
+          "int": true
+        },
+        "lo_strict": false,
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "3",
+          "int": true
+        },
+        "hi_strict": false,
+        "src": "1 <= j <= 3"
+      },
+      "ty": {
+        "type": "Region"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Region"
+        },
+        "type": "Compare",
+        "first": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Sum",
+          "terms": [
+            {
+              "id": 2,
+              "sign": "Plus",
+              "expr": {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Pow",
+                "base": {
+                  "id": 4,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                },
+                "exp": {
+                  "id": 5,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              }
+            },
+            {
+              "id": 6,
+              "sign": "Plus",
+              "expr": {
+                "id": 7,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Pow",
+                "base": {
+                  "id": 8,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "y",
+                    "base": "y",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                },
+                "exp": {
+                  "id": 9,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Num",
+                  "text": "2",
+                  "int": true
+                }
+              }
+            }
+          ]
+        },
+        "rest": [
+          {
+            "op": "Eq",
+            "rhs": {
+              "id": 10,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Pow",
+              "base": {
+                "id": 11,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "j",
+                  "base": "j",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Index"
+              },
+              "exp": {
+                "id": 12,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "2",
+                "int": true
+              }
+            }
+          }
+        ]
+      },
+      "body_src": "x^2 + y^2 = j^2",
+      "calls": [],
+      "constraints": [],
+      "color": 45,
+      "order": 60,
+      "version": 5
     },
     "Rot": {
       "key": "Rot",
@@ -212,6 +880,9 @@
         }
       ],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Matrix",
         "m": 2,
@@ -402,6 +1073,7 @@
       },
       "body_src": "[[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]",
       "calls": [],
+      "constraints": [],
       "color": 27,
       "order": 30,
       "version": 1
@@ -420,6 +1092,9 @@
       "kind": "Span",
       "inputs": [],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -503,6 +1178,7 @@
       },
       "body_src": "span([1, 2], [2, 4])",
       "calls": [],
+      "constraints": [],
       "color": 32,
       "order": 36,
       "version": 1
@@ -521,6 +1197,9 @@
       "kind": "Span",
       "inputs": [],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -598,6 +1277,7 @@
       "calls": [
         "vv"
       ],
+      "constraints": [],
       "color": 31,
       "order": 35,
       "version": 1
@@ -616,6 +1296,9 @@
       "kind": "Span",
       "inputs": [],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -671,9 +1354,215 @@
       },
       "body_src": "span([0, 0])",
       "calls": [],
+      "constraints": [],
       "color": 33,
       "order": 37,
       "version": 1
+    },
+    "absx": {
+      "key": "absx",
+      "name": {
+        "key": "absx",
+        "base": "absx",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Split",
+        "name": null,
+        "subject": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Input"
+        },
+        "at": [
+          {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "0",
+            "int": true
+          }
+        ],
+        "pieces": [
+          {
+            "value": {
+              "id": 3,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Neg",
+              "arg": {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            },
+            "cond": {
+              "id": 5,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              },
+              "rest": [
+                {
+                  "op": "Lt",
+                  "rhs": {
+                    "id": 7,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "0",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "value": {
+              "id": 8,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            },
+            "cond": {
+              "id": 9,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 10,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              },
+              "rest": [
+                {
+                  "op": "Ge",
+                  "rhs": {
+                    "id": 11,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "0",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "split x at 0\n-x, x < 0\nx, x >= 0",
+      "calls": [],
+      "constraints": [],
+      "color": 35,
+      "order": 50,
+      "version": 5
     },
     "big": {
       "key": "big",
@@ -707,6 +1596,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -759,6 +1651,7 @@
       },
       "body_src": "sum(1; 1 <= k <= 1000000)",
       "calls": [],
+      "constraints": [],
       "color": 20,
       "order": 22,
       "version": 1
@@ -795,6 +1688,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -920,6 +1816,7 @@
       "calls": [
         "par"
       ],
+      "constraints": [],
       "color": 14,
       "order": 16,
       "version": 1
@@ -956,6 +1853,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1018,6 +1918,7 @@
       },
       "body_src": "x^(1/3)",
       "calls": [],
+      "constraints": [],
       "color": 1,
       "order": 1,
       "version": 1
@@ -1054,6 +1955,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1109,6 +2013,7 @@
       },
       "body_src": "x^{2/3",
       "calls": [],
+      "constraints": [],
       "color": 2,
       "order": 2,
       "version": 1
@@ -1145,6 +2050,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1184,6 +2092,7 @@
       },
       "body_src": "x^0.5",
       "calls": [],
+      "constraints": [],
       "color": 4,
       "order": 4,
       "version": 1
@@ -1220,6 +2129,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1250,6 +2162,7 @@
       },
       "body_src": "x!",
       "calls": [],
+      "constraints": [],
       "color": 11,
       "order": 12,
       "version": 1
@@ -1286,6 +2199,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1328,9 +2244,199 @@
       },
       "body_src": "floor(x)",
       "calls": [],
+      "constraints": [],
       "color": 19,
       "order": 21,
       "version": 1
+    },
+    "gap": {
+      "key": "gap",
+      "name": {
+        "key": "gap",
+        "base": "gap",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Split",
+        "name": null,
+        "subject": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Input"
+        },
+        "at": [
+          {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "0",
+            "int": true
+          }
+        ],
+        "pieces": [
+          {
+            "value": {
+              "id": 3,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Neg",
+              "arg": {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              }
+            },
+            "cond": {
+              "id": 5,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              },
+              "rest": [
+                {
+                  "op": "Lt",
+                  "rhs": {
+                    "id": 7,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "0",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "value": {
+              "id": 8,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            },
+            "cond": {
+              "id": 9,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 10,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              },
+              "rest": [
+                {
+                  "op": "Gt",
+                  "rhs": {
+                    "id": 11,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "0",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "split x at 0\n-1, x < 0\n1, x > 0",
+      "calls": [],
+      "constraints": [],
+      "color": 38,
+      "order": 53,
+      "version": 5
     },
     "gm": {
       "key": "gm",
@@ -1364,6 +2470,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1406,6 +2515,7 @@
       },
       "body_src": "gamma(x)",
       "calls": [],
+      "constraints": [],
       "color": 12,
       "order": 13,
       "version": 1
@@ -1442,6 +2552,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1504,6 +2617,7 @@
       },
       "body_src": "x^(1/2)",
       "calls": [],
+      "constraints": [],
       "color": 3,
       "order": 3,
       "version": 1
@@ -1540,6 +2654,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1624,9 +2741,118 @@
       },
       "body_src": "sum(1/k; 1 <= k <= x)",
       "calls": [],
+      "constraints": [],
       "color": 7,
       "order": 8,
       "version": 1
+    },
+    "hc": {
+      "key": "hc",
+      "name": {
+        "key": "hc",
+        "base": "hc",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Polar",
+      "inputs": [
+        {
+          "key": "\\theta",
+          "base": "\\theta",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "r",
+        "base": "r",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Sum",
+        "terms": [
+          {
+            "id": 1,
+            "sign": "Plus",
+            "expr": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            }
+          },
+          {
+            "id": 3,
+            "sign": "Plus",
+            "expr": {
+              "id": 4,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "cos",
+                "base": "cos",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 5,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "\\theta",
+                    "base": "\\theta",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "1 + cos(\\theta)",
+      "calls": [],
+      "constraints": [],
+      "color": 41,
+      "order": 56,
+      "version": 5
     },
     "lg": {
       "key": "lg",
@@ -1660,6 +2886,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1817,6 +3046,7 @@
       },
       "body_src": "log(x, 2) + ln(\\e) + deg(180) - \\pi",
       "calls": [],
+      "constraints": [],
       "color": 18,
       "order": 20,
       "version": 1
@@ -1853,6 +3083,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -1876,6 +3109,7 @@
       },
       "body_src": "x",
       "calls": [],
+      "constraints": [],
       "color": 21,
       "order": 23,
       "version": 1
@@ -1912,6 +3146,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2298,6 +3535,7 @@
       "calls": [
         "M2"
       ],
+      "constraints": [],
       "color": 29,
       "order": 32,
       "version": 1
@@ -2334,6 +3572,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2385,6 +3626,7 @@
       },
       "body_src": "mod(x, 3)",
       "calls": [],
+      "constraints": [],
       "color": 10,
       "order": 11,
       "version": 1
@@ -2421,6 +3663,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2511,6 +3756,7 @@
       },
       "body_src": "-2^2 + 0*x",
       "calls": [],
+      "constraints": [],
       "color": 5,
       "order": 5,
       "version": 1
@@ -2547,6 +3793,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2768,6 +4017,7 @@
       },
       "body_src": "matmul([1, x], transpose([2, 3]))_[2, 2] + [1, 2, 3]_[k]",
       "calls": [],
+      "constraints": [],
       "color": 30,
       "order": 33,
       "version": 1
@@ -2804,6 +4054,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -2871,9 +4124,196 @@
       },
       "body_src": "a*x^2",
       "calls": [],
+      "constraints": [],
       "color": 13,
       "order": 14,
       "version": 1
+    },
+    "pc": {
+      "key": "pc",
+      "name": {
+        "key": "pc",
+        "base": "pc",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Parametric",
+      "inputs": [
+        {
+          "key": "t",
+          "base": "t",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "outputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "y",
+          "base": "y",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "range": {
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Product",
+          "factors": [
+            {
+              "id": 1,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "2",
+              "int": true
+            },
+            {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "\\pi",
+                "base": "\\pi",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Reserved"
+            }
+          ]
+        },
+        "src": "0 <= t <= 2*\\pi"
+      },
+      "family": null,
+      "ty": {
+        "type": "Tuple",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Tuple",
+          "n": 2
+        },
+        "type": "Tuple",
+        "items": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Call",
+            "callee": {
+              "key": "cos",
+              "base": "cos",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Builtin",
+            "args": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "t",
+                  "base": "t",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Call",
+            "callee": {
+              "key": "sin",
+              "base": "sin",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Builtin",
+            "args": [
+              {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "t",
+                  "base": "t",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "(cos(t), sin(t))",
+      "calls": [],
+      "constraints": [],
+      "color": 39,
+      "order": 54,
+      "version": 5
     },
     "poly": {
       "key": "poly",
@@ -2907,6 +4347,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3048,9 +4491,194 @@
       },
       "body_src": "a*x^2 - b*x + 1",
       "calls": [],
+      "constraints": [],
       "color": 23,
       "order": 25,
       "version": 1
+    },
+    "pv": {
+      "key": "pv",
+      "name": {
+        "key": "pv",
+        "base": "pv",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Parametric",
+      "inputs": [
+        {
+          "key": "t",
+          "base": "t",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": null,
+      "outputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "y",
+          "base": "y",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "range": {
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "\\pi",
+            "base": "\\pi",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Reserved"
+        },
+        "src": "0 <= t <= \\pi"
+      },
+      "family": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [
+        "a"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Call",
+        "callee": {
+          "key": "matmul",
+          "base": "matmul",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Matrix",
+              "m": 2,
+              "n": 2
+            },
+            "type": "Call",
+            "callee": {
+              "key": "Rot",
+              "base": "Rot",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Function",
+            "args": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "t",
+                  "base": "t",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "a",
+                  "base": "a",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Constant"
+              },
+              {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "matmul(Rot(t), [a, 0])",
+      "calls": [
+        "Rot"
+      ],
+      "constraints": [],
+      "color": 40,
+      "order": 55,
+      "version": 5
     },
     "quad": {
       "key": "quad",
@@ -3084,6 +4712,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3123,6 +4754,7 @@
       },
       "body_src": "x^2",
       "calls": [],
+      "constraints": [],
       "color": 22,
       "order": 24,
       "version": 1
@@ -3159,6 +4791,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3198,6 +4833,7 @@
       },
       "body_src": "1/x",
       "calls": [],
+      "constraints": [],
       "color": 0,
       "order": 0,
       "version": 1
@@ -3234,6 +4870,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3276,6 +4915,7 @@
       },
       "body_src": "round(x)",
       "calls": [],
+      "constraints": [],
       "color": 9,
       "order": 10,
       "version": 1
@@ -3312,6 +4952,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3434,6 +5077,7 @@
       "calls": [
         "Rot"
       ],
+      "constraints": [],
       "color": 28,
       "order": 31,
       "version": 1
@@ -3470,6 +5114,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3512,9 +5159,248 @@
       },
       "body_src": "sqrt(x)",
       "calls": [],
+      "constraints": [],
       "color": 16,
       "order": 18,
       "version": 1
+    },
+    "sq2": {
+      "key": "sq2",
+      "name": {
+        "key": "sq2",
+        "base": "sq2",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Split",
+        "name": {
+          "key": "r",
+          "base": "r",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "subject": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Pow",
+          "base": {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "x",
+              "base": "x",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Input"
+          },
+          "exp": {
+            "id": 3,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "2",
+            "int": true
+          }
+        },
+        "at": [
+          {
+            "id": 4,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "1",
+            "int": true
+          }
+        ],
+        "pieces": [
+          {
+            "value": {
+              "id": 5,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "r",
+                "base": "r",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "SplitName"
+            },
+            "cond": {
+              "id": 6,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 7,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "r",
+                  "base": "r",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "SplitName"
+              },
+              "rest": [
+                {
+                  "op": "Lt",
+                  "rhs": {
+                    "id": 8,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "1",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "value": {
+              "id": 9,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Div",
+              "num": {
+                "id": 10,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              },
+              "den": {
+                "id": 11,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "r",
+                  "base": "r",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "SplitName"
+              }
+            },
+            "cond": {
+              "id": 12,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 13,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "r",
+                  "base": "r",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "SplitName"
+              },
+              "rest": [
+                {
+                  "op": "Ge",
+                  "rhs": {
+                    "id": 14,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "1",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "split r = x^2 at 1\nr, r < 1\n1/r, r >= 1",
+      "calls": [],
+      "constraints": [],
+      "color": 37,
+      "order": 52,
+      "version": 5
     },
     "steep": {
       "key": "steep",
@@ -3548,6 +5434,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3589,9 +5478,351 @@
       },
       "body_src": "1000*x",
       "calls": [],
+      "constraints": [],
       "color": 17,
       "order": 19,
       "version": 1
+    },
+    "stp": {
+      "key": "stp",
+      "name": {
+        "key": "stp",
+        "base": "stp",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [
+        "a",
+        "b"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Split",
+        "name": null,
+        "subject": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Input"
+        },
+        "at": [
+          {
+            "id": 2,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "a",
+              "base": "a",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Constant"
+          },
+          {
+            "id": 3,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "b",
+              "base": "b",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Constant"
+          }
+        ],
+        "pieces": [
+          {
+            "value": {
+              "id": 4,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "0",
+              "int": true
+            },
+            "cond": {
+              "id": 5,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              },
+              "rest": [
+                {
+                  "op": "Lt",
+                  "rhs": {
+                    "id": 7,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "a",
+                      "base": "a",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Constant"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "value": {
+              "id": 8,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            },
+            "cond": {
+              "id": 9,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 10,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "a",
+                  "base": "a",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Constant"
+              },
+              "rest": [
+                {
+                  "op": "Le",
+                  "rhs": {
+                    "id": 11,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                },
+                {
+                  "op": "Le",
+                  "rhs": {
+                    "id": 12,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "b",
+                      "base": "b",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Constant"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "value": {
+              "id": 13,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "2",
+              "int": true
+            },
+            "cond": {
+              "id": 14,
+              "ty": {
+                "type": "Region"
+              },
+              "type": "Compare",
+              "first": {
+                "id": 15,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              },
+              "rest": [
+                {
+                  "op": "Gt",
+                  "rhs": {
+                    "id": 16,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "b",
+                      "base": "b",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Constant"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "body_src": "split x at a, b\n0, x < a\n1, a <= x <= b\n2, x > b",
+      "calls": [],
+      "constraints": [
+        {
+          "lo": {
+            "id": 0,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "a",
+              "base": "a",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Constant"
+          },
+          "hi": {
+            "id": 0,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "b",
+              "base": "b",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Constant"
+          },
+          "src": "a < b"
+        }
+      ],
+      "color": 36,
+      "order": 51,
+      "version": 5
     },
     "taylor": {
       "key": "taylor",
@@ -3625,6 +5856,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3750,6 +5984,7 @@
       },
       "body_src": "sum(x^k/k!; 0 <= k <= n)",
       "calls": [],
+      "constraints": [],
       "color": 6,
       "order": 6,
       "version": 1
@@ -3786,6 +6021,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3828,6 +6066,7 @@
       },
       "body_src": "tan(x)",
       "calls": [],
+      "constraints": [],
       "color": 15,
       "order": 17,
       "version": 1
@@ -3864,6 +6103,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -3934,6 +6176,7 @@
       "calls": [
         "harm"
       ],
+      "constraints": [],
       "color": 8,
       "order": 9,
       "version": 1
@@ -3952,6 +6195,9 @@
       "kind": "Value",
       "inputs": [],
       "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Vector",
         "n": 2
@@ -3997,6 +6243,7 @@
       },
       "body_src": "[1, a]",
       "calls": [],
+      "constraints": [],
       "color": 26,
       "order": 29,
       "version": 1
@@ -4033,6 +6280,9 @@
         "deriv": 0,
         "inverse": false
       },
+      "outputs": [],
+      "range": null,
+      "family": null,
       "ty": {
         "type": "Scalar"
       },
@@ -4103,6 +6353,7 @@
       },
       "body_src": "a*sin(t)",
       "calls": [],
+      "constraints": [],
       "color": 24,
       "order": 27,
       "version": 1
@@ -4218,6 +6469,7 @@
           "inverse": false
         }
       ],
+      "polar": false,
       "members": [
         "wave",
         "Sp",
@@ -4819,6 +7071,7 @@
             "inverse": false
           }
         ],
+        "polar": false,
         "show": [
           {
             "key": "wave",
@@ -5229,6 +7482,7 @@
           "inverse": false
         }
       ],
+      "polar": false,
       "members": [
         "wave",
         "Sp",
@@ -5291,6 +7545,7 @@
           "inverse": false
         }
       ],
+      "polar": false,
       "members": [
         "recip",
         "cbrt",
@@ -5328,7 +7583,17 @@
         "H3",
         "H4",
         "H5",
-        "H6"
+        "H6",
+        "absx",
+        "stp",
+        "sq2",
+        "gap",
+        "pc",
+        "pv",
+        "Ci",
+        "Hy",
+        "Dv",
+        "Oc"
       ],
       "clip": null,
       "view": null,
@@ -5336,9 +7601,14 @@
         {
           "visible": {
             "Ar": true,
+            "Ci": true,
+            "Dv": true,
+            "Hy": true,
+            "Oc": true,
             "Sl": true,
             "Sp": true,
             "Sz": true,
+            "absx": true,
             "big": true,
             "callpar": true,
             "cbrt": true,
@@ -5346,6 +7616,7 @@
             "dec": true,
             "fct": true,
             "fl": true,
+            "gap": true,
             "gm": true,
             "half": true,
             "harm": true,
@@ -5356,13 +7627,17 @@
             "negsq": true,
             "outer": true,
             "par": true,
+            "pc": true,
             "poly": true,
+            "pv": true,
             "quad": true,
             "recip": true,
             "rnd": true,
             "rotx": true,
             "sq": true,
+            "sq2": true,
             "steep": true,
+            "stp": true,
             "taylor": true,
             "tn": true,
             "usesharm": true
@@ -5387,7 +7662,61 @@
       },
       "user_clip": null,
       "order": 39,
-      "version": 4
+      "version": 5
+    },
+    "polar(r, \\theta)": {
+      "key": "polar(r, \\theta)",
+      "number": null,
+      "axes": [
+        {
+          "key": "r",
+          "base": "r",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        {
+          "key": "\\theta",
+          "base": "\\theta",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "polar": true,
+      "members": [
+        "hc"
+      ],
+      "clip": null,
+      "view": null,
+      "steps": [
+        {
+          "visible": {
+            "hc": true
+          },
+          "concealed": [],
+          "values": {},
+          "view": null,
+          "note": [],
+          "changed": [],
+          "changed_values": [],
+          "changed_view": false,
+          "changed_note": false,
+          "animate": []
+        }
+      ],
+      "source": null,
+      "src": "",
+      "deps": [],
+      "defined": 5,
+      "toggles": {},
+      "user_clip": null,
+      "order": 61,
+      "version": 5
     }
   },
   "highlights": {
@@ -7205,8 +9534,8 @@
   },
   "requests": {},
   "counters": {
-    "next_order": 50,
-    "next_color": 35,
+    "next_order": 62,
+    "next_color": 46,
     "next_hl_color": 7,
     "next_request": 0
   }

@@ -469,7 +469,7 @@ impl<'s> Cx<'s> {
                 let fs: Vec<Option<Ident>> = args
                     .iter()
                     .map(|a| match &a.kind {
-                        ExprKind::Name { name, .. } if self.state.functions.get(&name.key).is_some_and(|f| f.kind == DefKind::Curve) => Some(name.clone()),
+                        ExprKind::Name { name, .. } if self.state.functions.get(&name.key).is_some_and(|f| f.kind == DefKind::Curve && f.family.is_none()) => Some(name.clone()),
                         _ => None,
                     })
                     .collect();
@@ -801,9 +801,21 @@ impl<'s> Cx<'s> {
             },
         };
         if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &target
+            && self.state.functions.get(function).is_some_and(|f| f.family.is_some())
+        {
+            let span = src.target.as_ref().map_or(at, |t| t.span);
+            self.unsupported(span, &format!("반복 정의 '{function}'를 대상으로 한 강조"), 5);
+            return None;
+        }
+        if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &target
             && let Some(f) = self.state.functions.get(function).filter(|f| f.kind != DefKind::Curve)
         {
             let span = src.target.as_ref().map_or(at, |t| t.span);
+            if matches!(f.kind, DefKind::Parametric | DefKind::Polar | DefKind::Equation) {
+                // Stage-5a decision: fill / emphasis rules for these come later.
+                self.unsupported(span, &format!("{} '{function}'를 대상으로 한 강조", f.kind.word()), 5);
+                return None;
+            }
             self.err(span, code::TARGET, format!("{} '{function}'는 강조 대상이 될 수 없음 (곡선 함수나 그 부분식)", f.kind.word()));
             return None;
         }
@@ -852,7 +864,7 @@ impl<'s> Cx<'s> {
         };
         let fits_some = || {
             let mut systems: Vec<[String; 2]> = vec![["x".into(), "y".into()]];
-            systems.extend(self.state.functions.values().filter_map(|f| f.curve_axes()).map(|(i, o)| [i.key.clone(), o.key.clone()]));
+            systems.extend(self.state.functions.values().filter_map(|f| f.system()).filter(|(_, ax)| ax.len() == 2).map(|(_, ax)| [ax[0].key.clone(), ax[1].key.clone()]));
             systems.iter().any(|s| axes.iter().all(|a| s.contains(a)))
         };
         if axes.len() > 2 || !fits_some() {
@@ -1075,8 +1087,8 @@ impl<'s> Cx<'s> {
     /// Axis names of every coordinate system in use, plus `x`, `y`.
     pub(super) fn axis_names(&self) -> Vec<String> {
         let mut v = vec!["x".to_string(), "y".to_string()];
-        for (i, o) in self.state.functions.values().filter_map(|f| f.curve_axes()) {
-            for a in [&i.key, &o.key] {
+        for (_, ax) in self.state.functions.values().filter_map(|f| f.system()) {
+            for a in ax.iter().map(|a| &a.key) {
                 if !v.contains(a) {
                     v.push(a.clone());
                 }

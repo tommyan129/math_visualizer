@@ -11,14 +11,17 @@ import "@mathjax/src/js/input/tex/base/BaseConfiguration.js";
 import "@mathjax/src/js/input/tex/ams/AmsConfiguration.js";
 import "@mathjax/src/js/input/tex/color/ColorConfiguration.js";
 import { MathJaxTexFont } from "@mathjax/mathjax-tex-font/js/svg.js";
+import { defineSha, SHA_PACKAGE } from "./sha";
 
 const adaptor = browserAdaptor();
 RegisterHTMLHandler(adaptor);
+// No shared glyph cache: every SVG must stand alone (DOM copies and canvas images).
+// No inline line breaking: MathJax 4 would split one expression into several SVGs.
+const output = new SVG({ fontData: MathJaxTexFont, fontCache: "none", linebreaks: { inline: false } });
+defineSha(output.font);
 const doc = mathjax.document(document, {
-  InputJax: new TeX({ packages: ["base", "ams", "color"] }),
-  // No shared glyph cache: every SVG must stand alone (DOM copies and canvas images).
-  // No inline line breaking: MathJax 4 would split one expression into several SVGs.
-  OutputJax: new SVG({ fontData: MathJaxTexFont, fontCache: "none", linebreaks: { inline: false } }),
+  InputJax: new TeX({ packages: ["base", "ams", "color", SHA_PACKAGE] }),
+  OutputJax: output,
 });
 
 /** TeX ex height relative to em. */

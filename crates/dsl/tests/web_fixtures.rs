@@ -73,6 +73,35 @@ scene(1):
         note: + \"{wave(1) > 0}\"
 ";
 
+/// Stage 5: split bodies (block definitions).
+const SPLITS: &str = "\
+define:
+    absx(x) -> y:
+        split x at 0
+        -x, x < 0
+        x, x >= 0
+    stp(x; a, b) -> y:
+        split x at a, b
+        0, x < a
+        1, a <= x <= b
+        2, x > b
+    sq2(x) -> y:
+        split r = x^2 at 1
+        r, r < 1
+        1/r, r >= 1
+    gap(x) -> y:
+        split x at 0
+        -1, x < 0
+        1, x > 0
+    pc(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi
+    pv(t; a) -> (x, y): matmul(Rot(t), [a, 0]), 0 <= t <= \\pi
+    hc(\\theta) -> polar(r): 1 + cos(\\theta)
+    Ci(x, y): x^2 + y^2 = 1
+    Hy(x, y): x*y = 1
+    Dv(t; n) -> (x, y): family((j, t), 0 <= t <= quad(j); 0 <= j <= n)
+    Oc(x, y): family(x^2 + y^2 = j^2; 1 <= j <= 3)
+";
+
 #[test]
 fn write_web_fixtures() {
     let src = format!("define:\n{}", DEFS.iter().map(|d| format!("    {d}\n")).collect::<String>());
@@ -80,6 +109,7 @@ fn write_web_fixtures() {
     let state = apply(&state, HIGHLIGHTS, &Limits::default(), 2).unwrap_or_else(|d| panic!("{d:?}")).state;
     let state = apply(&state, SCENES, &Limits::default(), 3).unwrap_or_else(|d| panic!("{d:?}")).state;
     let state = dsl::interp::apply_user_op(&state, &dsl::interp::UserOp::Toggle { scene: "2D(x, y)".into(), target: "lin".into(), visible: false }, 4).unwrap().state;
+    let state = apply(&state, SPLITS, &Limits::default(), 5).unwrap_or_else(|d| panic!("{d:?}")).state;
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/state.json");
     std::fs::create_dir_all(out.parent().unwrap()).unwrap();
     std::fs::write(out, serde_json::to_string_pretty(&state).unwrap()).unwrap();

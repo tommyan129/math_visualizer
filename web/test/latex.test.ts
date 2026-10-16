@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
-import { definitionTex, exprTex, identTex, latexCtx } from "../src/math/latex";
+import { definitionTex, exprTex, functionTex, identTex, latexCtx } from "../src/math/latex";
 
 const state = fixture as unknown as State;
 const ctx = { colors: new Map<string, string>() };
@@ -63,5 +63,35 @@ describe("element subscripts", () => {
     const { parseLike } = await import("./util/expr");
     expect(exprTex(parseLike("A", [1, 2]), ctx)).toBe("a_{12}");
     expect(exprTex(parseLike("v", [2]), ctx)).toBe("v_{2}");
+  });
+});
+
+describe("split notation", () => {
+  it("cases with one row per line", () => {
+    expect(def("absx")).toBe("\\mathit{absx}\\left(x\\right) = \\begin{cases} -x, & x < 0 \\\\ x, & x \\ge 0 \\end{cases}");
+  });
+
+  it("a named subject is shown under the cases", () => {
+    expect(def("sq2")).toContain("\\end{cases} \\\\ \\scriptstyle r \\,=\\, {x}^{2} \\end{gathered}");
+  });
+});
+
+describe("parametric, polar and equation notation", () => {
+  const fn = (k: string) => functionTex(state.functions[k]!, ctx);
+  it("tuple output with the range under it", () => {
+    expect(fn("pc")).toBe("\\begin{gathered} \\mathit{pc}\\left(t\\right) = \\left(\\cos\\left(t\\right), \\sin\\left(t\\right)\\right) \\\\ \\scriptstyle 0 \\,\\le\\, t \\,\\le\\, 2 \\pi \\end{gathered}");
+  });
+  it("polar without a range is a plain definition", () => {
+    expect(fn("hc")).toBe("\\mathit{hc}\\left(\\theta\\right) = 1 + \\cos\\left(\\theta\\right)");
+  });
+  it("an equation is shown with its name", () => {
+    expect(fn("Ci")).toBe("\\mathit{Ci}\\colon\\; {x}^{2} + {y}^{2} = 1");
+  });
+});
+
+describe("family notation", () => {
+  it("Ш with the index range and the body in braces", () => {
+    expect(functionTex(state.functions["Oc"]!, ctx)).toBe("\\mathit{Oc}\\colon\\; \\Sha_{j=1}^{3} \\left\\{ {x}^{2} + {y}^{2} = {j}^{2} \\right\\}");
+    expect(functionTex(state.functions["Dv"]!, ctx)).toContain("\\mathit{Dv}\\left(t\\right) = \\Sha_{j=0}^{n} \\left\\{ \\left(j, t\\right) \\right\\}");
   });
 });

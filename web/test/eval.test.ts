@@ -4,9 +4,11 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
-import { compile, type Compiled, type Scalar, specOf } from "../src/worker/codegen";
+import { compile, compileOrder, type Compiled, type Scalar, specOf } from "../src/worker/codegen";
 import { clipLine, spanShape } from "../src/worker/linalg";
 import { makeRuntime, TERM_CAP } from "../src/worker/numeric";
+import { sampleImplicit } from "../src/worker/implicit";
+import { sampleParametric } from "../src/worker/paramsample";
 import { isDiscontinuity, sampleCurve, sampleDiscrete, type SampleRange } from "../src/worker/sample";
 
 const state = fixture as unknown as State;
@@ -280,5 +282,120 @@ describe("span shape", () => {
     const [v, p] = vecs("Ar", { a: 3 });
     expect(v).toEqual([1, 3]);
     expect(p).toEqual([1, 1]);
+  });
+});
+
+describe("split", () => {
+  it("picks the line whose condition holds", () => {
+    expect(f("absx", -3)).toBe(3);
+    expect(f("absx", 2)).toBe(2);
+    expect(f("absx", 0)).toBe(0);
+    expect(f("stp", 0, { a: 1, b: 2 })).toBe(0);
+    expect(f("stp", 1.5, { a: 1, b: 2 })).toBe(1);
+    expect(f("stp", 2, { a: 1, b: 2 })).toBe(1);
+    expect(f("stp", 3, { a: 1, b: 2 })).toBe(2);
+  });
+
+  it("the subject name stands for the expression", () => {
+    expect(f("sq2", 0.5)).toBeCloseTo(0.25);
+    expect(f("sq2", 2)).toBeCloseTo(0.25);
+  });
+
+  it("a piece no line claims is undefined", () => {
+    expect(f("gap", 0)).toBeNaN();
+    expect(f("gap", -1e-9)).toBe(-1);
+  });
+
+  it("overlap at the current values is undefined and flagged", () => {
+    R.overlap = false;
+    expect(f("stp", 1.5, { a: 2, b: 1 })).toBeNaN();
+    expect(R.overlap).toBe(true);
+    R.overlap = false;
+    expect(f("stp", 0, { a: 2, b: 1 })).toBe(0);
+    expect(R.overlap).toBe(false);
+  });
+
+  it("boundary order constraints from the server", () => {
+    const c = state.functions["stp"]!.constraints;
+    expect(c.map((x) => x.src)).toEqual(["a < b"]);
+    const holds = compileOrder(c[0]!.lo, c[0]!.hi, constIndex, R);
+    expect(holds(C({ a: 1, b: 2 }))).toBe(true);
+    expect(holds(C({ a: 2, b: 2 }))).toBe(false);
+  });
+
+  it("splits sample with a break at a jump", () => {
+    const range: SampleRange = { x0: -3, x1: 3, y0: -3, y1: 3, sx: 100, sy: 100 };
+    const c = compiled.get("stp")!;
+    const r = sampleCurve(c.batch, c.scalar, C({ a: -1, b: 1 }), range, "fine");
+    expect(r.offsets.length - 1).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("parametric, polar and implicit curves", () => {
+  const range: SampleRange = { x0: -6, x1: 6, y0: -4, y1: 4, sx: 100, sy: 100 };
+  const near = (a: number[], b: number[]) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!) < 1e-9;
+
+  it("parametric and polar points, ranges", () => {
+    const pc = compiled.get("pc")!, hc = compiled.get("hc")!, pv = compiled.get("pv")!;
+    const p = pc.param!(Math.PI / 2, C());
+    expect(p[0]).toBeCloseTo(0, 12);
+    expect(p[1]).toBeCloseTo(1, 12);
+    expect(hc.param!(0, C())).toEqual([2, 0]);
+    expect(hc.scalar(Math.PI, C())).toBeCloseTo(0, 12);
+    expect(hc.trange!(C())).toEqual([0, 2 * Math.PI]);
+    expect(pc.trange!(C())[1]).toBeCloseTo(2 * Math.PI, 12);
+    // A vector-valued body: R(t)·[a, 0].
+    const q = pv.param!(Math.PI / 2, C({ a: 3 }));
+    expect(q[0]).toBeCloseTo(0, 12);
+    expect(q[1]).toBeCloseTo(3, 12);
+  });
+
+  it("a parametric circle is one closed piece", () => {
+    const pc = compiled.get("pc")!;
+    const r = sampleParametric(pc.param!, C(), 0, 2 * Math.PI, range, "fine");
+    expect(r.offsets).toEqual([0, r.xs.length]);
+    expect(near([r.xs[0]!, r.ys[0]!], [r.xs[r.xs.length - 1]!, r.ys[r.ys.length - 1]!])).toBe(true);
+    for (let i = 0; i < r.xs.length; i++) expect(Math.hypot(r.xs[i]!, r.ys[i]!)).toBeCloseTo(1, 9);
+  });
+
+  it("x^2 + y^2 = 1 is one closed polyline on the circle", () => {
+    const ci = compiled.get("Ci")!;
+    expect(ci.implicit!(0.6, 0.8, C())).toBeCloseTo(0, 12);
+    const r = sampleImplicit(ci.implicit!, C(), range, "fine");
+    expect(r.offsets).toEqual([0, r.xs.length]);
+    expect(r.xs.length).toBeGreaterThan(100);
+    const n = r.xs.length;
+    expect(Math.hypot(r.xs[0]! - r.xs[n - 1]!, r.ys[0]! - r.ys[n - 1]!)).toBeLessThan(1e-9);
+    for (let i = 0; i < n; i++) expect(Math.abs(Math.hypot(r.xs[i]!, r.ys[i]!) - 1)).toBeLessThan(1e-6);
+  });
+
+  it("xy = 1 is not joined across its pole", () => {
+    const r = sampleImplicit(compiled.get("Hy")!.implicit!, C(), range, "fine");
+    expect(r.offsets.length - 1).toBeGreaterThanOrEqual(2);
+    for (let p = 0; p + 1 < r.offsets.length; p++) {
+      const s = r.offsets[p]!, e = r.offsets[p + 1]!;
+      const sign = Math.sign(r.xs[s]!);
+      for (let i = s; i < e; i++) expect(Math.sign(r.xs[i]!)).toBe(sign);
+    }
+  });
+});
+
+describe("family", () => {
+  const range: SampleRange = { x0: -6, x1: 6, y0: -4, y1: 4, sx: 100, sy: 100 };
+  it("one copy per k, the index in the body and the range", () => {
+    const dv = compiled.get("Dv")!;
+    expect(dv.family!.krange(C({ n: 3 }))).toEqual([0, 3]);
+    const m = dv.family!.at(2);
+    expect(m.param!(1.5, C())).toEqual([2, 1.5]);
+    expect(m.trange!(C())).toEqual([0, 4]);
+  });
+
+  it("concentric circles are three closed polylines", () => {
+    const oc = compiled.get("Oc")!;
+    for (const k of [1, 2, 3]) {
+      const r = sampleImplicit(oc.family!.at(k).implicit!, C(), { ...range, x0: -8, x1: 8, y0: -8, y1: 8 }, "fine");
+      expect(r.offsets.length).toBe(2);
+      expect(Math.abs(Math.hypot(r.xs[0]!, r.ys[0]!) - k)).toBeLessThan(1e-6);
+    }
   });
 });

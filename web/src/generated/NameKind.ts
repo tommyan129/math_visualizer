@@ -3,4 +3,4 @@
 /**
  * Filled by name resolution (design.md "이름은 서버가 종류까지 해석").
  */
-export type NameKind = "Unresolved" | "Input" | "Constant" | "Function" | "Builtin" | "Reserved" | "UserVar" | "Index" | "Value";
+export type NameKind = "Unresolved" | "Input" | "Constant" | "Function" | "Builtin" | "Reserved" | "UserVar" | "Index" | "Value" | "SplitName";

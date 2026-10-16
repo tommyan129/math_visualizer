@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 /// Bumped whenever a message or state-model shape changes incompatibly.
 /// A browser with a different version is told to reload.
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// Browser -> server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

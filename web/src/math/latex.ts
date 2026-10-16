@@ -275,6 +275,14 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
       return `\\text{not}\\,${["Compare", "And", "Or"].includes(e.arg.type) ? paren(go(e.arg)) : go(e.arg)}`;
     case "Str":
       return `\\text{${e.raw.replace(/[\\{}$&#^_%~]/g, "")}}`;
+    case "Tuple":
+      return paren(e.items.map((i) => go(unparen(i))).join(", "));
+    case "Split": {
+      const rows = e.pieces.map((p) => `${go(p.value)}, & ${go(unparen(p.cond))}`).join(" \\\\ ");
+      const cases = `\\begin{cases} ${rows} \\end{cases}`;
+      // The subject's name goes on a line under the cases (beside them is too wide for the panel).
+      return e.name ? `\\begin{gathered} ${cases} \\\\ \\scriptstyle ${identTex(e.name)} \\,=\\, ${go(unparen(e.subject))} \\end{gathered}` : cases;
+    }
     default:
       return "\\text{?}";
   }
@@ -288,4 +296,29 @@ export function definitionTex(name: Ident, inputs: Ident[], body: Expr, ctx: Lat
   const n = identTex(name, ctx.colors.get(name.key), !!ctx.vectors?.has(name.key));
   const head = inputs.length ? `${n}${paren(inputs.map((i) => identTex(i)).join(", "))}` : n;
   return `${head} = ${exprTex(body, ctx)}`;
+}
+
+/**
+ * A definition as listed: `f(x) = …`; parametric / polar with their range on the line
+ * under it (`p(t) = (cos t, sin t)` / `0 ≤ t ≤ 2π`); an equation as `C: x² + y² = a²`;
+ * `family` as `Ш_{k=0}^{n} { … }`.
+ */
+export function functionTex(f: Fn, ctx: LatexCtx): string {
+  // `family`: Ш with the index range, the body in braces.
+  const sha = (body: string) => {
+    const e = f.family;
+    if (!e) return body;
+    const k = identTex(e.index);
+    const lo = exprTex(e.lo, ctx, true), hi = exprTex(e.hi, ctx, true);
+    const range = !e.lo_strict && !e.hi_strict ? `_{${k}=${lo}}^{${hi}}` : `_{${lo}${e.lo_strict ? "<" : "\\le "}${k}${e.hi_strict ? "<" : "\\le "}${hi}}`;
+    return `\\Sha${range} \\left\\{ ${body} \\right\\}`;
+  };
+  const name = identTex(f.name, ctx.colors.get(f.name.key));
+  if (f.kind === "Equation") return `${name}\\colon\\; ${sha(exprTex(f.body, ctx))}`;
+  const head = f.inputs.length ? `${name}${paren(f.inputs.map((i) => identTex(i)).join(", "))}` : name;
+  const def = f.family ? `${head} = ${sha(exprTex(unparen(f.body), ctx))}` : definitionTex(f.name, f.inputs, f.body, ctx);
+  if (!f.range || !f.inputs[0]) return def;
+  const t = identTex(f.inputs[0]);
+  // The range goes on a line under the definition (beside it is too wide for the panel).
+  return `\\begin{gathered} ${def} \\\\ \\scriptstyle ${exprTex(f.range.lo, ctx)} \\,\\le\\, ${t} \\,\\le\\, ${exprTex(f.range.hi, ctx)} \\end{gathered}`;
 }

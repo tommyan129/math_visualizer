@@ -61,8 +61,20 @@ pub enum ExprKind {
     Index { base: Box<Expr>, indices: Vec<Expr> },
     /// `f.(2*x).coef` (stage 2). Kept so the full precedence table parses.
     Address { base: Box<Expr>, step: AddressStep },
+    /// `split r = x^2 + y^2 at 0, 1` block with one `value, condition` line per piece
+    /// (stage 5). Always a whole definition body. Conditions use only the subject (or its
+    /// name) and the boundary points.
+    Split { name: Option<Ident>, subject: Box<Expr>, at: Vec<Expr>, pieces: Vec<Piece> },
     /// Placeholder after a reported error; never leaves the server.
     Error {},
+}
+
+/// One line of a split: `value, cond`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Piece {
+    pub value: Expr,
+    pub cond: Expr,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -181,6 +193,8 @@ pub enum NameKind {
     Index,
     /// Named vector or matrix from `define:` (`A: [[1, 2], [3, 4]]`, `v(; a): [1, a]`).
     Value,
+    /// Name of the enclosing split's subject (`split r = x^2 + y^2 at 1`).
+    SplitName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -282,6 +296,14 @@ impl Expr {
                     pattern.number(next);
                 }
             }
+            ExprKind::Split { subject, at, pieces, .. } => {
+                subject.number(next);
+                at.iter_mut().for_each(|e| e.number(next));
+                for p in pieces {
+                    p.value.number(next);
+                    p.cond.number(next);
+                }
+            }
         }
     }
 
@@ -302,6 +324,9 @@ impl Expr {
                 AddressStep::Term { pattern } => vec![base, pattern],
                 AddressStep::Part { .. } => vec![base],
             },
+            ExprKind::Split { subject, at, pieces, .. } => {
+                std::iter::once(&**subject).chain(at.iter()).chain(pieces.iter().flat_map(|p| [&p.value, &p.cond])).collect()
+            }
         }
     }
 
@@ -321,6 +346,10 @@ impl Expr {
                 AddressStep::Term { pattern } => vec![base, pattern],
                 AddressStep::Part { .. } => vec![base],
             },
+            ExprKind::Split { subject, at, pieces, .. } => std::iter::once(&mut **subject)
+                .chain(at.iter_mut())
+                .chain(pieces.iter_mut().flat_map(|p| [&mut p.value, &mut p.cond]))
+                .collect(),
         }
     }
 

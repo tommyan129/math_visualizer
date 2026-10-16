@@ -206,6 +206,7 @@ const panel = new Panel({
     animator.stop(k);
     plot.setConstant(k, v, false);
   },
+  blocked: (k, v) => plot.orderViolation(k, v),
   async setValue(k, v) {
     animator.stop(k);
     plot.setConstant(k, v, true);

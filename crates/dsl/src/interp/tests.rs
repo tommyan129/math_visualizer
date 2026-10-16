@@ -4,6 +4,7 @@ use crate::span::LineIndex;
 mod stage2;
 mod stage3;
 mod stage4;
+mod stage5;
 
 fn run(state: &State, src: &str) -> Result<Applied, Vec<Diagnostic>> {
     apply(state, src, &Limits::default(), 1)
@@ -245,8 +246,8 @@ fn stage_shape_errors() {
     assert_eq!(codes(&s, &def(&["f(t) -> t: t"])), vec![code::AXES]);
     assert_eq!(codes(&s, &def(&["f(\\pi) -> y: 1"])), vec![code::AXES]);
     assert_eq!(codes(&s, &def(&["g(x, y) -> z: x"])), vec![code::UNSUPPORTED]);
-    assert_eq!(codes(&s, &def(&["p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 1"])), vec![code::UNSUPPORTED]);
-    assert_eq!(codes(&s, &def(&["C(x, y): x^2 + y^2 = 1"])), vec![code::UNSUPPORTED]);
+    assert_eq!(codes(&s, &def(&["p(t) -> (x, y, z): (t, t, t), 0 <= t <= 1"])), vec![code::UNSUPPORTED]);
+    assert_eq!(codes(&s, &def(&["C(x, y, z): x^2 + y^2 + z^2 = 1"])), vec![code::UNSUPPORTED]);
     assert_eq!(codes(&s, &def(&["f@2(x) -> y: 2"])), vec![code::UNSUPPORTED]);
     assert_eq!(codes(&s, &def(&["f(x) -> y: [1, 2]"])), vec![code::TYPE]);
     assert_eq!(codes(&s, &def(&["f(x) -> y: \"text\""])), vec![code::TYPE]);

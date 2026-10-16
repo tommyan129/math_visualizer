@@ -3,7 +3,7 @@
 //! same indentation, so independent errors are all reported at once.
 
 use super::{PResult, Parser};
-use crate::ast::Ident;
+use crate::ast::{Expr, ExprKind, Ident, Piece};
 use crate::diag::{Diagnostic, code};
 use crate::lexer::{Keyword, Tok};
 use crate::span::Span;
@@ -362,7 +362,7 @@ impl<'a> Parser<'a> {
         let start = self.peek_span();
         let (name, name_span) = self.name()?;
         let r = self.def_rest(start, name.clone(), name_span);
-        if r.is_err() {
+        if r.as_ref().map_or(true, |d| matches!(&d.body, DefBody::Expr(e) if matches!(e.kind, ExprKind::Error {}))) {
             self.failed_defs.push(name.key);
         }
         r
@@ -394,9 +394,33 @@ impl<'a> Parser<'a> {
 
         self.expect(Tok::Colon, "':'")?;
 
+        let mut family = None;
+        let mut family_end = None;
         let body = if self.at(Tok::Newline) && self.peek_at(1) == Tok::Indent {
             self.bump();
-            DefBody::Block(self.skip_block())
+            DefBody::Expr(self.split_block())
+        } else if self.at(Tok::Ident) && self.peek_text() == "family" && self.peek_at(1) == Tok::LParen {
+            // `family(body; 0 <= k <= n)`: the body is any one-line definition body.
+            self.bump();
+            self.bump();
+            let form = "family(식; 0 <= k <= n)";
+            let e = self.expr()?;
+            let body = if self.eat(Tok::Eq) {
+                DefBody::Equation { lhs: e, rhs: self.expr()? }
+            } else if self.eat(Tok::Comma) {
+                DefBody::WithRange { expr: e, range: self.expr()? }
+            } else {
+                DefBody::Expr(e)
+            };
+            if !self.eat(Tok::Semi) {
+                return self.error_here(code::BIG_OP_RANGE, "family에는 반복 범위 칸이 필요함 (본문 뒤에 ';')", Some(form));
+            }
+            let range = self.expr()?;
+            family_end = Some(self.expect(Tok::RParen, "')'")?);
+            let (index, lo, lo_strict, hi, hi_strict) = self.index_range(&range, form).ok_or(())?;
+            family = Some(FamilyHead { index, lo, lo_strict, hi, hi_strict, range_span: range.span });
+            self.expect_line_end()?;
+            body
         } else {
             let e = self.expr()?;
             let body = if self.eat(Tok::Eq) {
@@ -410,10 +434,86 @@ impl<'a> Parser<'a> {
             body
         };
         let end = match &body {
-            DefBody::Block(s) => *s,
             DefBody::Expr(e) | DefBody::Equation { rhs: e, .. } | DefBody::WithRange { range: e, .. } => e.span,
         };
-        Ok(Def { name, name_span, params, output, body, span: start.to(end) })
+        let end = family_end.unwrap_or(end);
+        Ok(Def { name, name_span, params, output, body, family, span: start.to(end) })
+    }
+
+    /// Indented block under a definition head: `split [name =] expr at b1, b2, ...` and
+    /// then one `value, condition` line per piece (design.md "구간별 함수"). On error the
+    /// rest of the block is skipped and an `Error` node stands for the body (the caller
+    /// marks the definition failed; the parser already resynchronized).
+    fn split_block(&mut self) -> Expr {
+        let start = self.bump().span; // Indent
+        match self.split_lines() {
+            Ok(e) => e,
+            Err(()) => {
+                let mut depth = 1;
+                while depth > 0 && !self.at(Tok::Eof) {
+                    match self.bump().tok {
+                        Tok::Indent => depth += 1,
+                        Tok::Dedent => depth -= 1,
+                        _ => {}
+                    }
+                }
+                Expr::new(ExprKind::Error {}, start.to(self.prev_span()))
+            }
+        }
+    }
+
+    fn split_lines(&mut self) -> PResult<Expr> {
+        let start = self.peek_span();
+        if !self.at(Tok::Kw(Keyword::Split)) {
+            return self.error_here(code::SYNTAX, "정의 아래 블록은 split으로 시작해야 함", Some("f(x) -> y:\n    split x at 0\n    -x, x < 0\n    x, x >= 0"));
+        }
+        self.bump();
+        let name = if matches!(self.peek(), Tok::Ident | Tok::TexName) && self.peek_at(1) == Tok::Eq {
+            let (n, _) = self.name()?;
+            self.bump();
+            Some(n)
+        } else {
+            None
+        };
+        let subject = self.expr()?;
+        if !self.eat(Tok::Kw(Keyword::At)) {
+            return self.unexpected("'at'");
+        }
+        let mut at = vec![self.expr()?];
+        while self.eat(Tok::Comma) {
+            at.push(self.expr()?);
+        }
+        self.expect_line_end()?;
+        let mut pieces = vec![];
+        loop {
+            match self.peek() {
+                Tok::Dedent => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => break,
+                Tok::Newline => {
+                    self.bump();
+                }
+                Tok::Indent => return self.error_here(code::INDENT, "split 줄은 같은 들여쓰기로 씀", None),
+                _ => {
+                    let value = self.expr()?;
+                    if !self.eat(Tok::Comma) {
+                        return self.error_here(code::SYNTAX, "split 줄은 '식, 구간' 모양이어야 함", Some("x^2, x < 0"));
+                    }
+                    let cond = self.expr()?;
+                    self.expect_line_end()?;
+                    pieces.push(Piece { value, cond });
+                }
+            }
+        }
+        if pieces.is_empty() {
+            // The block is already closed: report without skipping further.
+            self.diag(Diagnostic::new(start, code::SYNTAX, "split 아래에 '식, 구간' 줄이 없음").suggest("split x at 0\n    -x, x < 0\n    x, x >= 0"));
+            return Ok(Expr::new(ExprKind::Error {}, start));
+        }
+        let end = pieces.last().map_or(start, |p| p.cond.span);
+        Ok(Expr::new(ExprKind::Split { name, subject: Box::new(subject), at, pieces }, start.to(end)))
     }
 
     fn output(&mut self) -> PResult<Output> {
@@ -511,7 +611,53 @@ mod tests {
         assert!(matches!(&d[2].output, Some(Output::Coord { system, .. }) if system.key == "polar"));
         assert!(matches!(d[3].output, Some(Output::Matrix(_))));
         assert!(d[4].params.is_none());
-        assert!(matches!(d[5].body, DefBody::Block(_)));
+        assert!(matches!(&d[5].body, DefBody::Expr(e) if matches!(&e.kind, ExprKind::Split { pieces, .. } if pieces.len() == 1)));
+    }
+
+    #[test]
+    fn split_block_parses() {
+        let d = defs("define:\n    f(x) -> y:\n        split r = x^2 at 0, 1\n        x, r < 0\n\n        2, 0 <= r <= 1\n        3, r > 1\n    g(x) -> y: x\n");
+        assert_eq!(d.len(), 2);
+        let DefBody::Expr(e) = &d[0].body else { panic!() };
+        let ExprKind::Split { name, at, pieces, .. } = &e.kind else { panic!() };
+        assert_eq!(name.as_ref().unwrap().key, "r");
+        assert_eq!((at.len(), pieces.len()), (2, 3));
+        assert!(matches!(pieces[1].cond.kind, ExprKind::Compare { .. }));
+    }
+
+    #[test]
+    fn split_block_errors() {
+        // Not a split, missing `at`, missing `, condition`, no lines: each reported, the next definition still parses.
+        for (src, code) in [
+            ("define:\n    f(x) -> y:\n        x^2\n    g(x) -> y: x\n", code::SYNTAX),
+            ("define:\n    f(x) -> y:\n        split x\n        1, x < 0\n    g(x) -> y: x\n", code::SYNTAX),
+            ("define:\n    f(x) -> y:\n        split x at 0\n        1 at x < 0\n    g(x) -> y: x\n", code::SYNTAX),
+            ("define:\n    f(x) -> y:\n        split x at 0\n    g(x) -> y: x\n", code::SYNTAX),
+        ] {
+            let (s, d) = parse_program(src);
+            assert_eq!(d.iter().map(|d| d.code).collect::<Vec<_>>(), vec![code], "{src}");
+            let Stmt::Define { defs, .. } = &s[0] else { panic!() };
+            assert_eq!(defs.last().unwrap().name.key, "g", "{src}");
+        }
+    }
+
+    #[test]
+    fn family_body_parses() {
+        let d = defs("define:\n    D(t; n) -> (x, y): family((k, t), 0 <= t <= k; 0 <= k <= n)\n    O(x, y; n): family(x^2 + y^2 = k^2; n >= k > 0)\n");
+        let h = d[0].family.as_ref().unwrap();
+        assert_eq!(h.index.key, "k");
+        assert!(matches!(d[0].body, DefBody::WithRange { .. }));
+        let h = d[1].family.as_ref().unwrap();
+        assert!(matches!(d[1].body, DefBody::Equation { .. }));
+        // Written from the top: lo = 0 (strict), hi = n.
+        assert!(h.lo_strict && !h.hi_strict && matches!(h.lo.kind, ExprKind::Num { .. }));
+    }
+
+    #[test]
+    fn family_body_errors() {
+        assert_eq!(errs("define:\n    F(x) -> y: family(x + k)\n"), vec![code::BIG_OP_RANGE]);
+        assert_eq!(errs("define:\n    F(x) -> y: family(x + k; 3)\n"), vec![code::BIG_OP_RANGE]);
+        assert_eq!(errs("define:\n    F(x) -> y: family(x + k; 0 <= k <= 3\n"), vec![code::SYNTAX]);
     }
 
     #[test]

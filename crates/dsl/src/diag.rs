@@ -74,6 +74,13 @@ pub mod code {
     pub const MATRIX_OP: &str = "E-matrix-op";
     /// Element number outside the vector / matrix (`v_[3]` on a length-2 vector).
     pub const INDEX: &str = "E-index";
+    // stage 5
+    /// A split condition written with something other than the split expression and its boundary points.
+    pub const SPLIT_COND: &str = "E-split-cond";
+    /// Two split lines claim the same piece.
+    pub const SPLIT_OVERLAP: &str = "E-split-overlap";
+    /// Split boundary points out of order, repeated, or using an input variable.
+    pub const SPLIT_AT: &str = "E-split-at";
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

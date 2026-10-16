@@ -15,9 +15,13 @@ export type Scene = { key: string,
  */
 number: number | null, 
 /**
- * Horizontal and vertical axis.
+ * Horizontal and vertical axis; for a polar scene the radius and the angle.
  */
 axes: Array<Ident>, 
+/**
+ * `polar(r, \theta)` system (otherwise `2D`).
+ */
+polar: boolean, 
 /**
  * Functions and highlights that fit the coordinate system, in creation order: the
  * toggle list. Computed by the server; the browser does not apply placement rules.

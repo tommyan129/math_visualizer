@@ -439,24 +439,34 @@ impl<'a> Parser<'a> {
         let range = self.expr()?;
         let end = self.expect(Tok::RParen, "')'")?;
         let span = head.span.to(end);
-
-        let bad = |p: &mut Self| -> PResult<Expr> {
-            p.diag(Diagnostic::new(range.span, code::BIG_OP_RANGE, "범위는 '하한 <= 인덱스 <= 상한' 모양이어야 함").suggest(form.clone()));
-            Ok(Expr::new(ExprKind::Error {}, span))
-        };
-        let ExprKind::Compare { first, rest } = range.kind.clone() else { return bad(self) };
-        if rest.len() != 2 || rest.iter().any(|l| l.op == CmpOp::Eq) || (matches!(rest[0].op, CmpOp::Lt | CmpOp::Le) != matches!(rest[1].op, CmpOp::Lt | CmpOp::Le)) {
-            return bad(self);
+        match self.index_range(&range, &form) {
+            Some((index, lo, lo_strict, hi, hi_strict)) => {
+                Ok(Expr::new(ExprKind::BigOp { op, body: Box::new(body), index, lo: Box::new(lo), lo_strict, hi: Box::new(hi), hi_strict }, span))
+            }
+            None => Ok(Expr::new(ExprKind::Error {}, span)),
         }
-        let [l0, l1] = <[CompareLink; 2]>::try_from(rest).unwrap();
-        let ExprKind::Name { name: index, .. } = l0.rhs.kind else { return bad(self) };
-        let ascending = matches!(l0.op, CmpOp::Lt | CmpOp::Le);
-        let (lo, lo_strict, hi, hi_strict) = if ascending {
-            (*first, l0.op == CmpOp::Lt, l1.rhs, l1.op == CmpOp::Lt)
-        } else {
-            (l1.rhs, l1.op == CmpOp::Gt, *first, l0.op == CmpOp::Gt)
-        };
-        Ok(Expr::new(ExprKind::BigOp { op, body: Box::new(body), index, lo: Box::new(lo), lo_strict, hi: Box::new(hi), hi_strict }, span))
+    }
+
+    /// `lo <= k <= hi` (or from the top) of `sum` / `prod` / `each`: (index, lo, lo strict,
+    /// hi, hi strict). Reports and returns None for any other shape.
+    pub(super) fn index_range(&mut self, range: &Expr, form: &str) -> Option<(Ident, Expr, bool, Expr, bool)> {
+        let parsed = (|| {
+            let ExprKind::Compare { first, rest } = range.kind.clone() else { return None };
+            if rest.len() != 2 || rest.iter().any(|l| l.op == CmpOp::Eq) || (matches!(rest[0].op, CmpOp::Lt | CmpOp::Le) != matches!(rest[1].op, CmpOp::Lt | CmpOp::Le)) {
+                return None;
+            }
+            let [l0, l1] = <[CompareLink; 2]>::try_from(rest).unwrap();
+            let ExprKind::Name { name: index, .. } = l0.rhs.kind else { return None };
+            Some(if matches!(l0.op, CmpOp::Lt | CmpOp::Le) {
+                (index, *first, l0.op == CmpOp::Lt, l1.rhs, l1.op == CmpOp::Lt)
+            } else {
+                (index, l1.rhs, l1.op == CmpOp::Gt, *first, l0.op == CmpOp::Gt)
+            })
+        })();
+        if parsed.is_none() {
+            self.diag(Diagnostic::new(range.span, code::BIG_OP_RANGE, "범위는 '하한 <= 인덱스 <= 상한' 모양이어야 함").suggest(form.to_string()));
+        }
+        parsed
     }
 
     /// A name with its notation parts: `~f`, `\bar{x}`, `x_{1}`, `x^[*]`, `f@2`.
@@ -646,6 +656,12 @@ mod tests {
                 AddressStep::Term { pattern } => format!("(addr {} {})", sx(base), sx(pattern)),
                 AddressStep::Part { part } => format!("(addr {} .{part})", sx(base)),
             },
+            ExprKind::Split { subject, at, pieces, .. } => format!(
+                "(split {} at {}{})",
+                sx(subject),
+                at.iter().map(sx).collect::<Vec<_>>().join(" "),
+                pieces.iter().map(|p| format!(" [{} {}]", sx(&p.value), sx(&p.cond))).collect::<String>()
+            ),
             ExprKind::Error {} => "ERR".into(),
         }
     }

@@ -7,7 +7,7 @@ import type { Scene } from "../generated/Scene";
 import type { State } from "../generated/State";
 import { colorOf } from "../canvas/plot";
 import { stepState } from "../canvas/scene";
-import { definitionTex, exprTex, latexCtx, type LatexCtx } from "../math/latex";
+import { exprTex, functionTex, latexCtx, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon } from "./dom";
 
@@ -34,7 +34,7 @@ export function noteNodes(b: NoteBlock, state: State, ctx: LatexCtx): Node[] {
       case "Def": {
         const f = state.functions[g.function];
         if (!f) return h("span", { class: "note-text" }, g.function);
-        return h("span", { class: "note-math" }, math(definitionTex(f.name, f.inputs, f.body, ctx), f.key));
+        return h("span", { class: "note-math" }, math(functionTex(f, ctx), f.key));
       }
     }
   });

@@ -15,7 +15,7 @@ import type { ViewBox } from "../generated/ViewBox";
 import type { Warning } from "../generated/Warning";
 import { identTex, isVectorName } from "../math/latex";
 import { setImageReadyHandler } from "../math/mathjax";
-import { compileConst, specOf, type FnSpec } from "../worker/codegen";
+import { compileConst, compileOrder, specOf, type FnSpec } from "../worker/codegen";
 import { makeRuntime } from "../worker/numeric";
 import type { Quality, SampleRange } from "../worker/sample";
 import { CLIP_KEY, type CurveResult, type FillItem, type FillResult, type FromWorker, type HlSpec, type RasterResult, type ToWorker } from "../worker/worker";
@@ -24,7 +24,7 @@ import { maskPixels, resolveHighlights, sortedHighlights } from "./highlight";
 import { POINT_HOLE, POINT_NORMAL, rgba, type Batch, type ClipMask, type LabelPlacement, type Style } from "./primitives";
 import { activeClip, sceneAxes, visibleAt } from "./scene";
 import { Renderer } from "./renderer";
-import { buildSpace, spaceStyles } from "./space";
+import { buildPolarSpace, buildSpace, spaceStyles } from "./space";
 import { View } from "./view";
 
 export const PALETTE = ["#6ea8ff", "#ffa057", "#c08cff", "#5fd38a"];
@@ -197,11 +197,12 @@ export class Plot {
     const specs: FnSpec[] = this.allFns.map(specOf);
     this.post({ type: "functions", fns: specs, constKeys: this.constKeys });
     const clip = activeClip(scene);
-    const clipKey = JSON.stringify([this.axes, clip?.expr ?? null]);
+    const polar = scene?.polar ?? false;
+    const clipKey = JSON.stringify([this.axes, polar, clip?.expr ?? null]);
     if (clipKey !== this.clipKey) {
       this.clipKey = clipKey;
       this.clipGeom = null;
-      this.post({ type: "scene", axes: this.axes, clip: clip?.expr ?? null });
+      this.post({ type: "scene", axes: this.axes, polar, clip: clip?.expr ?? null });
     }
 
     const changedConsts = new Set(
@@ -490,6 +491,32 @@ export class Plot {
     }
   }
 
+  /**
+   * Split boundary order a slider value would break (`"a < b"`), or null. Constraints
+   * that need more than constants to evaluate are left to the overlap warning.
+   */
+  orderViolation(key: string, value: number): string | null {
+    if (!this.state) return null;
+    const index = new Map(this.constKeys.map((k, i) => [k, i]));
+    const C = this.constants();
+    const i = index.get(key);
+    if (i === undefined) return null;
+    C[i] = value;
+    for (const f of this.fns) {
+      if (!f.consts.includes(key)) continue;
+      for (const c of f.constraints) {
+        let holds: boolean;
+        try {
+          holds = compileOrder(c.lo, c.hi, index, CONST_R)(C);
+        } catch {
+          continue;
+        }
+        if (!holds) return c.src;
+      }
+    }
+    return null;
+  }
+
   /** The server confirmed the final value; drop the local override. */
   clearOverride(key: string): void {
     this.overrides.delete(key);
@@ -690,7 +717,7 @@ export class Plot {
   private draw(): void {
     if (this.view.width === 0) return;
     const styles: Style[] = [...spaceStyles];
-    const batches: Batch[] = buildSpace(this.view, this.axisTex);
+    const batches: Batch[] = this.scene?.polar ? buildPolarSpace(this.view, this.axisTex) : buildSpace(this.view, this.axisTex);
     this.drawHighlights(batches, styles);
     let seq = 0;
     const placed: Rect[] = [];
@@ -958,6 +985,13 @@ export class Plot {
     const fmt = (v: number) => v.toFixed(d).replace("-", "−");
     this.cursor.hidden = false;
     const [h, v] = this.axes.map((a) => a.replace(/^\\/, ""));
-    this.cursor.textContent = `${h} ${fmt(this.view.wx(px))} · ${v} ${fmt(this.view.wy(py))}`;
+    const x = this.view.wx(px), y = this.view.wy(py);
+    if (this.scene?.polar) {
+      // Polar scenes read out the radius and the angle (0 ≤ θ < 2π).
+      const t = Math.atan2(y, x);
+      this.cursor.textContent = `${h} ${fmt(Math.hypot(x, y))} · ${v} ${fmt(t < 0 ? t + 2 * Math.PI : t)}`;
+      return;
+    }
+    this.cursor.textContent = `${h} ${fmt(x)} · ${v} ${fmt(y)}`;
   }
 }

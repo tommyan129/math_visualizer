@@ -4,8 +4,13 @@
 use dsl::names;
 
 const INDEX: &str = "\
-쓸 수 있는 명령 (4단계). describe(name)으로 자세히:
+쓸 수 있는 명령 (5a단계). describe(name)으로 자세히:
   define     함수 정의·수정 (같은 이름에 다시 쓰면 수정)
+  split      구간별 함수 (경계점, 조각마다 식)
+  매개변수   p(t) -> (x, y): (식, 식), 범위
+  극좌표     h(\\theta) -> polar(r), polar(r, \\theta) scene
+  방정식     C(x, y): 좌변 = 우변 (음함수 곡선)
+  family     family(본문; 0 <= k <= n): 같은 도형을 k마다 반복
   행렬       벡터·행렬 값, matmul 등 연산, -> matrix 함수
   span       span(v, w): 원점을 지나는 직선·평면
   arrow      arrow(v), arrow(v; P): 화살표
@@ -25,7 +30,69 @@ const INDEX: &str = "\
   sum      sum / prod
   상수     슬라이더 상수 규칙
   오류     오류 형식
-아직 없음: split, 매개변수·극좌표·음함수, 다변수, 특징점(roots 등)";
+아직 없음: 도함수 f@n·역함수 ~f, 특징점(roots 등), 수치 검증, 다변수(3D)";
+
+const SPLIT: &str = "\
+define:
+    f(x; a, b) -> y:
+        split x at a, b            # 경계점은 적은 순서가 오름차순
+        -1,     x < a
+        x^2,    a <= x <= b
+        3 - x,  x > b
+    g(x) -> y:
+        split r = x^2 at 1         # split 식에 이름을 붙이면 조각에서 그 이름을 씀
+        r,      r < 1
+        1/r,    r >= 1
+- 정의 머리 다음 줄부터 들여써서 split 한 줄, 그 아래 '값, 구간' 줄들. otherwise는 없음.
+- 구간은 split 식(또는 그 이름)과 경계점으로만 씀 (and / or / not, 이어 쓰기 가능).
+- 서버가 값 계산 없이 겹침 검사: 경계점이 나누는 조각 (-∞, a), {a}, (a, b), ... 하나를 두 줄이 차지하면 오류.
+  아무 줄도 차지하지 않은 조각은 정의 안 됨.
+- 경계점에 상수가 있으면 순서가 곧 조건: a < b를 브라우저 슬라이더가 넘지 못함. 같은 경계점 두 번은 오류.
+- 실제 값에서 두 줄이 겹치면(예: 다른 경로로 a > b) 그 점은 정의 안 됨 + 경고 [W-split-overlap].
+- 경계가 서로 다른 식 둘 이상이면 split을 두 단계로 (조각 값에 다른 split 함수를 부름).
+- y = f(x) 함수와 극좌표 함수에 씀.";
+
+const PARAMETRIC: &str = "\
+define:
+    p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi
+    q(t; a) -> (x, y): matmul(R(t), [a, 0]), 0 <= t <= \\pi     # 길이가 출력 축 개수인 벡터도 됨
+    D(t; k) -> (x, y): (k, t), 0 <= t <= f(k)                   # x = k의 세로 선분
+- 매개변수 범위는 필수 (빠지면 오류). 범위 끝에는 상수·함수 호출 가능, t는 안 됨.
+- 출력 축 (x, y)가 좌표계: 2D(x, y) scene에 들어감. 3D 매개변수 곡선은 6단계.
+- 출력 칸 하나에는 숫자 하나: 매개변수 함수 호출이나 벡터를 칸 하나에 넣으면 오류.
+- 매개변수 함수는 식 안에서 부를 수 없음 (출력 전체 자리 p(2*t)만 가능).
+- 아직 강조 대상이 될 수 없음.";
+
+const POLAR: &str = "\
+define:
+    h(\\theta) -> polar(r): 1 + cos(\\theta)                       # 범위 생략 = 0 <= θ <= 2π
+    s(\\theta) -> polar(r): \\theta/4, 0 <= \\theta <= 6*\\pi
+scene(1):
+    space: polar(r, \\theta)       # 극좌표 scene (show의 함수가 극좌표면 생략 가능)
+    show: h
+    view: r <= 3                    # 반지름 3까지 보이는 정사각형 창
+    clip: r <= 2 and 0 <= \\theta <= \\pi
+- 극좌표 함수는 polar(r, \\theta) scene에만 들어감 (기본 scene도 따로 생김). 2D(x, y) 함수는 못 넣음.
+- view는 반지름만 (r <= 3), clip은 r, θ 부등식. θ는 0..2π (또는 한 바퀴 아래로 읽음).
+- 다른 함수에서 h(t)로 부르면 r 값. split 본문 가능. 아직 강조 대상이 될 수 없음.";
+
+const EQUATION: &str = "\
+define:
+    C(x, y; a): x^2 + y^2 = a^2
+    L(x, y): x*y = 1
+- '->' 없이 ':' 오른쪽에 '='가 있으면 방정식. 입력 두 개가 좌표계 (C는 2D(x, y)).
+- 값이 없어서 부를 수 없음 (C(1, 2)는 오류). 아직 강조 대상이 될 수 없음.
+- 닫힌 곡선의 안쪽을 칠하려면 대상 없는 highlight: highlight(; x^2 + y^2 <= a^2).";
+
+const EACH: &str = "\
+define:
+    D(t; a, h, n) -> (x, y): family((a + k*h, t), 0 <= t <= f(a + k*h); 0 <= k <= n)   # 리만 합 칸 구분선
+    O(x, y; m): family(x^2 + y^2 = k^2; 1 <= k <= m)                                    # 동심원
+    F(x) -> y: family(sin(x + k*\\pi/4); 0 <= k <= 3)
+- family(본문; 아래 <= k <= 위): 본문을 정수 k마다 하나씩 그림 (화면엔 Ш). 본문은 한 줄 정의 본문 그대로
+  (식 / '식, 범위' / '좌변 = 우변'). 곡선, 매개변수, 극좌표, 방정식에 씀.
+- k는 정수. 범위에 쓰인 상수는 정수 슬라이더가 됨 (sum과 같음). 개수는 현재 값으로 정해짐 (최대 500개).
+- 정의 하나라서 토글·삭제·req도 하나. 식 안에서 부를 수 없고, 아직 강조 대상이 될 수 없음.";
 
 const MATRIX: &str = "\
 define:
@@ -222,6 +289,11 @@ pub fn describe(name: Option<&str>) -> String {
         "행렬" | "벡터" | "matrix" | "vector" | "matmul" | "pow" | "inv" | "transpose" | "det" | "tr" => MATRIX.into(),
         "span" => SPAN.into(),
         "arrow" => ARROW.into(),
+        "split" | "구간별" => SPLIT.into(),
+        "매개변수" | "parametric" => PARAMETRIC.into(),
+        "극좌표" | "polar" => POLAR.into(),
+        "방정식" | "음함수" | "equation" | "implicit" => EQUATION.into(),
+        "family" | "반복" => EACH.into(),
         "함수" | "functions" | "builtins" => {
             let list: Vec<String> = names::BUILTINS
                 .iter()
@@ -256,5 +328,7 @@ mod tests {
         dsl::interp::apply(&s, stage3, &Default::default(), 3).unwrap();
         let stage4 = "define:\n    A: [[1, 2],\n        [3, 4]]\n    v(; a): [1, a]\n    R(\\theta) -> matrix: [[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]\n    f4(x; a) -> y: matmul(R(x), v)_[2]\n    w: [0, 1]\n    S(; a): span(v, w)\n    p(; a): arrow(v)\n    c4(x) -> y: x\n    q(; c): arrow([1, 2*c]; [c, c^2])\n    M: pow(A, -1) + inv(A) + transpose(A) + 2*A - A/2\n    d(x) -> y: det(A) + tr(A)\n";
         dsl::interp::apply(&Default::default(), stage4, &Default::default(), 4).unwrap();
+        let stage5 = "define:\n    R(\\theta) -> matrix: [[cos(\\theta), -sin(\\theta)], [sin(\\theta), cos(\\theta)]]\n    f(x; a, b) -> y:\n        split x at a, b\n        -1,     x < a\n        x^2,    a <= x <= b\n        3 - x,  x > b\n    g(x) -> y:\n        split r = x^2 at 1\n        r,      r < 1\n        1/r,    r >= 1\n    p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi\n    q(t; a) -> (x, y): matmul(R(t), [a, 0]), 0 <= t <= \\pi\n    D1(t; k) -> (x, y): (k, t), 0 <= t <= g(k)\n    h(\\theta) -> polar(r): 1 + cos(\\theta)\n    s(\\theta) -> polar(r): \\theta/4, 0 <= \\theta <= 6*\\pi\n    C(x, y; a): x^2 + y^2 = a^2\n    L(x, y): x*y = 1\n    D(t; a, w, n) -> (x, y): family((a + j*w, t), 0 <= t <= g(a + j*w); 0 <= j <= n)\n    O(x, y; m): family(x^2 + y^2 = j^2; 1 <= j <= m)\n    F(x) -> y: family(sin(x + j*\\pi/4); 0 <= j <= 3)\nscene(1):\n    space: polar(r, \\theta)\n    show: h\n    view: r <= 3\n    clip: r <= 2 and 0 <= \\theta <= \\pi\nH1 = highlight(; x^2 + y^2 <= a^2)\n";
+        dsl::interp::apply(&Default::default(), stage5, &Default::default(), 5).unwrap();
     }
 }

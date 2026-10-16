@@ -159,7 +159,7 @@ pub fn apply_lines(ok: &ApplyOk) -> Vec<String> {
 fn scene_line(s: &State, key: &str) -> String {
     match s.scenes.get(key) {
         Some(sc) => {
-            let system = dsl::state::system_key(&sc.axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>());
+            let system = dsl::state::any_system_key(sc.polar, &sc.axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>());
             format!("scene({key}) · {system} · step {}개", sc.step_count())
         }
         None => format!("scene({key})"),
@@ -207,7 +207,13 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
     if let (Browser::View { view, .. }, Some(sc)) = (browser, cur)
         && sc.axes.len() == 2
     {
-        lines.push(format!("view: {}", view_text(view, (&sc.axes[0].key, &sc.axes[1].key))));
+        if sc.polar {
+            // Polar scenes: the largest radius fully on screen, plus the screen rectangle.
+            let r = [-view.x_min, view.x_max, -view.y_min, view.y_max].into_iter().fold(f64::INFINITY, f64::min).max(0.0);
+            lines.push(format!("view: {} <= {} (화면 {})", sc.axes[0].key, fmt_num(r), view_text(view, ("x", "y"))));
+        } else {
+            lines.push(format!("view: {}", view_text(view, (&sc.axes[0].key, &sc.axes[1].key))));
+        }
     }
     if let Some(sc) = cur {
         match (&sc.user_clip, &sc.clip) {

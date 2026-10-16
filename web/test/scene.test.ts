@@ -22,7 +22,8 @@ const sc = state.scenes["1"]!;
 
 describe("scene model", () => {
   it("default scenes per coordinate system, Claude scenes after them", () => {
-    expect(sortedScenes(Object.values(state.scenes).map((s) => s!)).map((s) => s.key)).toEqual(["2D(x, y)", "2D(t, y)", "1"]);
+    expect(sortedScenes(Object.values(state.scenes).map((s) => s!)).map((s) => s.key)).toEqual(["2D(x, y)", "2D(t, y)", "polar(r, \\theta)", "1"]);
+    expect(state.scenes["polar(r, \\theta)"]!.polar).toBe(true);
     expect(sceneAxes(sc)[0]).toEqual(["t", "y"]);
     // Length-2 spans and arrows fit every 2D system.
     expect(sc.members).toEqual(["wave", "Sp", "Sl", "Sz", "Ar", "H7"]);

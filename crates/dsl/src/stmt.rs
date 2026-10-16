@@ -174,8 +174,22 @@ pub struct Def {
     pub params: Option<Params>,
     pub output: Option<Output>,
     pub body: DefBody,
+    /// `family(body; 0 <= k <= n)`: the body is repeated over the integer index (stage 5).
+    pub family: Option<FamilyHead>,
     /// The whole entry, for source text in history and responses.
     pub span: Span,
+}
+
+/// Index range of `family(...; lo <= k <= hi)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FamilyHead {
+    pub index: Ident,
+    pub lo: Expr,
+    pub lo_strict: bool,
+    pub hi: Expr,
+    pub hi_strict: bool,
+    /// `lo <= k <= hi` as written.
+    pub range_span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -215,6 +229,4 @@ pub enum DefBody {
     Equation { lhs: Expr, rhs: Expr },
     /// `expr, range` (parametric, stage 5).
     WithRange { expr: Expr, range: Expr },
-    /// Indented block under the head (`split`, stage 5). Contents are skipped.
-    Block(Span),
 }
