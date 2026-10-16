@@ -6,6 +6,7 @@
 //   functions render as sin²(x), other function powers as (f(x))².
 
 import type { Expr } from "../generated/Expr";
+import type { Function as Fn } from "../generated/Function";
 import type { Ident } from "../generated/Ident";
 
 export interface LatexCtx {
@@ -13,6 +14,18 @@ export interface LatexCtx {
   colors: Map<string, string>;
   /** Subexpression highlights: node id (Sum term ids included) → CSS hex color. */
   nodes?: Map<number, string>;
+  /** Keys of named vectors, written with an arrow (\vec{v}). */
+  vectors?: Set<string>;
+}
+
+/** A definition whose name stands for a vector: a vector value or an arrow. */
+export function isVectorName(f: Fn): boolean {
+  return (f.kind === "Value" && f.ty.type === "Vector") || f.kind === "Arrow";
+}
+
+/** Coloring and vector arrows for the given definitions. */
+export function latexCtx(fns: Fn[], color: (f: Fn) => string): LatexCtx {
+  return { colors: new Map(fns.map((f) => [f.key, color(f)])), vectors: new Set(fns.filter(isVectorName).map((f) => f.key)) };
 }
 
 const TRIG = new Set(["sin", "cos", "tan", "sinh", "cosh", "tanh"]);
@@ -106,9 +119,11 @@ function baseTex(base: string): string {
   return `\\mathit{${base}}`;
 }
 
-export function identTex(id: Ident, color?: string): string {
+/** `vec`: a named vector, written \vec{v} (\overrightarrow over a multi-letter base). */
+export function identTex(id: Ident, color?: string, vec = false): string {
   let t = baseTex(id.base);
   if (id.accent) t = `\\${id.accent}{${t}}`;
+  else if (vec) t = id.base.length === 1 || /^\\[A-Za-z]+$/.test(id.base) ? `\\vec{${t}}` : `\\overrightarrow{${t}}`;
   t = colored(t, color);
   if (id.sub !== null) t += `_{${id.sub.split(/(\\[A-Za-z]+)/).map((p) => (p.startsWith("\\") ? p + " " : p)).join("")}}`;
   let sup = "";
@@ -146,7 +161,7 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
     case "Num":
       return numTex(e.text);
     case "Name":
-      return identTex(e.name, e.kind === "Function" || e.kind === "Value" ? ctx.colors.get(e.name.key) : undefined);
+      return identTex(e.name, e.kind === "Function" || e.kind === "Value" ? ctx.colors.get(e.name.key) : undefined, e.kind === "Value" && !!ctx.vectors?.has(e.name.key));
     case "List":
       return matrixTex(e, go);
     case "Index":
@@ -270,7 +285,7 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
  * Without inputs (vectors, matrices, span, arrow): `v = body`.
  */
 export function definitionTex(name: Ident, inputs: Ident[], body: Expr, ctx: LatexCtx): string {
-  const n = identTex(name, ctx.colors.get(name.key));
+  const n = identTex(name, ctx.colors.get(name.key), !!ctx.vectors?.has(name.key));
   const head = inputs.length ? `${n}${paren(inputs.map((i) => identTex(i)).join(", "))}` : n;
   return `${head} = ${exprTex(body, ctx)}`;
 }

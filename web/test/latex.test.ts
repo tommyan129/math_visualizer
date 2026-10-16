@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
-import { definitionTex, exprTex } from "../src/math/latex";
+import { definitionTex, exprTex, identTex, latexCtx } from "../src/math/latex";
 
 const state = fixture as unknown as State;
 const ctx = { colors: new Map<string, string>() };
@@ -33,6 +33,28 @@ describe("matrix notation", () => {
   it("span and arrow", () => {
     expect(def("Sp")).toBe("\\mathit{Sp} = \\operatorname{span}\\left(\\mathit{vv}, \\begin{pmatrix}0 \\\\ 1\\end{pmatrix}\\right)");
     expect(def("Ar")).toContain("\\operatorname{arrow}\\left(\\mathit{vv};\\, ");
+  });
+});
+
+describe("vector arrows", () => {
+  const vctx = latexCtx(Object.values(state.functions).map((f) => f!), () => "");
+  const vdef = (k: string) => {
+    const f = state.functions[k]!;
+    return definitionTex(f.name, f.inputs, f.body, { ...vctx, colors: new Map() });
+  };
+
+  it("named vectors and arrows get an arrow; matrices and spans do not", () => {
+    expect(vdef("vv")).toMatch(/^\\overrightarrow\{\\mathit\{vv\}\} = /);
+    expect(vdef("Sp")).toBe("\\mathit{Sp} = \\operatorname{span}\\left(\\overrightarrow{\\mathit{vv}}, \\begin{pmatrix}0 \\\\ 1\\end{pmatrix}\\right)");
+    expect(vdef("Ar")).toMatch(/^\\overrightarrow\{\\mathit\{Ar\}\} = /);
+    expect(vdef("M2")).toMatch(/^\\mathit\{M2\} = /);
+  });
+
+  it("\\vec over a single letter or a Greek name, accents kept", () => {
+    const id = (base: string, accent: string | null = null) => ({ key: base, base, accent, sub: null, sup: null, deriv: 0, inverse: false });
+    expect(identTex(id("v"), undefined, true)).toBe("\\vec{v}");
+    expect(identTex(id("\\alpha"), undefined, true)).toBe("\\vec{\\alpha}");
+    expect(identTex(id("v", "hat"), undefined, true)).toBe("\\hat{v}");
   });
 });
 

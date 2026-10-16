@@ -13,7 +13,7 @@ import type { State } from "../generated/State";
 import type { ViewSpec } from "../generated/ViewSpec";
 import type { ViewBox } from "../generated/ViewBox";
 import type { Warning } from "../generated/Warning";
-import { identTex } from "../math/latex";
+import { identTex, isVectorName } from "../math/latex";
 import { setImageReadyHandler } from "../math/mathjax";
 import { compileConst, specOf, type FnSpec } from "../worker/codegen";
 import { makeRuntime } from "../worker/numeric";
@@ -728,7 +728,7 @@ export class Plot {
           dim: 2,
           kind: "text",
           coords: Float32Array.from([at.x, at.y]),
-          labels: [{ kind: "tex", tex: identTex(f.name), px: 22 }],
+          labels: [{ kind: "tex", tex: identTex(f.name, undefined, isVectorName(f)), px: 22 }],
           placement: [at.place],
         });
       }

@@ -11,7 +11,7 @@ import type { Warning } from "../generated/Warning";
 import { resolveHighlights, sortedHighlights } from "../canvas/highlight";
 import { colorOf } from "../canvas/plot";
 import { activeClip, concealedAt, visibleAt } from "../canvas/scene";
-import { definitionTex, exprTex, identTex, type LatexCtx } from "../math/latex";
+import { definitionTex, exprTex, identTex, isVectorName, latexCtx, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon, ICONS } from "./dom";
 
@@ -335,7 +335,7 @@ export class Panel {
     this.hlKey = key;
     this.hlSec.hidden = hs.length === 0;
     const fns = state ? Object.values(state.functions).map((f) => f!) : [];
-    const ctx: LatexCtx = { colors: new Map(fns.map((f) => [f.key, colorOf(f)])) };
+    const ctx = latexCtx(fns, colorOf);
     this.hls.replaceChildren(...hs.map((x) => this.hlEl(x, state!, ctx, !hidden.has(x.key), warnings(x.key))));
   }
 
@@ -350,7 +350,7 @@ export class Panel {
     const t = x.target;
     if (t.type === "Function") {
       const f = state.functions[t.function];
-      if (f) parts.push(texElement(identTex(f.name, colorOf(f))));
+      if (f) parts.push(texElement(identTex(f.name, colorOf(f), isVectorName(f))));
     } else if (t.type === "Sub") {
       parts.push(h("code", {}, t.address));
     }
@@ -401,10 +401,10 @@ export class Panel {
     const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])], this.v.spanDim(f.key)])]);
     if (key === this.defKey) return;
     this.defKey = key;
-    const colors = new Map(all.map((f) => [f.key, colorOf(f)]));
+    const base = latexCtx(all, colorOf);
     this.defs.replaceChildren();
     if (state && all.length === 0) this.defs.append(h("div", { class: "hint" }, "아직 정의가 없음. Claude가 apply로 보내면 여기에 나타남."));
-    for (const f of fns) this.defs.append(this.defEl(f, { colors, nodes: nodes.get(f.key) }, !drawn(f) || !hidden.has(f.key), warnings(f.key)));
+    for (const f of fns) this.defs.append(this.defEl(f, { ...base, nodes: nodes.get(f.key) }, !drawn(f) || !hidden.has(f.key), warnings(f.key)));
   }
 
   private defEl(f: Fn, ctx: LatexCtx, visible: boolean, warns: Warning[]): HTMLElement {

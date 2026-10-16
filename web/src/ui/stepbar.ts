@@ -7,7 +7,7 @@ import type { Scene } from "../generated/Scene";
 import type { State } from "../generated/State";
 import { colorOf } from "../canvas/plot";
 import { stepState } from "../canvas/scene";
-import { definitionTex, exprTex, type LatexCtx } from "../math/latex";
+import { definitionTex, exprTex, latexCtx, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon } from "./dom";
 
@@ -75,7 +75,7 @@ export class StepBar {
     const key = JSON.stringify([scene.key, scene.version, step, versions]);
     if (key === this.key) return;
     this.key = key;
-    const ctx: LatexCtx = { colors: new Map(fns.map((f) => [f.key, colorOf(f)])) };
+    const ctx = latexCtx(fns, colorOf);
     this.note.replaceChildren(...blocks.map((b) => h("div", { class: "note-line" }, ...noteNodes(b, state, ctx))));
     if (blocks.length === 0) this.note.append(h("span", { class: "note-empty" }, step === 0 ? "처음 상태" : ""));
   }
