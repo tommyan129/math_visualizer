@@ -220,6 +220,7 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
         coords[2 * i] = p.x - origin[0];
         coords[2 * i + 1] = (Number.isFinite(p.y) ? p.y : origin[1]) - origin[1];
       });
+      if (out.none) warnings.push({ source: key, code: "W-feature-none", message: out.none });
       if (out.capped) warnings.push({ source: key, code: "W-feature-cap", message: `특징점이 너무 많아 앞의 ${out.points.length}개만 그림 (범위를 좁히기)` });
       curves.push({ key, kind: "features", origin, coords, offsets: new Uint32Array(), points: out.points, capped: out.capped });
       continue;

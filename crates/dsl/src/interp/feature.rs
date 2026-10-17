@@ -205,7 +205,8 @@ impl<'s> Cx<'s> {
                 continue;
             }
             let (polar, axes) = t.system().map(|(p, a)| (p, a.into_iter().cloned().collect::<Vec<_>>())).unwrap();
-            let candidates = if spec.kind == FeatureKind::Breaks { self.break_candidates(&spec.target) } else { vec![] };
+            // argmax / argmin check breaks inside the interval (no max past an asymptote).
+            let candidates = if matches!(spec.kind, FeatureKind::Breaks | FeatureKind::Argmax | FeatureKind::Argmin) { self.break_candidates(&spec.target) } else { vec![] };
             let f = self.state.functions.get_mut(&k).unwrap();
             let s = f.feature.as_mut().unwrap();
             s.polar = polar;

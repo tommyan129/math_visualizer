@@ -512,12 +512,31 @@ impl<'s> Cx<'s> {
                 let sig = scope.signature_with(&[]);
                 self.err_s(body.span, code::TYPE, "'-> matrix' 정의의 값은 벡터·행렬이어야 함", format!("{sig} -> y: {body_src}"))
             }
-            (DefKind::Value, Ty::Scalar) => self.err_s(
-                body.span,
-                code::TYPE,
-                "괄호 없는 정의는 벡터·행렬·span·arrow만 씀 (숫자 하나는 슬라이더 상수나 함수로)",
-                format!("constant:\n    {key}: default={body_src}"),
-            ),
+            (DefKind::Value, Ty::Scalar) => {
+                // A plain number fits a slider constant (its default takes numbers only);
+                // anything else (a feature coordinate, a call) becomes a function of x with
+                // the constants its callees use.
+                let literal = match &body.kind {
+                    ExprKind::Num { .. } => true,
+                    ExprKind::Neg { arg } => matches!(arg.kind, ExprKind::Num { .. }),
+                    _ => false,
+                };
+                let suggestion = if literal {
+                    format!("constant:\n    {key}: default={body_src}")
+                } else {
+                    let mut consts = scope.consts.clone();
+                    for c in &info.callees {
+                        for k in self.state.functions.get(c).map(|f| f.consts.as_slice()).unwrap_or_default() {
+                            if !consts.contains(k) {
+                                consts.push(k.clone());
+                            }
+                        }
+                    }
+                    let tail = if consts.is_empty() { String::new() } else { format!("; {}", consts.join(", ")) };
+                    format!("{key}(x{tail}) -> y: {body_src}")
+                };
+                self.err_s(body.span, code::TYPE, "괄호 없는 정의는 벡터·행렬·span·arrow만 씀 (숫자 하나는 슬라이더 상수나 함수로)", suggestion)
+            }
             _ => self.err(body.span, code::TYPE, "정의 값은 숫자, 벡터, 행렬이어야 함"),
         }
 

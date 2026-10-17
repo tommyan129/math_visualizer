@@ -133,6 +133,13 @@ define:
     Y: yint(cub)
     M: argmax(cub; -3 <= x <= 3)
     Mm: argmin(cub; -2 <= x <= 2)
+    rec(x) -> y: 1/(x + 3)
+    Mi: argmax(rec; -5 <= x <= 0)
+    Mi2: argmin(rec; -5 <= x <= 0)
+    Mi3: argmax(rec; -2 <= x <= 0)
+    hp(x) -> y: 1 - (x - 1)^3/(x - 1)
+    Mh: argmax(hp; 0 <= x <= 2)
+    Mj: argmax(st; -1 <= x <= 1)
     Pm: extrema(cub;; min)
     Rr(; c): roots(cub; 0 < x < c)
     T(x) -> y: cub@1(Pm_[1])*(x - Pm_[1]) + Pm_[2]

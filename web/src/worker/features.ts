@@ -32,6 +32,8 @@ export interface FeaturePt {
 export interface FeatureOut {
   points: FeaturePt[];
   capped: boolean;
+  /** Why argmax / argmin found nothing (unbounded, or a limit the function never takes). */
+  none?: string;
 }
 
 /** One-input function at the current constants. */
@@ -116,9 +118,13 @@ export function compileFeature(spec: FeatureSpec, env: CodegenEnv, R: Runtime, F
           pts = signChanges(d[1]!, a, b, n, tol).filter(([x]) => Number.isFinite(f(x))).map(([x]) => pt(x, f(x), "Inflection"));
           break;
         case "Argmax":
-        case "Argmin":
-          pts = intervalExtreme(f, d[0]!, a, b, n, tol, keep, spec.kind === "Argmax");
+        case "Argmin": {
+          const brk = breaks(f, cands.map((c) => (x: number) => c.fn(x, C)), a, b, n, yspan).map((p) => p.x);
+          const r = intervalExtreme(f, d[0]!, brk, a, b, n, tol, keep, spec.kind === "Argmax");
+          if (typeof r === "string") return { points: [], capped: false, none: r };
+          pts = r;
           break;
+        }
         case "Breaks":
           pts = breaks(f, cands.map((c) => (x: number) => c.fn(x, C)), a, b, n, yspan);
           if (spec.filter) pts = pts.filter((p) => breakFilter(p.cls) === spec.filter);
@@ -354,17 +360,49 @@ function dedupe<T extends [number, ...unknown[]]>(xs: T[], eps: number): T[] {
   return out;
 }
 
-/** Largest (or smallest) value on [a, b]: critical points and the ends that are inside. */
-function intervalExtreme(f: Fn1, d1: Fn1, a: number, b: number, n: number, tol: number, keep: (x: number) => boolean, max: boolean): FeaturePt[] {
+/**
+ * Largest (or smallest) value on [a, b]: critical points, break points and the ends that
+ * are inside. None (with the reason) when f grows without bound toward a break, or when a
+ * one-sided limit at a break beats every value f takes there.
+ */
+function intervalExtreme(f: Fn1, d1: Fn1, brk: number[], a: number, b: number, n: number, tol: number, keep: (x: number) => boolean, max: boolean): FeaturePt[] | string {
+  const sg = max ? 1 : -1;
+  const word = max ? "최댓값" : "최솟값";
   const xs = signChanges(d1, a, b, n, tol).map(([x]) => x);
   for (const e of [a, b]) if (keep(e)) xs.push(e);
+  // One-sided limits at breaks, from the sides inside [a, b]; linear extrapolation of two
+  // nearby samples so a limit the function also takes compares equal to it.
+  const limits: [number, number][] = [];
+  for (const x0 of brk) {
+    if (keep(x0)) xs.push(x0);
+    const s = Math.max(Math.abs(x0), b - a, 1e-12);
+    const near = 1e-7 * s, far = 1e-4 * s;
+    for (const dir of [-1, 1]) {
+      if (x0 + dir * far < a || x0 + dir * far > b) continue;
+      const v = f(x0 + dir * near), v2 = f(x0 + dir * 2 * near), vf = f(x0 + dir * far);
+      if (!Number.isFinite(v) || !Number.isFinite(vf)) continue;
+      if (Math.abs(v) > 100 * Math.max(1, Math.abs(vf))) {
+        if (sg * v > 0) return `구간에서 ${word}이 없음: x = ${num(x0)} 근처에서 끝없이 ${max ? "커짐" : "작아짐"} (범위를 그 점 밖으로)`;
+        continue;
+      }
+      limits.push([x0, Number.isFinite(v2) ? 2 * v - v2 : v]);
+    }
+  }
   const vals = xs.map((x) => [x, f(x)] as const).filter(([, y]) => Number.isFinite(y));
   if (vals.length === 0) return [];
   const best = vals.reduce((m, [, y]) => (max ? Math.max(m, y) : Math.min(m, y)), max ? -Infinity : Infinity);
   const eps = 1e-9 * Math.max(1, Math.abs(best));
+  for (const [x0, v] of limits) {
+    if (sg * (v - best) > Math.max(eps, 1e-6 * Math.max(1, Math.abs(v)))) return `구간에서 ${word}이 없음: x = ${num(x0)} 근처에서 ${num(v)}에 다가가지만 닿지 않음`;
+  }
   const cls: FeatureClass = max ? "IntervalMax" : "IntervalMin";
   const top = vals.filter(([, y]) => Math.abs(y - best) <= eps).map(([x, y]) => [x, y] as [number, number]);
   return dedupe(top.sort((p, q) => p[0] - q[0]), (b - a) * 1e-9).map(([x, y]) => ({ x, y, cls, open: false, vx: x, vy: y }));
+}
+
+/** Short number for warning text. */
+function num(v: number): string {
+  return String(Number(v.toPrecision(6)));
 }
 
 /**

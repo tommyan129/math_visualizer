@@ -110,6 +110,22 @@ describe("intersections, y-intercept, interval max / min", () => {
     expectPts("M", [[3, 18, "IntervalMax"]]);
     expectPts("Mm", [[-2, -2, "IntervalMin"], [1, -2, "IntervalMin"]]);
   });
+
+  it("none past an asymptote in that direction, with the reason", () => {
+    expectPts("Mi", []);
+    expect(set.result("Mi").none).toContain("x = -3");
+    expectPts("Mi2", []);
+    expect(set.result("Mi2").none).toContain("작아짐");
+    // The asymptote outside the interval does not matter.
+    expectPts("Mi3", [[-2, 1, "IntervalMax"]]);
+    expect(set.result("Mi3").none).toBeUndefined();
+  });
+
+  it("none when a hole's limit beats every value taken; a jump side taken counts", () => {
+    expectPts("Mh", []);
+    expect(set.result("Mh").none).toContain("닿지 않음");
+    expectPts("Mj", [[0, 1, "IntervalMax"], [1, 1, "IntervalMax"]]);
+  });
 });
 
 describe("breaks", () => {

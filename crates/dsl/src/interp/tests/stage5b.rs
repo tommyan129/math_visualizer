@@ -214,6 +214,21 @@ fn feature_errors() {
 }
 
 #[test]
+fn scalar_value_definition_suggestion() {
+    let s = build(&[&def(&["g(x; a) -> y: a*sin(x)", "A(; a): argmax(g; 0 <= x <= 3)"])]);
+    // A feature coordinate is not a slider default (numbers only): suggest a function of x
+    // with the constants its callees use.
+    let errs = run(&s, &def(&["V: A_[2] + 1"])).unwrap_err();
+    let d = errs.iter().find(|d| d.code == code::TYPE).unwrap();
+    assert_eq!(d.suggestion.as_deref(), Some("V(x; a) -> y: A_[2] + 1"));
+    let d = first_err(&s, &def(&["V(; a): A_[1]"]));
+    assert_eq!((d.code, d.suggestion.as_deref()), (code::TYPE, Some("V(x; a) -> y: A_[1]")));
+    // A plain number still points to a constant.
+    let d = first_err(&s, &def(&["V: -2"]));
+    assert_eq!((d.code, d.suggestion.as_deref()), (code::TYPE, Some("constant:\n    V: default=-2")));
+}
+
+#[test]
 fn feature_point_as_value() {
     let s = build(&[&def(&["f(x) -> y: x^3 - 3*x", "P: extrema(f;; min)", "T(x) -> y: f@1(P_[1])*(x - P_[1]) + P_[2]", "V: arrow([1, 0]; P)"])]);
     let t = &s.functions["T"];
