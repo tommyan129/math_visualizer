@@ -10,6 +10,8 @@ import { makeRuntime } from "./numeric";
 import { sampleImplicit } from "./implicit";
 import { sampleParametric } from "./paramsample";
 import { sampleCurve, sampleDiscrete, type Quality, type SampleRange } from "./sample";
+import { runCheck, type CheckSpec } from "./verify";
+import type { CheckResult } from "../generated/CheckResult";
 
 /** A highlight the worker can draw: a function fill, or a targetless region. */
 export interface HlSpec {
@@ -32,7 +34,9 @@ export type ToWorker =
   /** Current scene: axis names (regions map them to x, y) and the clip region. */
   | { type: "scene"; axes: [string, string]; polar: boolean; clip: Expr | null }
   | { type: "sample"; id: number; keys: string[]; C: Float64Array; range: SampleRange; quality: Quality }
-  | { type: "fills"; id: number; items: FillItem[]; C: Float64Array; range: SampleRange; quality: Quality };
+  | { type: "fills"; id: number; items: FillItem[]; C: Float64Array; range: SampleRange; quality: Quality }
+  /** Numeric verification (stage 5c) over the given constant sets. */
+  | { type: "verify"; id: number; specs: CheckSpec[]; sets: Float64Array[] };
 
 export interface CurveResult {
   key: string;
@@ -82,7 +86,8 @@ export interface RasterResult {
 
 export type FromWorker =
   | { type: "result"; id: number; quality: Quality; range: SampleRange; curves: CurveResult[]; warnings: WorkerWarning[] }
-  | { type: "fills"; id: number; quality: Quality; range: SampleRange; results: (FillResult | RasterResult)[]; warnings: WorkerWarning[] };
+  | { type: "fills"; id: number; quality: Quality; range: SampleRange; results: (FillResult | RasterResult)[]; warnings: WorkerWarning[] }
+  | { type: "checks"; id: number; results: CheckResult[] };
 
 /** Scene budget for 2D curve samples (design.md "2층 장면 예산"). */
 const SCENE_BUDGET = 1_000_000;
@@ -92,6 +97,7 @@ const F: Scalar[] = [];
 let compiled = new Map<string, Compiled>();
 let compileErrors = new Map<string, string>();
 let constIndex = new Map<string, number>();
+let constKeyList: string[] = [];
 let fnIndex = new Map<string, number>();
 let hlSpecs: HlSpec[] = [];
 let regions = new Map<string, Region | null>();
@@ -167,6 +173,7 @@ function fills(id: number, items: FillItem[], C: Float64Array, range: SampleRang
 
 function setFunctions(fns: FnSpec[], constKeys: string[]): void {
   constIndex = new Map(constKeys.map((k, i) => [k, i]));
+  constKeyList = constKeys;
   fnIndex = new Map(fns.map((f, i) => [f.key, i]));
   F.length = fns.length;
   // Discrete-ness flows from callees to callers.
@@ -357,6 +364,16 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     polar = m.polar;
     clipExpr = m.clip;
     setHighlights(hlSpecs);
+  } else if (m.type === "verify") {
+    const env = { env: { constIndex, fnIndex }, R, F, constKeys: constKeyList };
+    const results = m.specs.map((spec) => {
+      try {
+        return runCheck(spec, m.sets, env);
+      } catch {
+        return { key: spec.key, pair: spec.pair, kind: spec.kind, a: spec.a, b: spec.b, order: spec.order, status: "Unverifiable", points: 0, one_sided: 0, counter: null } satisfies CheckResult;
+      }
+    });
+    (self as unknown as Worker).postMessage({ type: "checks", id: m.id, results } satisfies FromWorker);
   } else if (m.type === "fills") {
     const r = fills(m.id, m.items, m.C, m.range, m.quality);
     const transfer = r.results.flatMap((x) => (x.kind === "fill" ? [x.coords.buffer, x.rings.buffer, x.edge.buffer, x.edgeOffsets.buffer] : [x.mask.buffer]));

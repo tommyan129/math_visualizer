@@ -69,6 +69,10 @@ pub enum ExprKind {
     /// separated by `;` and allowed empty: targets (`intersect` takes two, the second may
     /// be `y = x`), range over the target's input, a filter word.
     Feature { callee: Ident, args: Vec<Expr>, range: Option<Box<Expr>>, filter: Option<String> },
+    /// `calc(f, g, h; x > 0; integral)` (stage 5c): body of a calculation-steps definition,
+    /// slots as for feature points: the steps (definition names) in order, a range over
+    /// their input for verification, a kind word.
+    Calc { steps: Vec<Expr>, range: Option<Box<Expr>>, kind: Option<String> },
     /// Placeholder after a reported error; never leaves the server.
     Error {},
 }
@@ -300,7 +304,7 @@ impl Expr {
                     pattern.number(next);
                 }
             }
-            ExprKind::Feature { args, range, .. } => {
+            ExprKind::Feature { args, range, .. } | ExprKind::Calc { steps: args, range, .. } => {
                 args.iter_mut().for_each(|e| e.number(next));
                 if let Some(r) = range {
                     r.number(next);
@@ -334,7 +338,7 @@ impl Expr {
                 AddressStep::Term { pattern } => vec![base, pattern],
                 AddressStep::Part { .. } => vec![base],
             },
-            ExprKind::Feature { args, range, .. } => args.iter().chain(range.as_deref()).collect(),
+            ExprKind::Feature { args, range, .. } | ExprKind::Calc { steps: args, range, .. } => args.iter().chain(range.as_deref()).collect(),
             ExprKind::Split { subject, at, pieces, .. } => {
                 std::iter::once(&**subject).chain(at.iter()).chain(pieces.iter().flat_map(|p| [&p.value, &p.cond])).collect()
             }
@@ -357,7 +361,7 @@ impl Expr {
                 AddressStep::Term { pattern } => vec![base, pattern],
                 AddressStep::Part { .. } => vec![base],
             },
-            ExprKind::Feature { args, range, .. } => args.iter_mut().chain(range.as_deref_mut()).collect(),
+            ExprKind::Feature { args, range, .. } | ExprKind::Calc { steps: args, range, .. } => args.iter_mut().chain(range.as_deref_mut()).collect(),
             ExprKind::Split { subject, at, pieces, .. } => std::iter::once(&mut **subject)
                 .chain(at.iter_mut())
                 .chain(pieces.iter_mut().flat_map(|p| [&mut p.value, &mut p.cond]))

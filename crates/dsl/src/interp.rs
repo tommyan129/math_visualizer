@@ -126,6 +126,7 @@ pub fn apply(state: &State, src: &str, limits: &Limits, seq: u64) -> Result<Appl
         declared_now: BTreeSet::new(),
         deriv_sites: Default::default(),
         pending_feature: None,
+        pending_calc: None,
     };
     for stmt in &parsed.stmts {
         if cx.stopped {
@@ -192,6 +193,7 @@ struct Cx<'s> {
     deriv_sites: std::collections::HashMap<String, Span>,
     /// Spec of the feature-point definition being resolved (`resolve_feature`).
     pending_feature: Option<FeatureSpec>,
+    pending_calc: Option<CalcSpec>,
 }
 
 /// Name scope inside one definition body, or one range slot.
@@ -322,6 +324,7 @@ impl<'s> Cx<'s> {
             ExprKind::Call { callee, .. } if callee.key == "span" => Some(DefKind::Span),
             ExprKind::Call { callee, .. } if callee.key == "arrow" => Some(DefKind::Arrow),
             ExprKind::Feature { .. } => Some(DefKind::Feature),
+            ExprKind::Calc { .. } => Some(DefKind::Calc),
             _ => None,
         };
         let const_sig = |key: &str| if consts.is_empty() { key.to_string() } else { format!("{key}(; {})", consts.iter().map(|(c, _)| c.key.as_str()).collect::<Vec<_>>().join(", ")) };
@@ -480,6 +483,7 @@ impl<'s> Cx<'s> {
             DefKind::Parametric => self.resolve_parametric(&mut body, shape.outputs.len() as u32, &mut scope, &mut info),
             DefKind::Equation => self.resolve_equation(&mut body, &mut scope, &mut info),
             DefKind::Feature => self.resolve_feature(&mut body, &mut scope, &mut info),
+            DefKind::Calc => self.resolve_calc(&mut body, &mut scope, &mut info),
             _ if matches!(body.kind, ExprKind::Split { .. }) => {
                 self.err(body.span, code::TYPE, format!("split은 그리는 함수(f(x) -> y)에만 씀 ({}에는 쓸 수 없음)", shape.kind.word()));
                 Ty::Unknown
@@ -499,7 +503,7 @@ impl<'s> Cx<'s> {
             _ => None,
         };
         match (shape.kind, &ty) {
-            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow | DefKind::Parametric | DefKind::Equation | DefKind::Feature, _) => {}
+            (_, Ty::Unknown) | (DefKind::Span | DefKind::Arrow | DefKind::Parametric | DefKind::Equation | DefKind::Feature | DefKind::Calc, _) => {}
             (DefKind::Polar, Ty::Scalar) => {}
             (DefKind::Polar, t) => self.err(body.span, code::TYPE, format!("극좌표 함수의 값(r)은 숫자여야 함 (이 식은 {})", t.describe())),
             (_, Ty::Region) => self.err(body.span, code::TYPE, "부등식은 정의 값이 될 수 없음"),
@@ -600,6 +604,7 @@ impl<'s> Cx<'s> {
             range,
             family,
             feature: self.pending_feature.take(),
+            calc: self.pending_calc.take(),
             ty,
             consts: scope.consts.clone(),
             body,
@@ -766,6 +771,7 @@ impl<'s> Cx<'s> {
         if self.diags.is_empty() {
             self.check_related_defs();
             self.refresh_features();
+            self.refresh_calcs();
         }
         if self.diags.is_empty() {
             self.refresh_highlights();
@@ -1226,6 +1232,11 @@ impl<'s> Cx<'s> {
                 self.err(span, code::TYPE, "부분식 주소는 highlight·req의 대상 칸에만 쓸 수 있음");
                 Ty::Unknown
             }
+            ExprKind::Calc { .. } => {
+                let call = self.src[span.range()].to_string();
+                self.err_s(span, code::TYPE, "calc는 식 안에 쓸 수 없음 (정의 하나로 씀)", format!("define:\n    C: {call}"));
+                Ty::Unknown
+            }
             ExprKind::Feature { callee, .. } => {
                 let call = self.src[span.range()].to_string();
                 self.err_s(span, code::TYPE, format!("{}은(는) 식 안에 쓸 수 없음 (정의 하나로 씀)", callee.key), format!("define:\n    E: {call}"));
@@ -1306,6 +1317,10 @@ impl<'s> Cx<'s> {
             self.err(span, code::TYPE, format!("{} '{key}'는 그리는 정의라 식에 쓸 수 없음", f.kind.word()));
             return (NameKind::Unresolved, Ty::Unknown);
         }
+        if self.state.functions.get(key).is_some_and(|f| f.kind == DefKind::Calc) {
+            self.err(span, code::TYPE, format!("계산 과정 '{key}'는 값이 없어 식에 쓸 수 없음 (단계 정의를 직접 씀)"));
+            return (NameKind::Unresolved, Ty::Unknown);
+        }
         if self.is_function_name(key) || names::is_builtin(key) {
             self.err_s(span, code::NOT_VALUE, format!("함수 '{key}'는 불러서 써야 함"), format!("{key}({})", sc.input()));
             return (NameKind::Unresolved, Ty::Unknown);
@@ -1381,6 +1396,10 @@ impl<'s> Cx<'s> {
                 }
                 DefKind::Span | DefKind::Arrow => {
                     self.err(span, code::TYPE, format!("{} '{key}'는 그리는 정의라 식에 쓸 수 없음", f.kind.word()));
+                    return (NameKind::Unresolved, Ty::Unknown);
+                }
+                DefKind::Calc => {
+                    self.err(span, code::TYPE, format!("계산 과정 '{key}'는 값이 없어 부를 수 없음 (단계 정의를 직접 부름)"));
                     return (NameKind::Unresolved, Ty::Unknown);
                 }
                 DefKind::Feature => {
@@ -1553,6 +1572,7 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
 }
 
 mod deriv;
+mod calc;
 mod feature;
 mod hl;
 mod scene;

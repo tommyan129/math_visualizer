@@ -943,6 +943,7 @@ fn detached<'s>(src: &'s str, state: &State) -> Cx<'s> {
         declared_now: BTreeSet::new(),
         deriv_sites: Default::default(),
         pending_feature: None,
+        pending_calc: None,
     }
 }
 

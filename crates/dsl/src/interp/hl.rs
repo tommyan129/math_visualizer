@@ -1120,6 +1120,7 @@ pub fn address_resolves(state: &State, address: &str) -> bool {
         declared_now: BTreeSet::new(),
         deriv_sites: Default::default(),
         pending_feature: None,
+        pending_calc: None,
     };
     cx.resolve_address(&e).is_some() && cx.diags.is_empty()
 }

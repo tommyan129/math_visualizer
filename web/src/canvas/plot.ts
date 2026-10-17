@@ -4,6 +4,7 @@
 // - Coarse while interacting, fine once interaction stops. Latest request wins.
 // - A constant change recomputes only the functions that use it.
 
+import type { CheckResult } from "../generated/CheckResult";
 import type { FeaturePoints } from "../generated/FeaturePoints";
 import type { Function as Fn } from "../generated/Function";
 import type { Highlight } from "../generated/Highlight";
@@ -21,6 +22,7 @@ import { makeRuntime } from "../worker/numeric";
 import type { Quality, SampleRange } from "../worker/sample";
 import { CLIP_KEY, type CurveResult, type FillItem, type FillResult, type FromWorker, type HlSpec, type RasterResult, type ToWorker } from "../worker/worker";
 import type { RasterRect } from "../worker/fill";
+import { checkSpecsOf, constSets } from "../worker/verify";
 import { maskPixels, resolveHighlights, sortedHighlights } from "./highlight";
 import { POINT_FEATURE, POINT_HOLE, POINT_NORMAL, rgba, type Batch, type ClipMask, type LabelPlacement, type LabelRef, type Style } from "./primitives";
 import { FEATURE_WORD, pointText } from "./featureText";
@@ -160,6 +162,13 @@ export class Plot {
   private hoverAt: { px: number; py: number } | null = null;
   /** Feature definitions whose coordinate labels the user turned off. */
   private coordOff = new Set<string>();
+  /** Numeric verification (stage 5c): last results, the request in flight, its inputs. */
+  private checkResults: CheckResult[] = [];
+  private verifyId = 0;
+  private verifyPending = false;
+  private verifyStamp = "";
+  /** A render to report once the checks in flight arrive (nothing else was resampled). */
+  private checksWait: number | null = null;
 
   constructor(host: HTMLElement, private cb: PlotCallbacks) {
     this.canvas = document.createElement("canvas");
@@ -199,7 +208,8 @@ export class Plot {
       .map((f) => f!)
       .sort((a, b) => a.order - b.order);
     this.members = new Set(scene?.members ?? []);
-    this.fns = this.allFns.filter((f) => this.members.has(f.key));
+    // A calc is listed (panel) but has nothing to sample.
+    this.fns = this.allFns.filter((f) => this.members.has(f.key) && f.kind !== "Calc");
     this.hidden = new Set([...Object.keys(state.functions), ...Object.keys(state.highlights)].filter((k) => !scene || !visibleAt(scene, this.step, k)));
     this.applyViewRule();
     this.constKeys = Object.keys(state.constants).sort();
@@ -208,6 +218,9 @@ export class Plot {
 
     const specs: FnSpec[] = specsOf(state, this.allFns);
     this.post({ type: "functions", fns: specs, constKeys: this.constKeys });
+    // Posted before any sample: the worker answers in order, so the checks are in by the
+    // time the render is reported.
+    this.verify(state);
     const clip = activeClip(scene);
     const polar = scene?.polar ?? false;
     const clipKey = JSON.stringify([this.axes, polar, clip?.expr ?? null]);
@@ -230,7 +243,8 @@ export class Plot {
     if (clip && (!this.clipGeom || clip.consts.some((k) => changedConsts.has(k)) || this.clipGeom.stamp !== this.clipStamp())) this.requestHighlights([CLIP_KEY], "fine");
     if (dirty.length === 0) {
       this.draw();
-      this.cb.rendered(revision, this.warnings());
+      if (this.verifyPending) this.checksWait = revision;
+      else this.cb.rendered(revision, this.warnings());
       this.checkEntry();
       return;
     }
@@ -266,6 +280,38 @@ export class Plot {
         const points = c.result.points.map((p) => ({ x: p.vx, y: p.cls === "Asymptote" || !Number.isFinite(p.vy) ? null : p.vy, class: p.cls }));
         return [{ key: f.key, points, capped: !!c.result.capped }];
       });
+  }
+
+  /** Verification results of the current state (`apply`, `get_state`, panel). */
+  checks(): CheckResult[] {
+    return this.checkResults;
+  }
+
+  /**
+   * Runs the checks the state implies when a compared definition or a constant changed:
+   * at the current constants and two random sets inside the slider ranges.
+   */
+  private verify(state: State): void {
+    const specs = checkSpecsOf(state);
+    const stamp = JSON.stringify([specs.map((c) => [c.key, c.a, c.b, this.depStamp(c.a), this.depStamp(c.b), this.depStamp(c.key)]), this.constKeys.map((k) => state.constants[k]!.version)]);
+    if (stamp === this.verifyStamp) return;
+    this.verifyStamp = stamp;
+    if (specs.length === 0) {
+      this.checkResults = [];
+      return;
+    }
+    const index = new Map(this.constKeys.map((k, i) => [k, i]));
+    const orders = this.allFns.flatMap((f) => f.constraints).flatMap((c) => {
+      try {
+        return [compileOrder(c.lo, c.hi, index, CONST_R)];
+      } catch {
+        return [];
+      }
+    });
+    const sets = constSets(state, this.constKeys, this.constants(), (C) => orders.every((o) => o(C)));
+    this.verifyId++;
+    this.verifyPending = true;
+    this.post({ type: "verify", id: this.verifyId, specs, sets });
   }
 
   /** Last points of a feature definition (panel), or undefined before it is computed. */
@@ -657,6 +703,16 @@ export class Plot {
 
   private onResult(r: FromWorker): void {
     if (r.type === "fills") return this.onFills(r);
+    if (r.type === "checks") {
+      if (r.id !== this.verifyId) return;
+      this.checkResults = r.results;
+      this.verifyPending = false;
+      const rev = this.checksWait;
+      this.checksWait = null;
+      // -1 refreshes the panel only.
+      this.cb.rendered(rev ?? -1, this.warnings());
+      return;
+    }
     if (r.quality === "coarse") this.coarseInFlight = false;
     let dimChanged = false;
     for (const c of r.curves) {

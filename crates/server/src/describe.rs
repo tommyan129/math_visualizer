@@ -4,7 +4,7 @@
 use dsl::names;
 
 const INDEX: &str = "\
-쓸 수 있는 명령 (5b단계). describe(name)으로 자세히:
+쓸 수 있는 명령 (5c단계). describe(name)으로 자세히:
   define     함수 정의·수정 (같은 이름에 다시 쓰면 수정)
   split      구간별 함수 (경계점, 조각마다 식)
   매개변수   p(t) -> (x, y): (식, 식), 범위
@@ -13,6 +13,8 @@ const INDEX: &str = "\
   family     family(본문; 0 <= k <= n): 같은 도형을 k마다 반복
   도함수     f@n(x) -> y, 역함수 ~f(x) -> y, 정의 안 한 f@n은 서버 기호 미분
   특징점     E: extrema(f), roots, intersect, yint, inflections, argmax, argmin, breaks, tangents
+  계산 과정  C: calc(f, g, h): 식 변형 단계, 바뀐 부분 색칠, 수치 검증 (적분, 극한)
+  검증       계산 과정, f@n, ~f의 수치 검증 (apply 응답에 결과)
   행렬       벡터·행렬 값, matmul 등 연산, -> matrix 함수
   span       span(v, w): 원점을 지나는 직선·평면
   arrow      arrow(v), arrow(v; P): 화살표
@@ -32,7 +34,7 @@ const INDEX: &str = "\
   sum      sum / prod
   상수     슬라이더 상수 규칙
   오류     오류 형식
-아직 없음: 수치 검증, 계산 과정 diff, 특징점 하나 번호로 가리키기(E_[2]), 다변수(3D)";
+아직 없음: Claude가 적는 정확한 값 라벨, 특징점 하나 번호로 가리키기(E_[2]), 다변수(3D)";
 
 const SPLIT: &str = "\
 define:
@@ -85,6 +87,42 @@ define:
 - 값으로 쓸 때(E_[1], E_[2], arrow(v; E)) 점이 정확히 하나여야 함: 아니면 그 식은 정의 안 됨 + [W-feature-value].
 - 결과 하나를 번호로 가리키기(E_[2])는 아직 없음: 범위 칸으로 좁혀서 하나만 남게.
 - 극좌표 tangents의 좌표는 (r, θ).";
+
+const CALC: &str = "\
+define:
+    f(x) -> y: (x+1)^2 - (x-1)^2
+    g(x) -> y: (x^2 + 2*x + 1) - (x^2 - 2*x + 1)
+    h(x) -> y: 4*x
+    C: calc(f, g, h)                   # 이웃한 단계끼리 바뀐 부분 색칠 + 같은지 수치 검증
+    s(x) -> y: sqrt(x^2)
+    t(x) -> y: x
+    D: calc(s, t; x > 0)               # 칸: 단계; 범위; 종류. 범위 안의 점에서만 검증
+    p(x) -> y: x^2
+    P(x) -> y: x^3/3
+    I: calc(p, P;; integral)           # P' = p를 수치 미분으로 확인 (상수 차이는 무시)
+    L: calc(p, P;; limit)              # 극한: '검증 안 됨'
+scene(1):
+    show: f, C
+    step:
+        show: +g                       # 패널의 C가 켜진 단계까지 한 줄씩 늘어남
+    step:
+        show: +h
+- 계산 과정의 각 줄은 먼저 정의로 선언하고 calc로 묶음 (note 문자열의 식은 검증 안 됨). 단계는 같은 축의 일반·극좌표 함수.
+- integral: 첫 두 단계가 적분 관계 (둘째의 도함수 = 첫째), 그 뒤 단계는 둘째의 식 변형.
+- 단계 함수의 상수를 머리에 적어야 함: C(; a): calc(f, g). del g 하면 C도 지워짐.
+- 검증 결과는 apply 응답의 '검증 C:' 줄과 get_state에. describe(검증)에 세부.";
+
+const VERIFY: &str = "\
+수치 검증 (브라우저가 계산, 서버가 응답으로 전달):
+- calc 이웃 단계: 같은 값인지 (integral은 둘째의 수치 미분 = 첫째, limit은 '검증 안 됨').
+- Claude가 정의한 f@n: 바로 아래 차수(f@(n-1), 없으면 f)의 수치 미분과 비교. 서버가 만든 도함수는 검증 대상 아님.
+- Claude가 정의한 ~f: f(~f(x)) = x (~f가 정의된 점에서).
+- 점: 범위 안 16개 (범위 없으면 -5..5, 극좌표는 0..2π), 깨지는 점 후보 근처는 피함.
+  상수는 현재 값 + 슬라이더 범위 안의 무작위 2벌 → 한 상수 값에서만 우연히 맞는 오류도 잡음.
+- 허용 오차: 식 변형·역함수 1e-9, 1계 수치 미분 1e-6 (상대, 값이 1보다 작으면 절대), 2계 이상 1e-4.
+- 결과: 일치 / 불일치 (첫 반례: 입력·상수·양쪽 값) / 조건부 일치 (한쪽만 정의된 점이 있음, 정의역이 다름 → 범위 칸으로)
+  / 검증 불가 (둘 다 정의된 점이 4개 미만) / 검증 안 됨 (극한).
+- apply는 브라우저 결과를 최대 3초 기다림. 이번 요청이 건드린 정의의 검증과 일치가 아닌 검증이 응답에 옴.";
 
 const PARAMETRIC: &str = "\
 define:
@@ -329,6 +367,8 @@ pub fn describe(name: Option<&str>) -> String {
         "방정식" | "음함수" | "equation" | "implicit" => EQUATION.into(),
         "family" | "반복" => EACH.into(),
         "도함수" | "역함수" | "f@n" | "~f" | "derivative" | "inverse" => DERIV.into(),
+        "계산 과정" | "계산" | "calc" | "integral" | "limit" => CALC.into(),
+        "검증" | "수치 검증" | "verify" | "verification" => VERIFY.into(),
         "특징점" | "feature" | "features" | "roots" | "intersect" | "yint" | "extrema" | "inflections" | "argmax" | "argmin" | "breaks" | "tangents" => FEATURE.into(),
         "함수" | "functions" | "builtins" => {
             let list: Vec<String> = names::BUILTINS
@@ -368,6 +408,10 @@ mod tests {
         dsl::interp::apply(&Default::default(), stage5, &Default::default(), 5).unwrap();
         let stage5b = "define:\n    f(x; a) -> y: a*x^3\n    f@1(x; a) -> y: 3*a*x^2\n    ~f(x; a) -> y: (x/a)^(1/3)\n    T(x; a, c) -> y: f@2(c)*(x - c)\n    g(x) -> y: x^3 - 3*x\n    h(x) -> y: 2*x\n    p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\\pi\n    E: extrema(g)\n    M: extrema(g;; max)\n    R: roots(g; -1 < x < 2)\n    I: inflections(g)\n    P: intersect(g, h)\n    P2: intersect(g, y = 2*x)\n    Y: yint(g)\n    A: argmax(g; -2 <= x <= 3)\n    B: breaks(g;; hole)\n    Tg: tangents(p;; vertical)\n    Pm: extrema(g;; min)\n    L(x) -> y: g@1(Pm_[1])*(x - Pm_[1]) + Pm_[2]\n    V: arrow([1, 0]; Pm)\n";
         dsl::interp::apply(&Default::default(), stage5b, &Default::default(), 6).unwrap_or_else(|d| panic!("{d:?}"));
+        let stage5c = "define:\n    f(x) -> y: (x+1)^2 - (x-1)^2\n    g(x) -> y: (x^2 + 2*x + 1) - (x^2 - 2*x + 1)\n    h(x) -> y: 4*x\n    C: calc(f, g, h)\n    s(x) -> y: sqrt(x^2)\n    t(x) -> y: x\n    D: calc(s, t; x > 0)\n    p(x) -> y: x^2\n    P(x) -> y: x^3/3\n    I: calc(p, P;; integral)\n    L: calc(p, P;; limit)\nscene(1):\n    show: f, C\n    step:\n        show: +g\n    step:\n        show: +h\n";
+        dsl::interp::apply(&Default::default(), stage5c, &Default::default(), 7).unwrap_or_else(|d| panic!("{d:?}"));
+        assert!(describe(Some("calc")).contains("calc(f, g, h)"));
+        assert!(describe(Some("검증")).contains("f(~f(x)) = x"));
         assert!(describe(Some("특징점")).contains("extrema"));
         assert!(describe(Some("f@n")).contains("~f"));
     }

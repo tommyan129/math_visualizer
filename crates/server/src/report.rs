@@ -3,7 +3,7 @@
 
 use dsl::interp::{Note, ObjKind, fmt_num};
 use dsl::state::{BASE_STYLES, Constant, Highlight, NoteSeg, Request, Scene, State};
-use model::protocol::{FeatureClass, FeaturePoints, ReqStatus, ReqView, SpanDim, ViewBox, Warning};
+use model::protocol::{CheckKind, CheckResult, CheckStatus, FeatureClass, FeaturePoints, ReqStatus, ReqView, SpanDim, ViewBox, Warning};
 
 use crate::engine::{ApplyError, ApplyOk, KeyError, RequestsOut, WorkspaceView};
 
@@ -15,8 +15,8 @@ pub enum Browser {
     OtherWorkspace,
     /// Connected but no answer in time.
     Timeout,
-    Rendered { warnings: Vec<Warning>, spans: Vec<SpanDim>, features: Vec<FeaturePoints> },
-    View { view: ViewBox, warnings: Vec<Warning>, spans: Vec<SpanDim>, features: Vec<FeaturePoints> },
+    Rendered { warnings: Vec<Warning>, spans: Vec<SpanDim>, features: Vec<FeaturePoints>, checks: Vec<CheckResult> },
+    View { view: ViewBox, warnings: Vec<Warning>, spans: Vec<SpanDim>, features: Vec<FeaturePoints>, checks: Vec<CheckResult> },
 }
 
 pub fn key_error(e: &KeyError) -> String {
@@ -98,6 +98,82 @@ fn feature_text(s: &State, fp: &FeaturePoints) -> String {
     format!("{}개: {}", fp.points.len(), items.join(", "))
 }
 
+/// `f → g`, `F' = f`, `f@1 = f의 수치 미분`, `f(~f(x)) = x`: what a check compared.
+fn check_relation(s: &State, c: &CheckResult) -> String {
+    let x = s.functions.get(&c.b).and_then(|f| f.inputs.first()).map_or("x", |i| i.key.as_str());
+    match c.kind {
+        CheckKind::Transform | CheckKind::Limit => format!("{} → {}", c.a, c.b),
+        CheckKind::Integral => format!("{}' = {} (적분)", c.b, c.a),
+        CheckKind::Deriv if c.order == 1 => format!("{} = {}의 수치 미분", c.b, c.a),
+        CheckKind::Deriv => format!("{} = {}의 {}계 수치 미분", c.b, c.a, c.order),
+        CheckKind::Inverse => format!("{}({}({x})) = {x}", c.a, c.b),
+    }
+}
+
+/// `일치 (48점)`, `불일치: x = 0.7 (a = 2)에서 f = 1.2, g = 1.3`, ...
+fn check_status(s: &State, c: &CheckResult) -> String {
+    match c.status {
+        CheckStatus::Match => format!("일치 ({}점)", c.points),
+        CheckStatus::Conditional => format!("조건부 일치 ({}점 일치, {}점은 한쪽만 정의됨 — 정의역이 다름)", c.points, c.one_sided),
+        CheckStatus::Unverifiable => format!("검증 불가 (둘 다 정의된 점이 {}개뿐 — 범위 칸으로 정의역 안을 지정)", c.points),
+        CheckStatus::NotVerified => "검증 안 됨 (극한은 수치로 확인하지 않음)".into(),
+        CheckStatus::Mismatch => {
+            let Some(p) = &c.counter else { return "불일치".into() };
+            let x = s.functions.get(&c.b).and_then(|f| f.inputs.first()).map_or("x", |i| i.key.as_str());
+            let consts = if p.consts.is_empty() { String::new() } else { format!(" ({})", p.consts.iter().map(|k| format!("{} = {}", k.key, fmt_num(k.value))).collect::<Vec<_>>().join(", ")) };
+            let (l, r) = (fmt_num(p.left), fmt_num(p.right));
+            let values = match c.kind {
+                CheckKind::Transform | CheckKind::Limit => format!("{} = {l}, {} = {r}", c.a, c.b),
+                CheckKind::Integral => format!("{} = {l}, {}' ≈ {r}", c.a, c.b),
+                CheckKind::Deriv => format!("수치 미분 ≈ {l}, {} = {r}", c.b),
+                CheckKind::Inverse => format!("{}({}({x})) = {l}", c.a, c.b),
+            };
+            format!("불일치: {x} = {}{consts}에서 {values}", fmt_num(p.x))
+        }
+    }
+}
+
+/// One line per checked definition: `C: f → g 일치 (48점), g → h 불일치: ...`.
+fn check_line(s: &State, key: &str, checks: &[&CheckResult]) -> String {
+    let parts: Vec<String> = checks.iter().map(|c| format!("{} {}", check_relation(s, c), check_status(s, c))).collect();
+    format!("{key}: {}", parts.join(", "))
+}
+
+/// Checks grouped by definition, in the order the browser sent them.
+fn group_checks(checks: &[CheckResult]) -> Vec<(&str, Vec<&CheckResult>)> {
+    let mut out: Vec<(&str, Vec<&CheckResult>)> = vec![];
+    for c in checks {
+        match out.iter_mut().find(|(k, _)| *k == c.key) {
+            Some((_, v)) => v.push(c),
+            None => out.push((&c.key, vec![c])),
+        }
+    }
+    out
+}
+
+/// `검증 C: ...` lines after an `apply`: checks touching a definition this request added
+/// or changed, and every check that is not a match.
+fn check_lines(ok: &ApplyOk, b: &Browser) -> Vec<String> {
+    let Browser::Rendered { checks, .. } = b else { return vec![] };
+    let changed: Vec<&str> = ok
+        .notes
+        .iter()
+        .filter_map(|n| match n {
+            Note::FunctionCreated { key } | Note::FunctionModified { key } => Some(key.as_str()),
+            _ => None,
+        })
+        .collect();
+    let touched = |c: &CheckResult| {
+        let steps = ok.state.functions.get(&c.key).and_then(|f| f.calc.as_ref()).map_or(&[][..], |k| &k.steps[..]);
+        [c.key.as_str(), &c.a, &c.b].iter().chain(steps.iter().map(|s| s.as_str()).collect::<Vec<_>>().iter()).any(|k| changed.contains(k))
+    };
+    group_checks(checks)
+        .into_iter()
+        .filter(|(_, cs)| cs.iter().any(|c| touched(c) || !matches!(c.status, CheckStatus::Match)))
+        .map(|(k, cs)| format!("검증 {}", check_line(&ok.state, k, &cs)))
+        .collect()
+}
+
 pub fn browser_line(b: &Browser) -> String {
     match b {
         Browser::NotConnected => "브라우저: 미연결 (화면 확인은 연결 후 get_state로)".into(),
@@ -127,6 +203,7 @@ pub fn apply_ok(ok: &ApplyOk, browser: &Browser) -> String {
     let mut lines = apply_lines(ok);
     lines.push(browser_line(browser));
     lines.extend(feature_lines(&ok.state, browser));
+    lines.extend(check_lines(ok, browser));
     lines.join("\n")
 }
 
@@ -285,6 +362,11 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
         Browser::View { features, .. } | Browser::Rendered { features, .. } => features,
         _ => &[],
     };
+    let checks: &[CheckResult] = match browser {
+        Browser::View { checks, .. } | Browser::Rendered { checks, .. } => checks,
+        _ => &[],
+    };
+    let check_groups = group_checks(checks);
     let mark = |key: &str| -> String {
         let Some(sc) = cur else { return String::new() };
         let f = s.functions.get(key);
@@ -324,6 +406,9 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
         lines.push("정의:".into());
         for f in fs {
             lines.push(format!("  {}{}", f.source(), mark(&f.key)));
+            if let Some((k, cs)) = check_groups.iter().find(|(k, _)| *k == f.key) {
+                lines.push(format!("    검증 {}", check_line(s, k, cs)));
+            }
             // Generated derivatives in use that Claude has not defined.
             let x = f.inputs.first().map_or("x", |i| i.key.as_str());
             for (i, e) in f.derivs.iter().enumerate() {
@@ -433,7 +518,7 @@ mod tests {
     fn apply_text_lists_changes_and_automatic_actions_only() {
         let (state, notes) = applied(&["define:\n    f(x; a) -> y: a*x\n    g(x; a) -> y: f(x)\n", "define:\n    f(x; a, b) -> y: a*x + b\n"]);
         let ok = ApplyOk { workspace: "w1".into(), revision: 2, notes, state };
-        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: vec![] });
+        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: vec![], checks: vec![] });
         assert_eq!(
             text,
             "적용됨 · rev 2\n수정: f(x; a, b) -> y\n자동: 상수 생성 b = 1 (-10..10)\n자동: g(x; a, b) -> y ← 상수 b 추가 (f가 b를 씀)\n브라우저: 경고 없음"
@@ -447,6 +532,28 @@ mod tests {
         let ok = ApplyOk { workspace: "w1".into(), revision: 2, notes, state };
         let text = apply_ok(&ok, &Browser::NotConnected);
         assert!(text.contains("삭제: f\n삭제: g (f 삭제로 함께)\n자동: 상수 a 제거 (쓰는 함수 없음)"), "{text}");
+    }
+
+    #[test]
+    fn check_text() {
+        use model::protocol::{ConstValue, Counterexample};
+        let (state, notes) = applied(&["define:\n    f(x; a) -> y: a*x^3\n    f@1(x; a) -> y: 3*a*x\n    g(x) -> y: (x+1)^2\n    h(x) -> y: x^2 + 2*x + 1\n    C: calc(g, h)\n"]);
+        let ok = ApplyOk { workspace: "w1".into(), revision: 1, notes, state };
+        let checks = vec![
+            CheckResult { key: "f@1".into(), pair: None, kind: CheckKind::Deriv, a: "f".into(), b: "f@1".into(), order: 1, status: CheckStatus::Mismatch, points: 48, one_sided: 0, counter: Some(Counterexample { x: 0.5, consts: vec![ConstValue { key: "a".into(), value: 1.0 }], left: 0.75, right: 1.5 }) },
+            CheckResult { key: "C".into(), pair: Some(0), kind: CheckKind::Transform, a: "g".into(), b: "h".into(), order: 0, status: CheckStatus::Match, points: 48, one_sided: 0, counter: None },
+        ];
+        let text = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: vec![], checks: checks.clone() });
+        assert!(text.contains("\n검증 f@1: f@1 = f의 수치 미분 불일치: x = 0.5 (a = 1)에서 수치 미분 ≈ 0.75, f@1 = 1.5"), "{text}");
+        assert!(text.contains("\n검증 C: g → h 일치 (48점)"), "{text}");
+        // A later apply that touches neither lists only the mismatch.
+        let ok2 = ApplyOk { notes: vec![], ..ok };
+        let text = apply_ok(&ok2, &Browser::Rendered { warnings: vec![], spans: vec![], features: vec![], checks: checks.clone() });
+        assert!(text.contains("검증 f@1") && !text.contains("검증 C"), "{text}");
+        let w = view_of(ok2.state, "2D(x, y)", 0);
+        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![], features: vec![], checks };
+        let st = state_text(&w, &b);
+        assert!(st.contains("  C: calc(g, h)\n    검증 C: g → h 일치 (48점)"), "{st}");
     }
 
     fn view_of(state: State, scene: &str, step: u32) -> WorkspaceView {
@@ -466,6 +573,7 @@ mod tests {
             warnings: vec![Warning { source: Some("f".into()), code: "W-sum-terms".into(), message: "항이 너무 많은 점은 그리지 않음".into() }],
             spans: vec![],
             features: vec![],
+            checks: vec![],
         };
         assert_eq!(
             state_text(&w, &b),
@@ -480,10 +588,10 @@ mod tests {
         let lines = apply_lines(&ok);
         assert!(lines.contains(&"추가: v(; a)".to_string()), "{lines:?}");
         assert!(lines.contains(&"추가: R(t) -> matrix".to_string()), "{lines:?}");
-        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 1 }], features: vec![] });
+        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 1 }], features: vec![], checks: vec![] });
         assert!(r.ends_with("브라우저: 경고 없음\nspan: S 직선 (1차원)"), "{r}");
         let w = view_of(state, "2D(x, y)", 0);
-        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }], features: vec![] };
+        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }], features: vec![], checks: vec![] };
         let t = state_text(&w, &b);
         assert!(t.contains("  v(; a): [1, a]\n  w: [0, 1]\n  u: [1, 2, 3]\n  S(; a): span(v, w) [평면 (2차원)]\n  T: span(u) [다른 좌표계 축 3개]\n  p(; a): arrow(v; w)\n  R(t) -> matrix: [[cos(t), 0], [0, 1]]"), "{t}");
     }
@@ -499,10 +607,10 @@ mod tests {
             FeaturePoints { key: "E".into(), points: vec![FeaturePoint { x: -1.0, y: Some(2.0), class: FeatureClass::Max }, FeaturePoint { x: 1.0, y: Some(-2.0), class: FeatureClass::Min }], capped: false },
             FeaturePoints { key: "B".into(), points: vec![], capped: false },
         ];
-        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: pts.clone() });
+        let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: pts.clone(), checks: vec![] });
         assert!(r.ends_with("특징점 E: 2개: 극대 (-1, 2), 극소 (1, -2)\n특징점 B: 찾은 점 없음"), "{r}");
         let w = view_of(state, "2D(x, y)", 0);
-        let b = Browser::View { view: ViewBox { x_min: -3.0, x_max: 3.0, y_min: -3.0, y_max: 3.0 }, warnings: vec![], spans: vec![], features: pts };
+        let b = Browser::View { view: ViewBox { x_min: -3.0, x_max: 3.0, y_min: -3.0, y_max: 3.0 }, warnings: vec![], spans: vec![], features: pts, checks: vec![] };
         let t = state_text(&w, &b);
         assert!(t.contains("  f(x) -> y: x^3 - 3*x\n    자동 도함수 f@1(x) = 3*x^2 - 3\n  E: extrema(f) → 2개: 극대 (-1, 2), 극소 (1, -2)\n  B: breaks(f) → 찾은 점 없음"), "{t}");
     }

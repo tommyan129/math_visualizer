@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod deriv;
+pub mod diff;
 pub mod diag;
 pub mod interp;
 pub mod lexer;

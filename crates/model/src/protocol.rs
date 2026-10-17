@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 /// Bumped whenever a message or state-model shape changes incompatibly.
 /// A browser with a different version is told to reload.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 
 /// Browser -> server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -41,6 +41,9 @@ pub enum ClientMsg {
         /// Points each shown feature-point definition found (stage 5b).
         #[serde(default)]
         features: Vec<FeaturePoints>,
+        /// Numeric verification of calculation steps, `f@n` and `~f` (stage 5c).
+        #[serde(default)]
+        checks: Vec<CheckResult>,
     },
 }
 
@@ -168,6 +171,8 @@ pub enum BrowserReply {
         spans: Vec<SpanDim>,
         #[serde(default)]
         features: Vec<FeaturePoints>,
+        #[serde(default)]
+        checks: Vec<CheckResult>,
     },
     /// Base64 PNG.
     Png { workspace: String, data: String, width: u32, height: u32 },
@@ -299,6 +304,80 @@ impl FeatureClass {
             Self::VerticalTangent => "수직 접선",
         }
     }
+}
+
+/// What a numeric check compares (stage 5c decisions).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum CheckKind {
+    /// Neighbouring calc steps `a` → `b`: equal values.
+    Transform,
+    /// `calc(a, b;; integral)`: the numeric derivative of `b` equals `a`.
+    Integral,
+    /// `calc(...;; limit)`: not compared.
+    Limit,
+    /// Claude's `b` = `f@n` against the numeric derivative (of order `order`) of `a`
+    /// (f, or the highest lower `f@m` that exists).
+    Deriv,
+    /// Claude's `b` = `~f` with `a` = f: f(~f(x)) = x.
+    Inverse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum CheckStatus {
+    /// Equal (within tolerance) at every point where both sides are defined.
+    Match,
+    /// Different at some point (`counter`).
+    Mismatch,
+    /// Equal where both are defined, but only one side is defined at some points.
+    Conditional,
+    /// Too few points where both sides are defined.
+    Unverifiable,
+    /// Not checked numerically (limits).
+    NotVerified,
+}
+
+/// Result of one numeric check, computed by the browser at `apply` time (stage 5c).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CheckResult {
+    /// Definition the check belongs to: a calc, or Claude's `f@n` / `~f`.
+    pub key: String,
+    /// calc: index of the earlier step of the pair.
+    pub pair: Option<u32>,
+    pub kind: CheckKind,
+    /// Compared definitions (see `CheckKind`).
+    pub a: String,
+    pub b: String,
+    /// Numeric derivative order (`Deriv`; 1 for `Integral`, 0 otherwise).
+    pub order: u32,
+    pub status: CheckStatus,
+    /// Points compared (both sides defined), over every constant set.
+    pub points: u32,
+    /// Points where only one side is defined.
+    pub one_sided: u32,
+    /// First point that did not match.
+    pub counter: Option<Counterexample>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Counterexample {
+    /// Input value.
+    pub x: f64,
+    /// Constant values used (empty when the steps use none).
+    pub consts: Vec<ConstValue>,
+    /// Values of the two sides (`a` side, `b` side as described by `CheckKind`).
+    pub left: f64,
+    pub right: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ConstValue {
+    pub key: String,
+    pub value: f64,
 }
 
 /// Render-time warning reported by the browser (shown under the definition and in `get_state`).

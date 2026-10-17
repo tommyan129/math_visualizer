@@ -36,6 +36,10 @@ pub enum DefKind {
     /// `E: extrema(f)`: feature points of a curve, found by the browser (stage 5b). Used in
     /// an expression it is the point `[x, y]` when there is exactly one.
     Feature,
+    /// `C: calc(f, g, h)`: neighbouring steps of one calculation (stage 5c). Not drawn on
+    /// the canvas; the panel shows the steps with the changed parts colored, and the
+    /// browser verifies neighbours numerically.
+    Calc,
 }
 
 impl DefKind {
@@ -55,6 +59,7 @@ impl DefKind {
             DefKind::Polar => "극좌표 함수",
             DefKind::Equation => "방정식",
             DefKind::Feature => "특징점",
+            DefKind::Calc => "계산 과정",
         }
     }
 }
@@ -83,6 +88,9 @@ pub struct Function {
     /// Feature-point definitions (stage 5b): what to find, resolved for the browser.
     #[serde(default)]
     pub feature: Option<FeatureSpec>,
+    /// Calculation-steps definitions (stage 5c).
+    #[serde(default)]
+    pub calc: Option<CalcSpec>,
     /// Value type of the body: scalar for a curve, vector / matrix for `Matrix` and
     /// `Value`; for `Span` / `Arrow` the vector type of their arguments.
     #[serde(default = "scalar_ty")]
@@ -230,6 +238,64 @@ pub enum BreakCause {
     Step,
 }
 
+/// What the neighbouring steps of a `calc` claim about each other (third slot).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum CalcKind {
+    /// Empty slot: every step is the same function rewritten (neighbours equal).
+    Transform,
+    /// `integral`: the second step is an antiderivative of the first (its derivative is
+    /// the first; a constant difference is allowed); later steps rewrite the second.
+    Integral,
+    /// `limit`: not verified numerically (marked "검증 안 됨").
+    Limit,
+}
+
+impl CalcKind {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "integral" => Self::Integral,
+            "limit" => Self::Limit,
+            _ => return None,
+        })
+    }
+}
+
+/// `C: calc(f, g, h; x > 0; integral)` resolved for the browser (stage 5c).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CalcSpec {
+    pub kind: CalcKind,
+    /// Step definitions in order (two or more, distinct).
+    pub steps: Vec<String>,
+    /// The steps' shared input (`x`, `\theta`).
+    pub input: Ident,
+    /// Range slot: a region over the input; verification points are taken inside it.
+    pub range: Option<Expr>,
+    /// Verification interval from the range (constant expressions); `None` = the default
+    /// on that side.
+    pub lo: Option<Expr>,
+    pub hi: Option<Expr>,
+    /// Coordinate system of the steps (the first step's).
+    pub polar: bool,
+    pub axes: Vec<Ident>,
+    /// Changed parts between neighbours (`diffs[i]`: steps i and i + 1), from comparing
+    /// their ASTs. Refreshed when a step changes.
+    pub diffs: Vec<StepDiff>,
+    /// Break candidates of every step (verification points keep away from them).
+    pub candidates: Vec<BreakCandidate>,
+}
+
+/// Node ids (Sum term ids included) that differ between two neighbouring step bodies.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct StepDiff {
+    /// In the earlier step: parts that were replaced or removed.
+    pub before: Vec<u32>,
+    /// In the later step: parts that are new.
+    pub after: Vec<u32>,
+}
+
 /// `lo < hi`, both constant expressions (numbers and constants only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -280,6 +346,7 @@ impl Function {
             DefKind::Equation => Some((false, self.inputs.iter().collect())),
             DefKind::Polar => Some((true, vec![self.output.as_ref()?, self.inputs.first()?])),
             DefKind::Feature => self.feature.as_ref().map(|f| (f.polar, f.axes.iter().collect())),
+            DefKind::Calc => self.calc.as_ref().map(|c| (c.polar, c.axes.iter().collect())),
             _ => None,
         }
     }

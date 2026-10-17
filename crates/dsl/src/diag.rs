@@ -85,6 +85,8 @@ pub mod code {
     pub const DERIV: &str = "E-deriv";
     /// Feature-point slots: a filter word the kind does not have.
     pub const FEATURE: &str = "E-feature";
+    /// `calc` slots: a kind word that does not exist.
+    pub const CALC: &str = "E-calc";
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

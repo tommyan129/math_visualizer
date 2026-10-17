@@ -27,6 +27,7 @@ struct Rendered {
     warnings: Vec<Warning>,
     spans: Vec<SpanDim>,
     features: Vec<FeaturePoints>,
+    checks: Vec<CheckResult>,
 }
 
 struct Active {
@@ -145,10 +146,10 @@ impl Hub {
                     let _ = tx.send(reply);
                 }
             }
-            ClientMsg::Rendered { workspace, revision, warnings, spans, features } => {
+            ClientMsg::Rendered { workspace, revision, warnings, spans, features, checks } => {
                 let inner = self.inner.lock().unwrap();
                 if let Some(a) = inner.active.as_ref().filter(|a| a.conn == c.id) {
-                    a.rendered.send_replace(Some(Rendered { workspace, revision, warnings, spans, features }));
+                    a.rendered.send_replace(Some(Rendered { workspace, revision, warnings, spans, features, checks }));
                 }
             }
         }
@@ -212,6 +213,7 @@ impl Hub {
                 warnings: r.as_ref().map(|r| r.warnings.clone()).unwrap_or_default(),
                 spans: r.as_ref().map(|r| r.spans.clone()).unwrap_or_default(),
                 features: r.as_ref().map(|r| r.features.clone()).unwrap_or_default(),
+                checks: r.as_ref().map(|r| r.checks.clone()).unwrap_or_default(),
             },
             // Tab closed or taken over while waiting.
             Ok(Err(_)) => Browser::NotConnected,
@@ -220,6 +222,8 @@ impl Hub {
     }
 
     /// Sends `request` to the active tab if it shows `workspace`, and waits for the reply.
+    // The error is always one of the small `Browser` variants (not connected, timeout).
+    #[allow(clippy::result_large_err)]
     async fn ask(&self, workspace: &str, request: ServerRequest, wait: Duration) -> Result<BrowserReply, Browser> {
         let (id, rx) = {
             let mut inner = self.inner.lock().unwrap();
@@ -247,7 +251,7 @@ impl Hub {
     /// Asks the active tab for its current scene, view and warnings.
     pub async fn get_view(&self, workspace: &str) -> Browser {
         match self.ask(workspace, ServerRequest::GetView {}, VIEW_WAIT).await {
-            Ok(BrowserReply::View { workspace: w, view, warnings, spans, features, .. }) if w == workspace => Browser::View { view, warnings, spans, features },
+            Ok(BrowserReply::View { workspace: w, view, warnings, spans, features, checks, .. }) if w == workspace => Browser::View { view, warnings, spans, features, checks },
             Ok(_) => Browser::OtherWorkspace,
             Err(b) => b,
         }

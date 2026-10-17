@@ -164,6 +164,50 @@ define:
     Tp: tangents(card;; horizontal)
 ";
 
+/// Stage 5c: calculation steps and Claude's derivatives / inverses to verify
+/// (`web/test/fixtures/verify.json`).
+const VERIFY: &str = "\
+define:
+    f(x) -> y: (x+1)^2 - (x-1)^2
+    g(x) -> y: (x^2 + 2*x + 1) - (x^2 - 2*x + 1)
+    h(x) -> y: 4*x
+    C: calc(f, g, h)
+    hb(x) -> y: 4*x + 1
+    Cb: calc(f, hb)
+    s1(x) -> y: sqrt(x^2)
+    s2(x) -> y: x
+    Cs: calc(s1, s2; x > 0)
+    Cn: calc(s1, s2)
+    l1(x) -> y: ln(x^2)
+    l2(x) -> y: 2*ln(x)
+    Cl: calc(l1, l2)
+    p(x) -> y: x^2
+    P1(x) -> y: x^3/3 + 7
+    Ci: calc(p, P1;; integral)
+    P2(x) -> y: x^3/2
+    Cw: calc(p, P2;; integral)
+    Cm: calc(f, h;; limit)
+    cu(x; a) -> y: a*x^3
+    cu@1(x; a) -> y: 3*a*x^2
+    cu@2(x; a) -> y: 6*x
+    w(x) -> y: sin(x)
+    w@1(x) -> y: sin(x)
+    e(x) -> y: exp(x)
+    ~e(x) -> y: ln(x)
+    q(x) -> y: x^2
+    ~q(x) -> y: sqrt(x)
+    qb(x) -> y: x^2
+    ~qb(x) -> y: x/2
+    pp(\\theta) -> polar(r): 2*sin(\\theta)*cos(\\theta)
+    pq(\\theta) -> polar(r): sin(2*\\theta)
+    Cp: calc(pp, pq)
+    du(x) -> y: x^4
+    du@3(x) -> y: 24*x
+    nf(x) -> y: 1/x
+    nn(x) -> y: sqrt(-1 - x^2)
+    Cu: calc(nf, nn)
+";
+
 #[test]
 fn write_web_fixtures() {
     let src = format!("define:\n{}", DEFS.iter().map(|d| format!("    {d}\n")).collect::<String>());
@@ -179,4 +223,8 @@ fn write_web_fixtures() {
     let features = apply(&State::default(), FEATURES, &Limits::default(), 1).unwrap_or_else(|d| panic!("{d:?}")).state;
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/features.json");
     std::fs::write(out, serde_json::to_string_pretty(&features).unwrap()).unwrap();
+
+    let verify = apply(&State::default(), VERIFY, &Limits::default(), 1).unwrap_or_else(|d| panic!("{d:?}")).state;
+    let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/test/fixtures/verify.json");
+    std::fs::write(out, serde_json::to_string_pretty(&verify).unwrap()).unwrap();
 }

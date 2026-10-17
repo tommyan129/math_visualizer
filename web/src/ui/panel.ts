@@ -2,6 +2,7 @@
 // Definitions: checkbox + expression (function name in its graph color), warnings below.
 // Constants: one card each; drag updates locally, release sends the final value.
 
+import type { CheckResult } from "../generated/CheckResult";
 import type { Constant } from "../generated/Constant";
 import type { Function as Fn } from "../generated/Function";
 import type { Highlight } from "../generated/Highlight";
@@ -13,7 +14,7 @@ import { FEATURE_WORD, pointText } from "../canvas/featureText";
 import { resolveHighlights, sortedHighlights } from "../canvas/highlight";
 import { colorOf } from "../canvas/plot";
 import { activeClip, concealedAt, visibleAt } from "../canvas/scene";
-import { exprTex, functionTex, identTex, isVectorName, latexCtx, type LatexCtx } from "../math/latex";
+import { calcTex, exprTex, functionTex, identTex, isVectorName, latexCtx, type LatexCtx } from "../math/latex";
 import { texElement } from "../math/mathjax";
 import { h, icon, ICONS } from "./dom";
 
@@ -47,7 +48,18 @@ export interface PanelView {
   /** Points a feature definition found; undefined before it is computed. */
   features(key: string): CurveResult | undefined;
   coordLabels(key: string): boolean;
+  /** Numeric verification results of a calc, `f@n` or `~f` (stage 5c). */
+  checks(key: string): CheckResult[];
 }
+
+/** Mark and word per verification status. */
+const CHECK_WORD: Record<CheckResult["status"], [string, string]> = {
+  Match: ["✓", "일치"],
+  Mismatch: ["✗", "불일치"],
+  Conditional: ["△", "조건부 일치"],
+  Unverifiable: ["?", "검증 불가"],
+  NotVerified: ["–", "검증 안 됨"],
+};
 
 /** Most feature points listed under a definition. */
 const FEATURE_LIST_MAX = 8;
@@ -279,7 +291,7 @@ export class Panel {
   private sceneWarn = h("div", { class: "scene-warn" });
   private others = h("div", { class: "hint others" });
   private clipSrc = "";
-  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [], spanDim: () => undefined, features: () => undefined, coordLabels: () => true };
+  private v: PanelView = { state: null, scene: null, step: 0, hasKey: false, warnings: () => [], sceneWarnings: [], spanDim: () => undefined, features: () => undefined, coordLabels: () => true, checks: () => [] };
 
   constructor(private actions: PanelActions) {
     this.clipBox.append(this.clipInput, this.clipReset);
@@ -431,7 +443,7 @@ export class Panel {
     this.others.hidden = elsewhere === 0 || !this.v.scene;
     // Re-render only when something visible changed (MathJax output is cached anyway).
     const nodes = state ? resolveHighlights(state, hidden).nodeColors : new Map<string, Map<number, string>>();
-    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])], this.v.spanDim(f.key), this.v.features(f.key)?.points, this.v.coordLabels(f.key)])]);
+    const key = JSON.stringify([this.v.scene?.key, fns.map((f) => [f.key, f.version, f.color, hidden.has(f.key), warnings(f.key).map((w) => w.message), [...(nodes.get(f.key) ?? [])], this.v.spanDim(f.key), this.v.features(f.key)?.points, this.v.coordLabels(f.key), this.v.checks(f.key), this.calcCount(f)])]);
     if (key === this.defKey) return;
     this.defKey = key;
     const base = latexCtx(all, colorOf);
@@ -453,9 +465,10 @@ export class Panel {
     }
     const dim = f.kind === "Span" && visible ? this.v.spanDim(f.key) : undefined;
     const badge = dim !== undefined ? h("span", { class: "span-dim" }, `${SPAN_DIM[dim] ?? `${dim}차원`} · ${dim}차원`) : f.kind === "Feature" && visible ? this.featureLine(f) : null;
+    const checks = this.checkLine(f);
     let math: Node;
     try {
-      math = texElement(functionTex(f, ctx));
+      math = texElement(f.kind === "Calc" && this.v.state ? calcTex(f, this.v.state.functions, ctx, this.calcCount(f)) : functionTex(f, ctx));
     } catch {
       math = document.createTextNode(f.key);
     }
@@ -463,8 +476,36 @@ export class Panel {
       "div",
       { class: `def${visible ? "" : " off"}`, title: `${f.key}: ${f.body_src}` },
       box,
-      h("div", { class: "body-col" }, h("label", { class: "math", for: id }, math), badge, ...warns.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message))),
+      h("div", { class: "body-col" }, h("label", { class: "math", for: id }, math), badge, checks, ...warns.map((w) => h("span", { class: "warning" }, icon(ICONS.warn), w.message))),
     );
+  }
+
+  /**
+   * Lines of a calc to show: up to the last step shown in the scene, so turning steps on
+   * in scene steps reveals the calculation line by line; all when none is shown.
+   */
+  private calcCount(f: Fn): number {
+    const steps = f.calc?.steps ?? [];
+    let last = -1;
+    steps.forEach((k, i) => {
+      if (this.shown(k)) last = i;
+    });
+    return last < 0 ? steps.length : last + 1;
+  }
+
+  /** `✓ f → g 일치 · ✗ g → h 불일치 (x = 0.7)` under a calc, `f@n` or `~f`. */
+  private checkLine(f: Fn): HTMLElement | null {
+    // A calc shows the checks of the lines revealed so far.
+    const count = this.calcCount(f);
+    const cs = this.v.checks(f.key).filter((c) => c.pair === null || c.pair + 1 < count);
+    if (cs.length === 0) return null;
+    const items = cs.map((c) => {
+      const [mark, word] = CHECK_WORD[c.status];
+      const what = f.kind === "Calc" ? `${c.a} → ${c.b} ` : c.kind === "Deriv" ? "수치 미분과 " : c.kind === "Inverse" ? `${c.a}(${c.b}(x)) = x ` : "";
+      const at = c.counter ? ` (${f.inputs[0]?.key.replace(/^\\/, "") ?? "x"} = ${+c.counter.x.toPrecision(4)})` : "";
+      return h("span", { class: `check ${c.status.toLowerCase()}` }, `${mark} ${what}${word}${at}`);
+    });
+    return h("span", { class: "checks" }, ...items);
   }
 
   /** `극대 (−1, 2) · 극소 (1, −2)` and the coordinate-label switch. */

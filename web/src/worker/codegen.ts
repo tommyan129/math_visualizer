@@ -449,6 +449,9 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
     case "Feature":
       // Found by the worker (`features.ts`); the table entry is set there.
       return base;
+    case "Calc":
+      // Not evaluated: its steps are (`verify.ts`).
+      return base;
     case "Parametric":
     case "Polar":
     case "Equation":

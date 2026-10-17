@@ -85,8 +85,14 @@ pub fn builtin_arity(name: &str) -> Option<&'static [usize]> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    builtin_arity(name).is_some() || BIG_OPS.contains(&name) || is_linalg(name) || feature(name).is_some()
+    builtin_arity(name).is_some() || BIG_OPS.contains(&name) || is_linalg(name) || feature(name).is_some() || name == CALC
 }
+
+/// Calculation steps (stage 5c), only the body of a definition (`C: calc(f, g, h)`).
+pub const CALC: &str = "calc";
+
+/// Kind words of `calc`'s third slot: empty = expression transform.
+pub const CALC_KINDS: &[&str] = &["integral", "limit"];
 
 /// Replacement for a LaTeX command that is not a name (structure commands, operators).
 pub fn tex_command_suggestion(cmd: &str) -> Option<&'static str> {

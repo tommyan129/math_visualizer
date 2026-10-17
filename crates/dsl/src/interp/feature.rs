@@ -231,7 +231,7 @@ impl<'s> Cx<'s> {
 
     /// Candidate expressions from the target's AST, callees inlined (their input replaced
     /// by the argument), each in the target's input.
-    fn break_candidates(&self, target: &str) -> Vec<BreakCandidate> {
+    pub(super) fn break_candidates(&self, target: &str) -> Vec<BreakCandidate> {
         let f = &self.state.functions[target];
         let mut out: Vec<BreakCandidate> = vec![];
         let mut seen: Vec<String> = vec![];
@@ -376,7 +376,7 @@ fn mentions_input(e: &Expr) -> bool {
     found
 }
 
-fn uses_only_input(e: &Expr, input: &str) -> bool {
+pub(super) fn uses_only_input(e: &Expr, input: &str) -> bool {
     let mut ok = true;
     e.walk(&mut |n| {
         if let ExprKind::Name { name, kind: NameKind::Input } = &n.kind {
@@ -406,7 +406,7 @@ fn literal_exponent(e: &Expr) -> Option<(i64, i64)> {
 
 /// Search interval from a range: `lo < x < hi`, `x > lo`, `and` of those. Bounds are the
 /// sides that do not mention the input. Anything else (`or`, `not`) gives no bounds.
-fn bounds(r: &Expr, input: &str) -> (Option<Expr>, Option<Expr>) {
+pub(super) fn bounds(r: &Expr, input: &str) -> (Option<Expr>, Option<Expr>) {
     let is_x = |e: &Expr| matches!(&e.kind, ExprKind::Name { name, kind: NameKind::Input } if name.key == input);
     let free = |e: &Expr| !mentions_input(e);
     match &r.kind {

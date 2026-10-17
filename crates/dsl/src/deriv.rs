@@ -394,6 +394,7 @@ impl Deriv<'_> {
             ExprKind::Compare { .. } | ExprKind::Not { .. } | ExprKind::And { .. } | ExprKind::Or { .. } => return fail("부등식"),
             ExprKind::Address { .. } | ExprKind::Error {} => return fail("주소"),
             ExprKind::Feature { callee, .. } => return fail(callee.key.clone()),
+            ExprKind::Calc { .. } => return fail("calc"),
         })
     }
 

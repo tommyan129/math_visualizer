@@ -6,6 +6,7 @@ mod stage3;
 mod stage4;
 mod stage5;
 mod stage5b;
+mod stage5c;
 
 fn run(state: &State, src: &str) -> Result<Applied, Vec<Diagnostic>> {
     apply(state, src, &Limits::default(), 1)

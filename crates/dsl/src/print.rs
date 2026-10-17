@@ -115,6 +115,16 @@ fn print(e: &Expr) -> String {
             }
             format!("{}({s})", callee.key)
         }
+        ExprKind::Calc { steps, range, kind } => {
+            let mut s = steps.iter().map(expr_dsl).collect::<Vec<_>>().join(", ");
+            match (range, kind) {
+                (Some(r), Some(k)) => s.push_str(&format!("; {}; {k}", expr_dsl(r))),
+                (Some(r), None) => s.push_str(&format!("; {}", expr_dsl(r))),
+                (None, Some(k)) => s.push_str(&format!(";; {k}")),
+                (None, None) => {}
+            }
+            format!("calc({s})")
+        }
         // One line per piece, unindented (`Function::source` indents).
         ExprKind::Split { name, subject, at, pieces } => {
             let name = name.as_ref().map_or(String::new(), |n| format!("{} = ", n.key));

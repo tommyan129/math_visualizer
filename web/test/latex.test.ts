@@ -3,7 +3,8 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
-import { definitionTex, exprTex, functionTex, identTex, latexCtx } from "../src/math/latex";
+import verifyFixture from "./fixtures/verify.json";
+import { calcTex, definitionTex, DIFF_COLOR, exprTex, functionTex, identTex, latexCtx } from "../src/math/latex";
 
 const state = fixture as unknown as State;
 const ctx = { colors: new Map<string, string>() };
@@ -93,5 +94,34 @@ describe("family notation", () => {
   it("Ш with the index range and the body in braces", () => {
     expect(functionTex(state.functions["Oc"]!, ctx)).toBe("\\mathit{Oc}\\colon\\; \\Sha_{j=1}^{3} \\left\\{ {x}^{2} + {y}^{2} = {j}^{2} \\right\\}");
     expect(functionTex(state.functions["Dv"]!, ctx)).toContain("\\mathit{Dv}\\left(t\\right) = \\Sha_{j=0}^{n} \\left\\{ \\left(j, t\\right) \\right\\}");
+  });
+});
+
+describe("calculation steps (stage 5c)", () => {
+  const vs = verifyFixture as unknown as State;
+  const c = vs.functions["C"]!;
+  const n = parseInt(DIFF_COLOR.slice(1), 16);
+  const colored = `\\textcolor[RGB]{${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}}`;
+  const lines = (count: number) => calcTex(c, vs.functions, ctx, count).split(" \\\\ ");
+
+  it("aligned lines, the first with the head", () => {
+    const t = calcTex(c, vs.functions, ctx, 3);
+    expect(t.startsWith("C\\colon\\; \\begin{aligned} f\\left(x\\right) &= ")).toBe(true);
+    expect(lines(3).length).toBe(3);
+    expect(t).toContain("&= ");
+  });
+
+  it("colors only what changed from the previous line", () => {
+    // Both squares were expanded: two colored groups, nothing in the first line.
+    expect(lines(2)[1]!.split(colored).length - 1).toBe(2);
+    expect(lines(2)[0]!).not.toContain(colored);
+  });
+
+  it("shows only the steps revealed so far", () => {
+    expect(lines(1).length).toBe(1);
+  });
+
+  it("integral relation on the first arrow", () => {
+    expect(calcTex(vs.functions["Ci"]!, vs.functions, ctx, 2)).toContain("\\xrightarrow{\\int}");
   });
 });

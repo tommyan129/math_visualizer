@@ -328,7 +328,7 @@ impl<'a> Parser<'a> {
             Tok::Int | Tok::Decimal => Ok(self.number()),
             Tok::Ident if names::BIG_OPS.contains(&self.peek_text()) && self.peek_at(1) == Tok::LParen => self.big_op(),
             Tok::Ident if self.peek_text() == "arrow" && self.peek_at(1) == Tok::LParen => self.arrow(),
-            Tok::Ident if names::feature(self.peek_text()).is_some() && self.peek_at(1) == Tok::LParen => self.feature_call(),
+            Tok::Ident if (names::feature(self.peek_text()).is_some() || self.peek_text() == names::CALC) && self.peek_at(1) == Tok::LParen => self.feature_call(),
             Tok::Ident | Tok::TexName | Tok::Tilde => {
                 let (name, span) = self.name()?;
                 if self.at(Tok::LParen) {
@@ -428,7 +428,8 @@ impl<'a> Parser<'a> {
     }
 
     /// `extrema(f)`, `roots(f; -1 < x < 1)`, `extrema(f;; max)`, `intersect(f, y = x)`:
-    /// targets; range; filter word. Empty slots allowed; at most three.
+    /// targets; range; filter word. Empty slots allowed; at most three. `calc(f, g, h;
+    /// x > 0; integral)` (stage 5c) uses the same slots: steps; range; kind word.
     fn feature_call(&mut self) -> PResult<Expr> {
         let (callee, head) = self.name()?;
         self.expect(Tok::LParen, "'('")?;
@@ -460,11 +461,18 @@ impl<'a> Parser<'a> {
                 filter = Some(self.name()?.0.key);
             }
         }
+        let calc = callee.key == names::CALC;
         if self.at(Tok::Semi) {
+            if calc {
+                return self.error_here(code::SYNTAX, "calc 칸은 세 개까지 (단계; 범위; 종류)", Some("calc(f, g; x > 0; integral)"));
+            }
             let form = format!("{}(f; -1 < x < 1; 종류)", callee.key);
             return self.error_here(code::SYNTAX, "특징점 칸은 세 개까지 (대상; 범위; 종류)", Some(&form));
         }
         let end = self.expect(Tok::RParen, "')'")?;
+        if calc {
+            return Ok(Expr::new(ExprKind::Calc { steps: args, range, kind: filter }, head.to(end)));
+        }
         Ok(Expr::new(ExprKind::Feature { callee, args, range, filter }, head.to(end)))
     }
 
@@ -715,6 +723,12 @@ mod tests {
                 range.as_ref().map_or(String::new(), |r| sx(r)),
                 filter.as_deref().unwrap_or("")
             ),
+            ExprKind::Calc { steps, range, kind } => format!(
+                "(calc {}; {}; {})",
+                steps.iter().map(sx).collect::<Vec<_>>().join(" "),
+                range.as_ref().map_or(String::new(), |r| sx(r)),
+                kind.as_deref().unwrap_or("")
+            ),
             ExprKind::Error {} => "ERR".into(),
         }
     }
@@ -864,6 +878,22 @@ mod tests {
         assert_eq!(errs("extrema(f; x > 0; max; 1)"), vec![code::SYNTAX]);
         assert_eq!(errs("roots(f x)"), vec![code::IMPLICIT_MUL]);
         assert_eq!(errs("roots(f;"), vec![code::SYNTAX]);
+    }
+
+    #[test]
+    fn calc_calls() {
+        assert_eq!(ok("calc(f, g, h)"), "(calc f g h; ; )");
+        assert_eq!(ok("calc(f, F;; integral)"), "(calc f F; ; integral)");
+        assert_eq!(ok("calc(f, g; x > 0)"), "(calc f g; (cmp x Gt 0); )");
+        assert_eq!(ok("calc(f, F; 0 < x < 3; integral)"), "(calc f F; (cmp 0 Lt x Lt 3); integral)");
+        assert_eq!(ok("calc(f@1, g)"), "(calc f@1 g; ; )");
+    }
+
+    #[test]
+    fn calc_call_errors() {
+        assert_eq!(errs("calc(f, g; x > 0; integral; 1)"), vec![code::SYNTAX]);
+        assert_eq!(suggestion("calc(f, g; x > 0; integral; 1)"), "calc(f, g; x > 0; integral)");
+        assert_eq!(errs("calc(f, g"), vec![code::SYNTAX]);
     }
 
     #[test]

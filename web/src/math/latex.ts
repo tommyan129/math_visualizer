@@ -290,6 +290,12 @@ function nodeTex(e: Expr, ctx: LatexCtx, script: boolean): string {
       if (e.filter) slots.push(`\\text{${e.filter.replace(/[^A-Za-z]/g, "")}}`);
       return `\\operatorname{${e.callee.key.replace(/[^A-Za-z]/g, "")}}${paren(slots.join(";\\, "))}`;
     }
+    case "Calc": {
+      const slots = [e.steps.map((a) => go(a)).join(", ")];
+      if (e.range || e.kind) slots.push(e.range ? go(unparen(e.range)) : "");
+      if (e.kind) slots.push(`\\text{${e.kind.replace(/[^A-Za-z]/g, "")}}`);
+      return `\\operatorname{calc}${paren(slots.join(";\\, "))}`;
+    }
     default:
       return "\\text{?}";
   }
@@ -328,4 +334,30 @@ export function functionTex(f: Fn, ctx: LatexCtx): string {
   const t = identTex(f.inputs[0]);
   // The range goes on a line under the definition (beside it is too wide for the panel).
   return `\\begin{gathered} ${def} \\\\ \\scriptstyle ${exprTex(f.range.lo, ctx)} \\,\\le\\, ${t} \\,\\le\\, ${exprTex(f.range.hi, ctx)} \\end{gathered}`;
+}
+
+/** Color of the parts that changed from the previous calculation step. */
+export const DIFF_COLOR = "#ffcf5c";
+
+/**
+ * A calculation (`C: calc(f, g, h)`) as aligned lines: `f(x) = <f>`, `= <g>`, `= <h>`;
+ * each line after the first colors what changed from the line before (server diff).
+ * `count`: how many steps to show (a scene step reveals the next line).
+ */
+export function calcTex(f: Fn, fns: Record<string, Fn | undefined>, ctx: LatexCtx, count: number): string {
+  const c = f.calc;
+  if (!c) return identTex(f.name);
+  const steps = c.steps.slice(0, Math.max(1, count)).map((k) => fns[k]);
+  if (steps.some((s) => !s)) return identTex(f.name);
+  const first = steps[0]!;
+  const head = `${identTex(first.name, ctx.colors.get(first.key))}${paren(first.inputs.map((i) => identTex(i)).join(", "))}`;
+  // Integral / limit: the relation of the first two lines is not equality.
+  const rel = c.kind === "Integral" ? "\\xrightarrow{\\int}" : c.kind === "Limit" ? "\\xrightarrow{\\lim}" : "=";
+  const rows = steps.map((s, i) => {
+    const after = i > 0 ? (c.diffs[i - 1]?.after ?? []) : [];
+    const body = exprTex(s!.body, { ...ctx, nodes: new Map(after.map((id) => [id, DIFF_COLOR])) });
+    return `${i === 0 ? head : ""} &${i === 1 ? rel : "="} ${body}`;
+  });
+  // The calc's own name in front, as for equations (the first line repeats a step's head).
+  return `${identTex(f.name)}\\colon\\; \\begin{aligned} ${rows.join(" \\\\ ")} \\end{aligned}`;
 }
