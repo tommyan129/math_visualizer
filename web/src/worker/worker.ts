@@ -45,7 +45,8 @@ export interface CurveResult {
   key: string;
   /**
    * `span`: a point (dim 0), a two-point polyline (dim 1) or a polygon ring covering the
-   * computed area (dim 2). `arrow`: tail and head. `features`: the points in `points`.
+   * computed area (dim 2). `arrow`: tail and head of each arrow (one per `family` copy,
+   * each its own piece). `features`: the points in `points`.
    */
   kind: "polyline" | "points" | "span" | "arrow" | "features";
   /** Feature points found (features only). */
@@ -95,7 +96,7 @@ export type Item3 =
   | { key: string; kind: "lines"; line: LineData }
   /** dim 0: the origin; 1: the line's two ends in the box; 2: the plane's polygon in the box; 3: the whole box. */
   | { key: string; kind: "span"; dim: 0 | 1 | 2 | 3; origin: [number, number, number]; positions: Float32Array }
-  /** Tail and head. */
+  /** Tail and head of each arrow (one per `family` copy). */
   | { key: string; kind: "arrow"; origin: [number, number, number]; positions: Float32Array };
 
 export type FromWorker =
@@ -265,7 +266,7 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
       continue;
     }
     if (c.kind === "Span" || c.kind === "Arrow") {
-      const r = c.kind === "Span" ? spanGeometry(key, c.vecs, C, range, origin) : arrowGeometry(key, c.vecs, C, origin);
+      const r = c.kind === "Span" ? spanGeometry(key, c.vecs, C, range, origin) : arrowGeometry(key, arrowCopies(key, c, C, warnings), C, origin);
       if (r) curves.push(r);
       else warnings.push({ source: key, code: "W-undefined", message: "벡터 값이 정의되지 않아 그리지 않음" });
       continue;
@@ -280,17 +281,8 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
     let kind: CurveResult["kind"];
     if (c.family) {
       // One copy per integer k, joined as pieces of one polyline batch.
-      const [a, b] = c.family.krange(C);
-      const lo = c.family.loStrict ? a! + 1 : a!, hi = c.family.hiStrict ? b! - 1 : b!;
-      const parts: Pieces[] = [];
+      const parts = familyCopies(key, c.family, C, warnings).map((m) => samplePieces(key, m, false, C, range, quality, warnings));
       truncated = false;
-      if (!Number.isInteger(lo) || !Number.isInteger(hi)) {
-        warnings.push({ source: key, code: "W-family-range", message: "family 범위 끝이 정수가 아니라 그리지 않음" });
-      } else {
-        const last = Math.min(hi, lo + MAX_FAMILY - 1);
-        if (hi > last) warnings.push({ source: key, code: "W-family-cap", message: `family 반복이 ${MAX_FAMILY}개를 넘어 앞의 ${MAX_FAMILY}개만 그림` });
-        for (let k = lo; k <= last; k++) parts.push(samplePieces(key, c.family.at(k), false, C, range, quality, warnings));
-      }
       const n = parts.reduce((s, p) => s + p.xs.length, 0);
       xs = new Float64Array(n);
       ys = new Float64Array(n);
@@ -324,6 +316,41 @@ function sample(id: number, keys: string[], C: Float64Array, range: SampleRange,
 
 /** Most copies one `family` definition draws. */
 const MAX_FAMILY = 500;
+
+/** The copies of a `family` definition at the current constants, at most `MAX_FAMILY`. */
+function familyCopies(key: string, fam: NonNullable<Compiled["family"]>, C: Float64Array, warnings: WorkerWarning[]): DrawnMembers[] {
+  const [a, b] = fam.krange(C);
+  const lo = fam.loStrict ? a! + 1 : a!, hi = fam.hiStrict ? b! - 1 : b!;
+  if (!Number.isInteger(lo) || !Number.isInteger(hi)) {
+    warnings.push({ source: key, code: "W-family-range", message: "family 범위 끝이 정수가 아니라 그리지 않음" });
+    return [];
+  }
+  const last = Math.min(hi, lo + MAX_FAMILY - 1);
+  if (hi > last) warnings.push({ source: key, code: "W-family-cap", message: `family 반복이 ${MAX_FAMILY}개를 넘어 앞의 ${MAX_FAMILY}개만 그림` });
+  const out: DrawnMembers[] = [];
+  for (let k = lo; k <= last; k++) out.push(fam.at(k));
+  return out;
+}
+
+/** An arrow's vectors (vector, start point), one set per copy of a `family`. */
+function arrowCopies(key: string, c: Compiled, C: Float64Array, warnings: WorkerWarning[]): Vec[][] {
+  return c.family ? familyCopies(key, c.family, C, warnings).map((m) => m.vecs ?? []) : [c.vecs];
+}
+
+/**
+ * Tail and head of each arrow (`dim` coordinates each), skipping undefined ones.
+ * Null when there were arrows and none is defined.
+ */
+function arrowPairs(copies: Vec[][], C: Float64Array, dim: 2 | 3): number[] | null {
+  const out: number[] = [];
+  for (const vecs of copies) {
+    const v = vecs[0]?.(C);
+    const p = vecs[1]?.(C) ?? new Array<number>(dim).fill(0);
+    if (!v || v.length !== dim || p.length !== dim || ![...v, ...p].every(Number.isFinite)) continue;
+    out.push(...p, ...p.map((x, i) => x + v[i]!));
+  }
+  return out.length || !copies.length ? out : null;
+}
 
 interface Pieces {
   xs: Float64Array;
@@ -374,13 +401,13 @@ function spanGeometry(key: string, vecs: Vec[], C: Float64Array, range: SampleRa
   return { key, kind: "span", dim: shape.dim, origin, coords: rel(xy, origin), offsets: Uint32Array.of(0, xy.length / 2) };
 }
 
-/** `arrow(v)` from the origin, `arrow(v; P)` from P. */
-function arrowGeometry(key: string, vecs: Vec[], C: Float64Array, origin: [number, number]): CurveResult | null {
-  const v = vecs[0]?.(C);
-  const p = vecs[1]?.(C) ?? [0, 0];
-  if (!v || v.length !== 2 || p.length !== 2 || ![...v, ...p].every(Number.isFinite)) return null;
-  const xy = [p[0]!, p[1]!, p[0]! + v[0]!, p[1]! + v[1]!];
-  return { key, kind: "arrow", origin, coords: rel(xy, origin), offsets: Uint32Array.of(0, 2) };
+/** `arrow(v)` from the origin, `arrow(v; P)` from P; a `family` gives one per copy. */
+function arrowGeometry(key: string, copies: Vec[][], C: Float64Array, origin: [number, number]): CurveResult | null {
+  const xy = arrowPairs(copies, C, 2);
+  if (!xy) return null;
+  // One two-point piece per arrow (hover snaps along each).
+  const offsets = Uint32Array.from({ length: xy.length / 4 + 1 }, (_, i) => 2 * i);
+  return { key, kind: "arrow", origin, coords: rel(xy, origin), offsets };
 }
 
 /** Geometry of 3D definitions over the box (stage 6a). */
@@ -413,12 +440,11 @@ function sample3d(id: number, keys: string[], C: Float64Array, box: Box3, qualit
       continue;
     }
     if (c.kind === "Arrow") {
-      const v = c.vecs[0]?.(C), p = c.vecs[1]?.(C) ?? [0, 0, 0];
-      if (!v || v.length !== 3 || p.length !== 3 || ![...v, ...p].every(Number.isFinite)) {
+      const xyz = arrowPairs(arrowCopies(key, c, C, warnings), C, 3);
+      if (!xyz) {
         warnings.push({ source: key, code: "W-undefined", message: "벡터 값이 정의되지 않아 그리지 않음" });
         continue;
       }
-      const xyz = [p[0]!, p[1]!, p[2]!, p[0]! + v[0]!, p[1]! + v[1]!, p[2]! + v[2]!];
       items.push({ key, kind: "arrow", origin, positions: Float32Array.from(xyz.map((x, i) => x - origin[i % 3]!)) });
       continue;
     }
@@ -426,17 +452,7 @@ function sample3d(id: number, keys: string[], C: Float64Array, box: Box3, qualit
       warnings.push({ source: key, code: "W-budget", message: "장면 정점 예산을 넘어 그리지 않음" });
       continue;
     }
-    const copies: DrawnMembers[] = [];
-    if (c.family) {
-      const [a, b] = c.family.krange(C);
-      const lo = c.family.loStrict ? a! + 1 : a!, hi = c.family.hiStrict ? b! - 1 : b!;
-      if (!Number.isInteger(lo) || !Number.isInteger(hi)) warnings.push({ source: key, code: "W-family-range", message: "family 범위 끝이 정수가 아니라 그리지 않음" });
-      else {
-        const last = Math.min(hi, lo + MAX_FAMILY - 1);
-        if (hi > last) warnings.push({ source: key, code: "W-family-cap", message: `family 반복이 ${MAX_FAMILY}개를 넘어 앞의 ${MAX_FAMILY}개만 그림` });
-        for (let k = lo; k <= last; k++) copies.push(c.family.at(k));
-      }
-    } else copies.push(c);
+    const copies: DrawnMembers[] = c.family ? familyCopies(key, c.family, C, warnings) : [c];
     R.capped = false;
     R.overlap = false;
     const meshes: MeshData[] = [];

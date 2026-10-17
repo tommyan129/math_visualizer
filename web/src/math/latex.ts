@@ -20,7 +20,8 @@ export interface LatexCtx {
 
 /** A definition whose name stands for a vector: a vector value or an arrow. */
 export function isVectorName(f: Fn): boolean {
-  return (f.kind === "Value" && f.ty.type === "Vector") || f.kind === "Arrow";
+  // A `family` of arrows is a set of vectors, not one.
+  return (f.kind === "Value" && f.ty.type === "Vector") || (f.kind === "Arrow" && !f.family);
 }
 
 /** Coloring and vector arrows for the given definitions. */

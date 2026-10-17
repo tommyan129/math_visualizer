@@ -26,7 +26,7 @@ describe("scene model", () => {
     expect(state.scenes["polar(r, \\theta)"]!.polar).toBe(true);
     expect(sceneAxes(sc)[0]).toEqual(["t", "y"]);
     // Length-2 spans and arrows fit every 2D system.
-    expect(sc.members).toEqual(["wave", "Sp", "Sl", "Sz", "Ar", "H7"]);
+    expect(sc.members).toEqual(["wave", "Sp", "Sl", "Sz", "Ar", "H7", "Af"]);
   });
 
   it("visibility: user override, else the step's state", () => {

@@ -248,9 +248,9 @@ impl<'s> Cx<'s> {
     /// (the caller pops it after the body and range). False when the index name clashes.
     /// The index is pushed in every case.
     pub(super) fn open_family(&mut self, h: &FamilyHead, kind: DefKind, sc: &mut Scope) -> bool {
-        if !matches!(kind, DefKind::Curve | DefKind::Parametric | DefKind::Polar | DefKind::Equation) {
+        if !matches!(kind, DefKind::Curve | DefKind::Parametric | DefKind::Polar | DefKind::Equation | DefKind::Arrow) {
             // Reported once; the index still goes in scope so the body adds no errors.
-            self.err(h.range_span, code::TYPE, format!("family는 그리는 함수(곡선, 매개변수, 극좌표, 방정식)에만 씀 ({}에는 쓸 수 없음)", kind.word()));
+            self.err(h.range_span, code::TYPE, format!("family는 그리는 정의(곡선, 매개변수, 극좌표, 방정식, arrow)에만 씀 ({}에는 쓸 수 없음)", kind.word()));
             sc.indices.push(h.index.key.clone());
             return true;
         }

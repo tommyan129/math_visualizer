@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
 import verifyFixture from "./fixtures/verify.json";
-import { calcTex, definitionTex, DIFF_COLOR, exprTex, functionTex, identTex, latexCtx } from "../src/math/latex";
+import { calcTex, definitionTex, DIFF_COLOR, exprTex, functionTex, identTex, isVectorName, latexCtx } from "../src/math/latex";
 
 const state = fixture as unknown as State;
 const ctx = { colors: new Map<string, string>() };
@@ -94,6 +94,9 @@ describe("family notation", () => {
   it("Ш with the index range and the body in braces", () => {
     expect(functionTex(state.functions["Oc"]!, ctx)).toBe("\\mathit{Oc}\\colon\\; \\Sha_{j=1}^{3} \\left\\{ {x}^{2} + {y}^{2} = {j}^{2} \\right\\}");
     expect(functionTex(state.functions["Dv"]!, ctx)).toContain("\\mathit{Dv}\\left(t\\right) = \\Sha_{j=0}^{n} \\left\\{ \\left(j, t\\right) \\right\\}");
+    // A family of arrows is a set, so its name has no vector arrow.
+    expect(isVectorName(state.functions["Af"]!)).toBe(false);
+    expect(functionTex(state.functions["Af"]!, ctx)).toMatch(/^\\mathit\{Af\} = \\Sha_\{j=0\}\^\{n\} \\left\\\{ \\operatorname\{arrow\}/);
   });
 });
 

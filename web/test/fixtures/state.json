@@ -123,8 +123,174 @@
       "calls": [],
       "constraints": [],
       "derivs": [],
-      "color": 52,
-      "order": 67,
+      "color": 53,
+      "order": 68,
+      "version": 5
+    },
+    "Af": {
+      "key": "Af",
+      "name": {
+        "key": "Af",
+        "base": "Af",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Arrow",
+      "inputs": [],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "range2": null,
+      "family": {
+        "index": {
+          "key": "j",
+          "base": "j",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "lo_strict": false,
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Name",
+          "name": {
+            "key": "n",
+            "base": "n",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Constant"
+        },
+        "hi_strict": false,
+        "src": "0 <= j <= n"
+      },
+      "feature": null,
+      "calc": null,
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [
+        "n"
+      ],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Call",
+        "callee": {
+          "key": "arrow",
+          "base": "arrow",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              },
+              {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "j",
+                  "base": "j",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Index"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "ty": {
+              "type": "Vector",
+              "n": 2
+            },
+            "type": "List",
+            "items": [
+              {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "j",
+                  "base": "j",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Index"
+              },
+              {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "arrow([1, j]; [j, 0])",
+      "calls": [],
+      "constraints": [],
+      "derivs": [],
+      "color": 46,
+      "order": 61,
       "version": 5
     },
     "Ar": {
@@ -1356,8 +1522,8 @@
       "calls": [],
       "constraints": [],
       "derivs": [],
-      "color": 51,
-      "order": 66,
+      "color": 52,
+      "order": 67,
       "version": 5
     },
     "Sl": {
@@ -3440,8 +3606,8 @@
       "calls": [],
       "constraints": [],
       "derivs": [],
-      "color": 48,
-      "order": 63,
+      "color": 49,
+      "order": 64,
       "version": 5
     },
     "lg": {
@@ -5025,8 +5191,8 @@
       "calls": [],
       "constraints": [],
       "derivs": [],
-      "color": 50,
-      "order": 65,
+      "color": 51,
+      "order": 66,
       "version": 5
     },
     "poly": {
@@ -5958,8 +6124,8 @@
       "calls": [],
       "constraints": [],
       "derivs": [],
-      "color": 46,
-      "order": 61,
+      "color": 47,
+      "order": 62,
       "version": 5
     },
     "sph": {
@@ -6320,8 +6486,8 @@
       "calls": [],
       "constraints": [],
       "derivs": [],
-      "color": 49,
-      "order": 64,
+      "color": 50,
+      "order": 65,
       "version": 5
     },
     "sq": {
@@ -7430,8 +7596,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 47,
-      "order": 62,
+      "color": 48,
+      "order": 63,
       "version": 5
     },
     "usesharm": {
@@ -7851,7 +8017,8 @@
         "Sl",
         "Sz",
         "Ar",
-        "H7"
+        "H7",
+        "Af"
       ],
       "clip": {
         "expr": {
@@ -8837,7 +9004,7 @@
       "user_clip": null,
       "clip_off": false,
       "order": 49,
-      "version": 3
+      "version": 5
     },
     "2D(t, y)": {
       "key": "2D(t, y)",
@@ -8869,13 +9036,15 @@
         "Sl",
         "Sz",
         "Ar",
-        "H7"
+        "H7",
+        "Af"
       ],
       "clip": null,
       "view": null,
       "steps": [
         {
           "visible": {
+            "Af": true,
             "Ar": true,
             "Sl": true,
             "Sp": true,
@@ -8901,7 +9070,7 @@
       "user_clip": null,
       "clip_off": false,
       "order": 40,
-      "version": 3
+      "version": 5
     },
     "2D(x, y)": {
       "key": "2D(x, y)",
@@ -8975,6 +9144,7 @@
         "Hy",
         "Dv",
         "Oc",
+        "Af",
         "usesad"
       ],
       "clip": null,
@@ -8982,6 +9152,7 @@
       "steps": [
         {
           "visible": {
+            "Af": true,
             "Ar": true,
             "Ci": true,
             "Dv": true,
@@ -9120,7 +9291,7 @@
       "toggles": {},
       "user_clip": null,
       "clip_off": false,
-      "order": 70,
+      "order": 71,
       "version": 5
     },
     "polar(r, \\theta)": {
@@ -9175,7 +9346,7 @@
       "toggles": {},
       "user_clip": null,
       "clip_off": false,
-      "order": 69,
+      "order": 70,
       "version": 5
     }
   },
@@ -11186,7 +11357,7 @@
       },
       "src": "highlight(sad; x^2 + y^2 < 1)",
       "auto_color": "#ffa057",
-      "order": 68,
+      "order": 69,
       "version": 5
     }
   },
@@ -11260,8 +11431,8 @@
   },
   "requests": {},
   "counters": {
-    "next_order": 71,
-    "next_color": 53,
+    "next_order": 72,
+    "next_color": 54,
     "next_hl_color": 8,
     "next_request": 0
   }

@@ -1060,7 +1060,9 @@ export class Plot {
   }
 
   /** Name label just past an arrow's head, on the side it points to. */
+  /** Beyond the head of the (first) arrow. */
   private arrowLabel(c: CurveResult): { x: number; y: number; place: LabelPlacement } | null {
+    if (c.coords.length < 4) return null;
     const v = this.view;
     const [ox, oy] = c.origin;
     const hx = ox + c.coords[2]!, hy = oy + c.coords[3]!;

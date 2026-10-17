@@ -261,6 +261,27 @@ fn family_other_kinds() {
 }
 
 #[test]
+fn family_arrows() {
+    // A vector field on a grid: column mod(k, N), row floor(k/N).
+    let src = def(&["F(x, y) -> matrix: [-y, x]", "V(; N): family(arrow(F(mod(k, N) - N/2, floor(k/N) - N/2)/N; [mod(k, N) - N/2, floor(k/N) - N/2]); 0 <= k <= N^2 - 1)"]);
+    let a = run(&State::default(), &src).unwrap_or_else(|d| panic!("{d:?}"));
+    let v = &a.state.functions["V"];
+    assert_eq!(v.kind, DefKind::Arrow);
+    assert_eq!(v.vector_dim(), Some(2));
+    assert!(v.family.is_some());
+    assert!(a.state.constants["N"].integer);
+    assert_eq!(a.state.scenes[DEFAULT_SCENE].members, ["V"]);
+    // Length-3 arrows go to the 3D scene; the index may sit in the start point only.
+    let s = build(&[&def(&["W: family(arrow([0, 0, 1]; [k, 0, 0]); 0 <= k <= 3)"])]);
+    assert_eq!(s.scenes["3D(x, y, z)"].members, ["W"]);
+    assert_eq!(s.functions["W"].source(), "W: family(arrow([0, 0, 1]; [k, 0, 0]); 0 <= k <= 3)");
+    // The vector and the start point still need the same length.
+    assert_eq!(codes(&State::default(), &def(&["W: family(arrow([k, 1]; [0, 0, 0]); 0 <= k <= 3)"])), vec![code::SHAPE]);
+    // Still a drawn definition: not a value.
+    assert_eq!(codes(&s, &def(&["g(x) -> y: W_[1]"])), vec![code::TYPE]);
+}
+
+#[test]
 fn family_errors() {
     let s = State::default();
     // Missing index range, bad range, index clashing with an input, input in the bound.
@@ -270,6 +291,7 @@ fn family_errors() {
     assert!(codes(&s, &def(&["F(x) -> y: family(x + k; 0 <= k <= x)"])).contains(&code::BIG_OP_RANGE));
     // Only drawn functions repeat.
     assert_eq!(codes(&s, &def(&["v: family([k, 1]; 0 <= k <= 2)"])), vec![code::TYPE]);
+    assert_eq!(codes(&s, &def(&["S: family(span([k, 1]); 0 <= k <= 2)"])), vec![code::TYPE]);
     // A repeated definition is not a value.
     let s = build(&[&def(&["F(x) -> y: family(x + k; 0 <= k <= 3)"])]);
     assert_eq!(codes(&s, &def(&["g(x) -> y: F(x)"])), vec![code::TYPE]);

@@ -390,6 +390,14 @@ describe("family", () => {
     expect(m.trange!(C())).toEqual([0, 4]);
   });
 
+  it("arrows: the vector and the start point per k", () => {
+    const af = compiled.get("Af")!;
+    expect(af.family!.krange(C({ n: 4 }))).toEqual([0, 4]);
+    const [v, p] = af.family!.at(3).vecs!;
+    expect(Array.from(v!(C()))).toEqual([1, 3]);
+    expect(Array.from(p!(C()))).toEqual([3, 0]);
+  });
+
   it("concentric circles are three closed polylines", () => {
     const oc = compiled.get("Oc")!;
     for (const k of [1, 2, 3]) {

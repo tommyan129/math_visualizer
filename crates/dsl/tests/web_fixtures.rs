@@ -100,6 +100,7 @@ define:
     Hy(x, y): x*y = 1
     Dv(t; n) -> (x, y): family((j, t), 0 <= t <= quad(j); 0 <= j <= n)
     Oc(x, y): family(x^2 + y^2 = j^2; 1 <= j <= 3)
+    Af(; n): family(arrow([1, j]; [j, 0]); 0 <= j <= n)
     sad(x, y) -> z: x^2 - y^2
     usesad(x) -> y: sad(x, 1)
     hx(t; a) -> (x, y, z): (cos(t), sin(t), a*t), 0 <= t <= 4*\\pi

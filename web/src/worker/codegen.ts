@@ -463,8 +463,11 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
     case "Span":
     case "Arrow": {
       if (spec.body.type !== "Call") throw new CodegenError("span body");
-      const vecs = spec.body.args.map((a) => make(`(C) => ${expr(a, { ...env, axes: null, inputs: [] })}`) as Vec);
-      return { ...base, vecs };
+      const args = spec.body.args;
+      const vecsSource = (idx: string[]) => `[${args.map((a) => `(C) => ${expr(a, { ...env, axes: null, inputs: [] }, idx)}`).join(", ")}]`;
+      // A `family` of arrows: the vectors per integer k.
+      if (spec.family) return { ...base, family: familyMembers(spec.family, env, make, `{ vecs: ${vecsSource([spec.family.index])} }`) };
+      return { ...base, vecs: make(vecsSource([])) as Vec[] };
     }
     case "Feature":
       // Found by the worker (`features.ts`); the table entry is set there.
@@ -478,13 +481,7 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
     case "Curve":
       break;
   }
-  if (spec.family) {
-    // One set of members per integer k: a factory with k bound to `k0`.
-    const benv = { ...env, axes: null, inputs: [] };
-    const at = make(`(k0) => (${drawnSource(spec, env, [spec.family.index])})`) as (k: number) => DrawnMembers;
-    const krange = make(`(C) => [${expr(spec.family.lo, benv)}, ${expr(spec.family.hi, benv)}]`) as (C: Float64Array) => [number, number];
-    return { ...base, family: { at, krange, loStrict: spec.family.lo_strict, hiStrict: spec.family.hi_strict } };
-  }
+  if (spec.family) return { ...base, family: familyMembers(spec.family, env, make, drawnSource(spec, env, [spec.family.index])) };
   const m = make(drawnSource(spec, env, [])) as DrawnMembers;
   switch (spec.kind) {
     case "Parametric":
@@ -501,6 +498,14 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
   }
 }
 
+/** One set of members per integer k: a factory with k bound to `k0`. */
+function familyMembers(fam: NonNullable<FnSpec["family"]>, env: CodegenEnv, make: (src: string) => unknown, members: string): NonNullable<Compiled["family"]> {
+  const benv = { ...env, axes: null, inputs: [] };
+  const at = make(`(k0) => (${members})`) as (k: number) => DrawnMembers;
+  const krange = make(`(C) => [${expr(fam.lo, benv)}, ${expr(fam.hi, benv)}]`) as (C: Float64Array) => [number, number];
+  return { at, krange, loStrict: fam.lo_strict, hiStrict: fam.hi_strict };
+}
+
 /** What a drawn definition evaluates (per k for `family`). */
 export interface DrawnMembers {
   scalar?: Scalar;
@@ -513,6 +518,8 @@ export interface DrawnMembers {
   /** Parametric surfaces, with the second parameter's range. */
   param2?: Param2;
   trange2?: (C: Float64Array) => [number, number];
+  /** Arrows: the vector and the start point. */
+  vecs?: Vec[];
 }
 
 /** Object-literal source of a drawn definition's members; `idx` = the family index (→ `k0`). */

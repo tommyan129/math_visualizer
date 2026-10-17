@@ -680,7 +680,8 @@ export class Plot3D {
         const shaft = this.fatLines(Array.from(it.positions), color, LINE_PX);
         shaft.position.set(...it.origin);
         group.add(shaft);
-        labels.push({ at: new THREE.Vector3(it.positions[3]! + it.origin[0], it.positions[4]! + it.origin[1], it.positions[5]! + it.origin[2]), tex: nameTex, color, px: 22, dx: 10, dy: -10 });
+        // Beyond the head of the (first) arrow.
+        if (it.positions.length >= 6) labels.push({ at: new THREE.Vector3(it.positions[3]! + it.origin[0], it.positions[4]! + it.origin[1], it.positions[5]! + it.origin[2]), tex: nameTex, color, px: 22, dx: 10, dy: -10 });
         break;
     }
     this.world.add(group);
@@ -866,16 +867,19 @@ export class Plot3D {
       const it = o.item;
       const color = this.colorOf(k);
       if (it.kind === "arrow") {
+        // One head per arrow (a `family` has many).
         const p = it.positions, og = it.origin;
-        const tail = new THREE.Vector3(p[0]! + og[0], p[1]! + og[1], p[2]! + og[2]), head = new THREE.Vector3(p[3]! + og[0], p[4]! + og[1], p[5]! + og[2]);
-        const dir = head.clone().sub(tail);
-        const len = dir.length();
-        if (len < 1e-12) continue;
-        const h = Math.min(f * 0.045, len * 0.4);
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(h * 0.38, h, 18), new THREE.MeshLambertMaterial({ color, clippingPlanes: this.planes }));
-        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-        cone.position.copy(head.clone().sub(dir.clone().normalize().multiplyScalar(h / 2)));
-        this.marks.add(cone);
+        for (let i = 0; i + 5 < p.length; i += 6) {
+          const tail = new THREE.Vector3(p[i]! + og[0], p[i + 1]! + og[1], p[i + 2]! + og[2]), head = new THREE.Vector3(p[i + 3]! + og[0], p[i + 4]! + og[1], p[i + 5]! + og[2]);
+          const dir = head.clone().sub(tail);
+          const len = dir.length();
+          if (len < 1e-12) continue;
+          const h = Math.min(f * 0.045, len * 0.4);
+          const cone = new THREE.Mesh(new THREE.ConeGeometry(h * 0.38, h, 18), new THREE.MeshLambertMaterial({ color, clippingPlanes: this.planes }));
+          cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+          cone.position.copy(head.clone().sub(dir.clone().normalize().multiplyScalar(h / 2)));
+          this.marks.add(cone);
+        }
       } else if (it.kind === "span" && it.dim === 0) {
         const s = new THREE.Mesh(new THREE.SphereGeometry(f * 0.012, 16, 12), new THREE.MeshLambertMaterial({ color }));
         s.position.set(it.origin[0] + it.positions[0]!, it.origin[1] + it.positions[1]!, it.origin[2] + it.positions[2]!);
