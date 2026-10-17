@@ -226,6 +226,8 @@ pub enum BreakCause {
     Abs,
     /// split boundary (or `sign` argument = 0): jump candidate.
     Boundary,
+    /// `floor` / `ceil` / `mod` argument (`round` argument − 1/2) at an integer: jump candidates.
+    Step,
 }
 
 /// `lo < hi`, both constant expressions (numbers and constants only).

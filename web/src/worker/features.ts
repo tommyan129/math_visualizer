@@ -119,14 +119,14 @@ export function compileFeature(spec: FeatureSpec, env: CodegenEnv, R: Runtime, F
           break;
         case "Argmax":
         case "Argmin": {
-          const brk = breaks(f, cands.map((c) => (x: number) => c.fn(x, C)), a, b, n, yspan).map((p) => p.x);
+          const brk = breaks(f, cands.map((c) => ({ step: c.cause === "Step", g: (x: number) => c.fn(x, C) })), a, b, n, yspan).map((p) => p.x);
           const r = intervalExtreme(f, d[0]!, brk, a, b, n, tol, keep, spec.kind === "Argmax");
           if (typeof r === "string") return { points: [], capped: false, none: r };
           pts = r;
           break;
         }
         case "Breaks":
-          pts = breaks(f, cands.map((c) => (x: number) => c.fn(x, C)), a, b, n, yspan);
+          pts = breaks(f, cands.map((c) => ({ step: c.cause === "Step", g: (x: number) => c.fn(x, C) })), a, b, n, yspan);
           if (spec.filter) pts = pts.filter((p) => breakFilter(p.cls) === spec.filter);
           break;
         case "Tangents": {
@@ -374,7 +374,7 @@ function intervalExtreme(f: Fn1, d1: Fn1, brk: number[], a: number, b: number, n
   const limits: [number, number][] = [];
   for (const x0 of brk) {
     if (keep(x0)) xs.push(x0);
-    const s = Math.max(Math.abs(x0), b - a, 1e-12);
+    const s = probeScale(x0, brk, b - a);
     for (const dir of [-1, 1]) {
       if (x0 + dir * 1e-3 * s < a || x0 + dir * 1e-3 * s > b) continue;
       const v = sideLimit(f, x0, dir, s);
@@ -420,6 +420,42 @@ function sideLimit(f: Fn1, x0: number, dir: number, s: number): number {
   return Math.abs(r) < 1 ? last + (dl * r) / (1 - r) : last;
 }
 
+/**
+ * Scale for `sideLimit` at x0: the interval width (or |x0|), but small enough that the
+ * farthest probe (s·10⁻³) stays within a tenth of the gap to the nearest other break.
+ */
+function probeScale(x0: number, xs: number[], w: number): number {
+  let gap = Infinity;
+  for (const x of xs) if (x !== x0) gap = Math.min(gap, Math.abs(x - x0));
+  return Math.max(Math.min(Math.max(Math.abs(x0), w), 100 * gap), 1e-12);
+}
+
+/** Most step points one `floor` / `ceil` / `round` / `mod` candidate yields. */
+const MAX_STEPS = 1000;
+
+/**
+ * x where the continuous expression g passes an integer: an integer sample, or each
+ * integer strictly between two neighbouring samples (bisection).
+ */
+function integerCrossings(g: Fn1, a: number, b: number, n: number): number[] {
+  const out: number[] = [];
+  const h = (b - a) / n;
+  let px = a, pg = g(a);
+  if (Number.isInteger(pg)) out.push(a);
+  for (let i = 1; i <= n && out.length < MAX_STEPS; i++) {
+    const x = i === n ? b : a + i * h;
+    const gx = g(x);
+    if (Number.isFinite(pg) && Number.isFinite(gx)) {
+      const lo = Math.min(pg, gx), hi = Math.max(pg, gx);
+      for (let k = Math.floor(lo) + 1; k < hi && out.length < MAX_STEPS; k++) out.push(bisect((t) => g(t) - k, px, x, pg - k));
+      if (Number.isInteger(gx)) out.push(x);
+    }
+    px = x;
+    pg = gx;
+  }
+  return out;
+}
+
 /** Short number for warning text. */
 function num(v: number): string {
   return String(Number(v.toPrecision(6)));
@@ -431,10 +467,14 @@ function num(v: number): string {
  * different one-sided limits → jump; a limit f does not take → hole; different
  * one-sided slopes → cusp. A root where none of these holds is not a break.
  */
-function breaks(f: Fn1, cands: Fn1[], a: number, b: number, n: number, yspan: number): FeaturePt[] {
+function breaks(f: Fn1, cands: { step: boolean; g: Fn1 }[], a: number, b: number, n: number, yspan: number): FeaturePt[] {
   const w = b - a;
   const xs: number[] = [];
-  for (const g of cands) {
+  for (const { step, g } of cands) {
+    if (step) {
+      xs.push(...integerCrossings(g, a, b, n));
+      continue;
+    }
     // Candidates are continuous expressions (denominators, arguments), so touching roots
     // count (x² in a denominator); the tolerance is relative to the candidate's size.
     const size = Math.max(1, Math.abs(g(a)), Math.abs(g(b)), Math.abs(g(0.5 * (a + b))));
@@ -444,7 +484,7 @@ function breaks(f: Fn1, cands: Fn1[], a: number, b: number, n: number, yspan: nu
   const out: FeaturePt[] = [];
   const tolY = 1e-4 * Math.max(yspan, 1e-12);
   for (const [x0] of dedupe(xs.map((x) => [x] as [number]), w * 1e-9)) {
-    const s = Math.max(Math.abs(x0), w, 1e-12);
+    const s = probeScale(x0, xs, w);
     const L = sideLimit(f, x0, -1, s), R = sideLimit(f, x0, 1, s), fx = f(x0);
     const pt = (y: number, cls: FeatureClass, open = false): FeaturePt => ({ x: x0, y, cls, open, vx: x0, vy: y });
     const lOk = !Number.isNaN(L), rOk = !Number.isNaN(R);

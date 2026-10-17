@@ -3,4 +3,4 @@
 /**
  * Where a break candidate came from; the browser classifies by the values on both sides.
  */
-export type BreakCause = "Denominator" | "Domain" | "Abs" | "Boundary";
+export type BreakCause = "Denominator" | "Domain" | "Abs" | "Boundary" | "Step";

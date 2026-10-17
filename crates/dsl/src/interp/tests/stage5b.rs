@@ -251,6 +251,22 @@ fn feature_point_as_value() {
 }
 
 #[test]
+fn step_break_candidates() {
+    let s = build(&[&def(&["f(x) -> y: floor(x) + ceil(2*x) + round(x/3) + mod(x, 2) + floor(5)", "B: breaks(f)"])]);
+    let c: Vec<(BreakCause, String)> = spec(&s, "B").candidates.iter().map(|c| (c.cause, expr_dsl(&c.expr))).collect();
+    // A constant argument (floor(5)) is no candidate.
+    assert_eq!(
+        c,
+        vec![
+            (BreakCause::Step, "x".into()),
+            (BreakCause::Step, "2*x".into()),
+            (BreakCause::Step, "x/3 - 0.5".into()),
+            (BreakCause::Step, "x/2".into()),
+        ]
+    );
+}
+
+#[test]
 fn break_candidates_from_the_ast() {
     let s = build(&[&def(&[
         "g(x) -> y: 1/(x - 2)",

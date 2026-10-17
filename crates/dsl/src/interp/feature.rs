@@ -278,6 +278,17 @@ impl<'s> Cx<'s> {
                 "sqrt" | "ln" | "log10" | "log2" | "log" => push(BreakCause::Domain, &args[0], out),
                 "abs" => push(BreakCause::Abs, &args[0], out),
                 "sign" => push(BreakCause::Boundary, &args[0], out),
+                // Steps where the argument crosses an integer (round: a half-integer;
+                // mod(u, m): u/m crosses an integer).
+                "floor" | "ceil" => push(BreakCause::Step, &args[0], out),
+                "round" => {
+                    let half = Expr { id: 0, ty: Ty::Scalar, span: Span::default(), kind: ExprKind::Num { text: "0.5".into(), int: false } };
+                    push(BreakCause::Step, &minus(&args[0], half), out);
+                }
+                "mod" if args.len() == 2 => {
+                    let q = Expr { id: 0, ty: Ty::Scalar, span: Span::default(), kind: ExprKind::Div { num: Box::new(args[0].clone()), den: Box::new(args[1].clone()) } };
+                    push(BreakCause::Step, &q, out);
+                }
                 "tan" => {
                     let c = Expr { id: 0, ty: Ty::Scalar, span: Span::default(), kind: ExprKind::Call { callee: Ident::plain("cos"), kind: NameKind::Builtin, args: vec![args[0].clone()] } };
                     push(BreakCause::Denominator, &c, out);

@@ -152,6 +152,18 @@ describe("breaks", () => {
     expect(set.result("Bj").points.map((p) => p.open)).toEqual([true, false]);
   });
 
+  it("floor / ceil / round / mod jumps at the steps", () => {
+    // Each jump is two points (one per side): its x once.
+    const xs = (key: string) => [...new Set(pts(key).filter(([, , c]) => c === "Jump").map(([x]) => Math.round(x * 1e6) / 1e6 + 0))];
+    expectPts("Bf", [-2, -1, 0, 1, 2].flatMap((k) => [[k, k - 1, "Jump"], [k, k, "Jump"]] as [number, number, FeatureClass][]));
+    // floor(x) takes the right side's value.
+    expect(set.result("Bf").points.slice(0, 2).map((p) => p.open)).toEqual([true, false]);
+    // Steps 0.01 apart: the one-sided probes stay between neighbouring steps.
+    expect(xs("Bd")).toEqual([0.01, 0.02, 0.03]);
+    expect(xs("Bo")).toEqual([0.5, 1.5]);
+    expect(xs("Bm")).toEqual([0, 2]);
+  });
+
   it("slow growth (ln, 1/√x) is an asymptote, not a hole", () => {
     expectPts("Bl", [[-3, NaN, "Asymptote"]]);
     expectPts("Br", [[0, NaN, "Asymptote"]]);
