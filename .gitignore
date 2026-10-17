@@ -5,3 +5,8 @@ node_modules/
 *.db-wal
 *.db-shm
 /data
+
+# local only
+/CLAUDE.md
+/docs/
+/.claude/
