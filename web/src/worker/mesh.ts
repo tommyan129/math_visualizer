@@ -172,16 +172,79 @@ function meshOf(pts: Float64Array, n: number, m: number, C: Float64Array, box: B
   return { origin, positions, normals, alpha, indices: Uint32Array.from(tri), wire: Float32Array.from(wire), n, m };
 }
 
-/** Per-vertex 1/0 of a region at a mesh's vertices (surface highlights). */
-export function maskOf(mesh: MeshData, region: Region3, C: Float64Array): Float32Array {
-  const count = mesh.positions.length / 3;
-  const out = new Float32Array(count);
-  const [ox, oy, oz] = mesh.origin;
-  for (let v = 0; v < count; v++) {
-    const k = v * 3;
-    out[v] = mesh.alpha[v] && region(mesh.positions[k]! + ox, mesh.positions[k + 1]! + oy, mesh.positions[k + 2]! + oz, C) ? 1 : 0;
+/** The part of a surface a highlight covers: its own triangles, carrying the clip alpha. */
+export interface PatchData {
+  origin: [number, number, number];
+  /** xyz per vertex, relative to origin; three vertices per triangle. */
+  positions: Float32Array;
+  normals: Float32Array;
+  /** The mesh's clip alpha, interpolated (the clip still cuts per vertex). */
+  alpha: Float32Array;
+}
+
+/** Bisection steps for a region boundary on a triangle edge (1/256 of the edge). */
+const EDGE_STEPS = 8;
+
+/**
+ * The triangles of a mesh inside a region (surface highlights; null = the whole mesh).
+ * Triangles across the boundary are cut where it crosses their edges, found by
+ * bisection along the edge, so the patch edge follows the region instead of running
+ * through edge midpoints (a 0/1 vertex mask cut at 0.5 drew a zigzag polygon). A region
+ * narrower than a grid cell between two outside vertices is still missed.
+ */
+export function patchOf(mesh: MeshData, region: Region3 | null, C: Float64Array): PatchData {
+  const { origin, positions: P, normals: N, alpha: A, indices } = mesh;
+  const [ox, oy, oz] = origin;
+  const count = P.length / 3;
+  const inside = new Uint8Array(count);
+  for (let v = 0; v < count; v++) inside[v] = !region || region(P[v * 3]! + ox, P[v * 3 + 1]! + oy, P[v * 3 + 2]! + oz, C) ? 1 : 0;
+  const pos: number[] = [], nrm: number[] = [], alp: number[] = [];
+  // A point on the edge a → b at fraction t.
+  type Pt = { a: number; b: number; t: number };
+  const put = (q: Pt) => {
+    const { a, b, t } = q;
+    for (let c = 0; c < 3; c++) pos.push(P[a * 3 + c]! + (P[b * 3 + c]! - P[a * 3 + c]!) * t);
+    let nx = N[a * 3]! + (N[b * 3]! - N[a * 3]!) * t, ny = N[a * 3 + 1]! + (N[b * 3 + 1]! - N[a * 3 + 1]!) * t, nz = N[a * 3 + 2]! + (N[b * 3 + 2]! - N[a * 3 + 2]!) * t;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    nrm.push(nx / len, ny / len, nz / len);
+    alp.push(A[a]! + (A[b]! - A[a]!) * t);
+  };
+  const at = (v: number): Pt => ({ a: v, b: v, t: 0 });
+  // Boundary between an inside vertex a and an outside vertex b.
+  const cross = (a: number, b: number): Pt => {
+    let lo = 0, hi = 1;
+    for (let k = 0; k < EDGE_STEPS; k++) {
+      const t = (lo + hi) / 2;
+      const x = P[a * 3]! + (P[b * 3]! - P[a * 3]!) * t + ox, y = P[a * 3 + 1]! + (P[b * 3 + 1]! - P[a * 3 + 1]!) * t + oy, z = P[a * 3 + 2]! + (P[b * 3 + 2]! - P[a * 3 + 2]!) * t + oz;
+      if (region!(x, y, z, C)) lo = t;
+      else hi = t;
+    }
+    return { a, b, t: (lo + hi) / 2 };
+  };
+  const tri = (p: Pt, q: Pt, r: Pt) => {
+    put(p);
+    put(q);
+    put(r);
+  };
+  for (let i = 0; i < indices.length; i += 3) {
+    const v = [indices[i]!, indices[i + 1]!, indices[i + 2]!];
+    const n = inside[v[0]!]! + inside[v[1]!]! + inside[v[2]!]!;
+    if (n === 0) continue;
+    if (n === 3) {
+      tri(at(v[0]!), at(v[1]!), at(v[2]!));
+      continue;
+    }
+    // Rotate so the odd vertex comes first (keeps the winding).
+    const odd = n === 1 ? v.findIndex((x) => inside[x]) : v.findIndex((x) => !inside[x]);
+    const a = v[odd]!, b = v[(odd + 1) % 3]!, c = v[(odd + 2) % 3]!;
+    if (n === 1) tri(at(a), cross(a, b), cross(a, c));
+    else {
+      const ba = cross(b, a), ca = cross(c, a);
+      tri(ba, at(b), at(c));
+      tri(ba, at(c), ca);
+    }
   }
-  return out;
+  return { origin, positions: Float32Array.from(pos), normals: Float32Array.from(nrm), alpha: Float32Array.from(alp) };
 }
 
 /**

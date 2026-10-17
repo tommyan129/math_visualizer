@@ -11,6 +11,7 @@
 //   moves freely around it. (An area following the camera was tried: zooming out grew
 //   x² − y² into walls filling the screen.)
 // - The scene clip cuts per vertex (alpha test on an interpolated 0/1 attribute).
+//   Highlights are cut on the surface where their region boundary crosses the mesh edges.
 // - Labels (axis names, ticks, definition names) are drawn on a 2D canvas on top,
 //   projected every frame, with the same MathJax label images as the 2D renderer.
 
@@ -30,7 +31,7 @@ import type { Warning } from "../generated/Warning";
 import { identTex, isVectorName } from "../math/latex";
 import { setImageReadyHandler, texImage } from "../math/mathjax";
 import { compileConst, specsOf } from "../worker/codegen";
-import type { Box3, MeshData } from "../worker/mesh";
+import type { Box3, MeshData, PatchData } from "../worker/mesh";
 import { makeRuntime } from "../worker/numeric";
 import type { FromWorker, Item3, ToWorker } from "../worker/worker";
 import { actionsOf, bound, typing, type Action } from "../ui/keymap";
@@ -625,7 +626,7 @@ export class Plot3D {
         for (const h of it.hls) {
           const hl = this.state!.highlights[h.key];
           if (!hl || it.meshes.length !== 1) continue;
-          const patch = this.patchMesh(it.meshes[0]!, h.mask, hl.style.color, Math.max(HL_MIN_ALPHA, hl.style.opacity));
+          const patch = this.patchMesh(h.patch, hl.style.color, Math.max(HL_MIN_ALPHA, hl.style.opacity));
           patch.userData.hl = h.key;
           group.add(patch);
         }
@@ -735,22 +736,22 @@ export class Plot3D {
   }
 
   /** The part of a surface a highlight covers, drawn over it in the highlight color. */
-  private patchMesh(m: MeshData, mask: Float32Array, color: string, opacity: number): THREE.Mesh {
+  private patchMesh(p: PatchData, color: string, opacity: number): THREE.Mesh {
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(m.positions, 3));
-    geo.setAttribute("normal", new THREE.BufferAttribute(m.normals, 3));
-    const rgba = new Float32Array(mask.length * 4);
-    for (let v = 0; v < mask.length; v++) {
+    geo.setAttribute("position", new THREE.BufferAttribute(p.positions, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(p.normals, 3));
+    // Alpha is the clip, cut per vertex like the surface under it.
+    const rgba = new Float32Array(p.alpha.length * 4);
+    for (let v = 0; v < p.alpha.length; v++) {
       rgba[v * 4] = 1;
       rgba[v * 4 + 1] = 1;
       rgba[v * 4 + 2] = 1;
-      rgba[v * 4 + 3] = mask[v]!;
+      rgba[v * 4 + 3] = p.alpha[v]!;
     }
     geo.setAttribute("color", new THREE.BufferAttribute(rgba, 4));
-    geo.setIndex(new THREE.BufferAttribute(m.indices, 1));
     const mat = new THREE.MeshLambertMaterial({ color, vertexColors: true, transparent: true, opacity, alphaTest: opacity * 0.5, side: THREE.DoubleSide, depthWrite: false, clippingPlanes: this.planes, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(...m.origin);
+    mesh.position.set(...p.origin);
     return mesh;
   }
 

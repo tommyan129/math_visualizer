@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/state.json";
 import type { State } from "../src/generated/State";
 import { compile, compileRegion3, type Compiled, type Scalar, specOf } from "../src/worker/codegen";
-import { clipLine3, maskOf, planeInBox, sampleParamSurface, sampleSpaceCurve, sampleSurface, spanShape3, type Box3 } from "../src/worker/mesh";
+import { clipLine3, patchOf, planeInBox, sampleParamSurface, sampleSpaceCurve, sampleSurface, spanShape3, type Box3 } from "../src/worker/mesh";
 import { makeRuntime } from "../src/worker/numeric";
 
 const state = fixture as unknown as State;
@@ -57,8 +57,33 @@ describe("surfaces", () => {
     const inside = m.alpha.reduce((s, a) => s + a, 0);
     expect(inside).toBeGreaterThan(0);
     expect(inside).toBeLessThan(m.alpha.length);
-    const mask = maskOf(sampleSurface(compiled.get("sad")!.surface!, C, box, "coarse", null), clip, C);
-    expect(mask.reduce((s, a) => s + a, 0)).toBe(inside);
+    const full = sampleSurface(compiled.get("sad")!.surface!, C, box, "coarse", null);
+    const patch = patchOf(full, clip, C);
+    expect(patch.positions.length).toBeGreaterThan(0);
+    expect(patch.positions.length % 9).toBe(0);
+    expect(patchOf(full, null, C).positions.length).toBe(full.indices.length * 3);
+  });
+
+  it("cuts a highlight patch along its boundary, not through edge midpoints", () => {
+    // z = 0 plane over the box, region x² + y² < 1: every patch vertex lies inside the
+    // closed disk, and the boundary vertices lie on the circle.
+    const flat = sampleSurface(() => 0, C, box, "coarse", null);
+    const disk = (x: number, y: number) => x * x + y * y < 1;
+    const p = patchOf(flat, disk, C);
+    let onCircle = 0, area = 0;
+    for (let i = 0; i < p.positions.length; i += 3) {
+      const r = Math.hypot(p.positions[i]! + p.origin[0], p.positions[i + 1]! + p.origin[1]);
+      expect(r).toBeLessThan(1 + 1e-3);
+      if (r > 1 - 1e-2) onCircle++;
+    }
+    for (let i = 0; i < p.positions.length; i += 9) {
+      const [ax, ay, , bx, by, , cx, cy] = p.positions.slice(i, i + 9);
+      area += Math.abs((bx! - ax!) * (cy! - ay!) - (cx! - ax!) * (by! - ay!)) / 2;
+    }
+    expect(onCircle).toBeGreaterThan(40);
+    // The inscribed polygon on a 1/12-unit grid misses well under 1% of π.
+    expect(area).toBeGreaterThan(Math.PI * 0.99);
+    expect(area).toBeLessThan(Math.PI);
   });
 });
 

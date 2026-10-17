@@ -8,7 +8,7 @@ import { computeFill, rasterRegion, type FillRule, type RasterRect } from "./fil
 import { clipLine, spanShape } from "./linalg";
 import { makeRuntime } from "./numeric";
 import { sampleImplicit } from "./implicit";
-import { boxOrigin, clipLine3, maskOf, planeInBox, sampleParamSurface, sampleSpaceCurve, sampleSurface, spanShape3, type Box3, type LineData, type MeshData } from "./mesh";
+import { boxOrigin, clipLine3, patchOf, planeInBox, sampleParamSurface, sampleSpaceCurve, sampleSurface, spanShape3, type Box3, type LineData, type MeshData, type PatchData } from "./mesh";
 import { sampleParametric } from "./paramsample";
 import { sampleCurve, sampleDiscrete, type Quality, type SampleRange } from "./sample";
 import { runCheck, type CheckSpec } from "./verify";
@@ -90,8 +90,8 @@ export interface RasterResult {
 
 /** One 3D definition's geometry. */
 export type Item3 =
-  /** Surfaces and parametric surfaces (one mesh per `family` copy) and the masks of the highlights on them. */
-  | { key: string; kind: "mesh"; meshes: MeshData[]; hls: { key: string; mask: Float32Array }[] }
+  /** Surfaces and parametric surfaces (one mesh per `family` copy) and the patches of the highlights on them. */
+  | { key: string; kind: "mesh"; meshes: MeshData[]; hls: { key: string; patch: PatchData }[] }
   /** Space curves. */
   | { key: string; kind: "lines"; line: LineData }
   /** dim 0: the origin; 1: the line's two ends in the box; 2: the plane's polygon in the box; 3: the whole box. */
@@ -481,7 +481,7 @@ function sample3d(id: number, keys: string[], C: Float64Array, box: Box3, qualit
             warnings.push({ source: h.key, code: "W-codegen", message: `계산 코드를 만들 수 없음 (${regionErrors.get(h.key)})` });
             return [];
           }
-          return [{ key: h.key, mask: reg ? maskOf(meshes[0]!, reg, C) : meshes[0]!.alpha.slice() }];
+          return [{ key: h.key, patch: patchOf(meshes[0]!, reg ?? null, C) }];
         });
       items.push({ key, kind: "mesh", meshes, hls });
     } else if (lines.length) {
@@ -507,7 +507,7 @@ function transfer3(items: Item3[]): ArrayBuffer[] {
   return items.flatMap((it): ArrayBuffer[] => {
     switch (it.kind) {
       case "mesh":
-        return [...it.meshes.flatMap((m) => [m.positions.buffer, m.normals.buffer, m.alpha.buffer, m.indices.buffer, m.wire.buffer]), ...it.hls.map((h) => h.mask.buffer)] as ArrayBuffer[];
+        return [...it.meshes.flatMap((m) => [m.positions.buffer, m.normals.buffer, m.alpha.buffer, m.indices.buffer, m.wire.buffer]), ...it.hls.flatMap((h) => [h.patch.positions.buffer, h.patch.normals.buffer, h.patch.alpha.buffer])] as ArrayBuffer[];
       case "lines":
         return [it.line.positions.buffer, it.line.offsets.buffer] as ArrayBuffer[];
       default:
