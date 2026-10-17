@@ -684,6 +684,438 @@
       "order": 18,
       "version": 1
     },
+    "Bl": {
+      "key": "Bl",
+      "name": {
+        "key": "Bl",
+        "base": "Bl",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Feature",
+      "inputs": [],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "feature": {
+        "kind": "Breaks",
+        "target": "lg",
+        "other": null,
+        "range": null,
+        "lo": null,
+        "hi": null,
+        "filter": null,
+        "polar": false,
+        "axes": [
+          {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          {
+            "key": "y",
+            "base": "y",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          }
+        ],
+        "candidates": [
+          {
+            "cause": "Domain",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "abs",
+                "base": "abs",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 1,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Sum",
+                  "terms": [
+                    {
+                      "id": 2,
+                      "sign": "Plus",
+                      "expr": {
+                        "id": 3,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    },
+                    {
+                      "id": 4,
+                      "sign": "Plus",
+                      "expr": {
+                        "id": 5,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Num",
+                        "text": "3",
+                        "int": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "cause": "Abs",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Sum",
+              "terms": [
+                {
+                  "id": 1,
+                  "sign": "Plus",
+                  "expr": {
+                    "id": 2,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                },
+                {
+                  "id": 3,
+                  "sign": "Plus",
+                  "expr": {
+                    "id": 4,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "3",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Feature",
+        "callee": {
+          "key": "breaks",
+          "base": "breaks",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "lg",
+              "base": "lg",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Function"
+          }
+        ],
+        "range": null,
+        "filter": null
+      },
+      "body_src": "breaks(lg)",
+      "calls": [
+        "lg"
+      ],
+      "constraints": [],
+      "derivs": [],
+      "color": 34,
+      "order": 34,
+      "version": 1
+    },
+    "Br": {
+      "key": "Br",
+      "name": {
+        "key": "Br",
+        "base": "Br",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Feature",
+      "inputs": [],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "feature": {
+        "kind": "Breaks",
+        "target": "rs",
+        "other": null,
+        "range": null,
+        "lo": null,
+        "hi": null,
+        "filter": null,
+        "polar": false,
+        "axes": [
+          {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          {
+            "key": "y",
+            "base": "y",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          }
+        ],
+        "candidates": [
+          {
+            "cause": "Denominator",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "sqrt",
+                "base": "sqrt",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 1,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Call",
+                  "callee": {
+                    "key": "abs",
+                    "base": "abs",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Builtin",
+                  "args": [
+                    {
+                      "id": 2,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "x",
+                        "base": "x",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "cause": "Domain",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "abs",
+                "base": "abs",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 1,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              ]
+            }
+          },
+          {
+            "cause": "Abs",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            }
+          }
+        ]
+      },
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Feature",
+        "callee": {
+          "key": "breaks",
+          "base": "breaks",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "rs",
+              "base": "rs",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Function"
+          }
+        ],
+        "range": null,
+        "filter": null
+      },
+      "body_src": "breaks(rs)",
+      "calls": [
+        "rs"
+      ],
+      "constraints": [],
+      "derivs": [],
+      "color": 37,
+      "order": 37,
+      "version": 1
+    },
     "Bs": {
       "key": "Bs",
       "name": {
@@ -2866,6 +3298,354 @@
       "order": 31,
       "version": 1
     },
+    "Ml": {
+      "key": "Ml",
+      "name": {
+        "key": "Ml",
+        "base": "Ml",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Feature",
+      "inputs": [],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "feature": {
+        "kind": "Argmin",
+        "target": "lg",
+        "other": null,
+        "range": {
+          "id": 0,
+          "ty": {
+            "type": "Region"
+          },
+          "type": "Compare",
+          "first": {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Neg",
+            "arg": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "5",
+              "int": true
+            }
+          },
+          "rest": [
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            },
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              }
+            }
+          ]
+        },
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Neg",
+          "arg": {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "5",
+            "int": true
+          }
+        },
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "0",
+          "int": true
+        },
+        "filter": null,
+        "polar": false,
+        "axes": [
+          {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          {
+            "key": "y",
+            "base": "y",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          }
+        ],
+        "candidates": [
+          {
+            "cause": "Domain",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "abs",
+                "base": "abs",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 1,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Sum",
+                  "terms": [
+                    {
+                      "id": 2,
+                      "sign": "Plus",
+                      "expr": {
+                        "id": 3,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    },
+                    {
+                      "id": 4,
+                      "sign": "Plus",
+                      "expr": {
+                        "id": 5,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Num",
+                        "text": "3",
+                        "int": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "cause": "Abs",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Sum",
+              "terms": [
+                {
+                  "id": 1,
+                  "sign": "Plus",
+                  "expr": {
+                    "id": 2,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                },
+                {
+                  "id": 3,
+                  "sign": "Plus",
+                  "expr": {
+                    "id": 4,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "3",
+                    "int": true
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Feature",
+        "callee": {
+          "key": "argmin",
+          "base": "argmin",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "lg",
+              "base": "lg",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Function"
+          }
+        ],
+        "range": {
+          "id": 2,
+          "ty": {
+            "type": "Region"
+          },
+          "type": "Compare",
+          "first": {
+            "id": 3,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Neg",
+            "arg": {
+              "id": 4,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "5",
+              "int": true
+            }
+          },
+          "rest": [
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            },
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "0",
+                "int": true
+              }
+            }
+          ]
+        },
+        "filter": null
+      },
+      "body_src": "argmin(lg; -5 <= x <= 0)",
+      "calls": [
+        "lg"
+      ],
+      "constraints": [],
+      "derivs": [],
+      "color": 33,
+      "order": 33,
+      "version": 1
+    },
     "Mm": {
       "key": "Mm",
       "name": {
@@ -3100,6 +3880,360 @@
       "derivs": [],
       "color": 24,
       "order": 24,
+      "version": 1
+    },
+    "Mr": {
+      "key": "Mr",
+      "name": {
+        "key": "Mr",
+        "base": "Mr",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Feature",
+      "inputs": [],
+      "output": null,
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "feature": {
+        "kind": "Argmax",
+        "target": "rs",
+        "other": null,
+        "range": {
+          "id": 0,
+          "ty": {
+            "type": "Region"
+          },
+          "type": "Compare",
+          "first": {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Neg",
+            "arg": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            }
+          },
+          "rest": [
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            },
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 4,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              }
+            }
+          ]
+        },
+        "lo": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Neg",
+          "arg": {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Num",
+            "text": "1",
+            "int": true
+          }
+        },
+        "hi": {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "1",
+          "int": true
+        },
+        "filter": null,
+        "polar": false,
+        "axes": [
+          {
+            "key": "x",
+            "base": "x",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          {
+            "key": "y",
+            "base": "y",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          }
+        ],
+        "candidates": [
+          {
+            "cause": "Denominator",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "sqrt",
+                "base": "sqrt",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 1,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Call",
+                  "callee": {
+                    "key": "abs",
+                    "base": "abs",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Builtin",
+                  "args": [
+                    {
+                      "id": 2,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "x",
+                        "base": "x",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "cause": "Domain",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "abs",
+                "base": "abs",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 1,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              ]
+            }
+          },
+          {
+            "cause": "Abs",
+            "expr": {
+              "id": 0,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Name",
+              "name": {
+                "key": "x",
+                "base": "x",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Input"
+            }
+          }
+        ]
+      },
+      "ty": {
+        "type": "Vector",
+        "n": 2
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Vector",
+          "n": 2
+        },
+        "type": "Feature",
+        "callee": {
+          "key": "argmax",
+          "base": "argmax",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Name",
+            "name": {
+              "key": "rs",
+              "base": "rs",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Function"
+          }
+        ],
+        "range": {
+          "id": 2,
+          "ty": {
+            "type": "Region"
+          },
+          "type": "Compare",
+          "first": {
+            "id": 3,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Neg",
+            "arg": {
+              "id": 4,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Num",
+              "text": "1",
+              "int": true
+            }
+          },
+          "rest": [
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Name",
+                "name": {
+                  "key": "x",
+                  "base": "x",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Input"
+              }
+            },
+            {
+              "op": "Le",
+              "rhs": {
+                "id": 6,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "1",
+                "int": true
+              }
+            }
+          ]
+        },
+        "filter": null
+      },
+      "body_src": "argmax(rs; -1 <= x <= 1)",
+      "calls": [
+        "rs"
+      ],
+      "constraints": [],
+      "derivs": [],
+      "color": 36,
+      "order": 36,
       "version": 1
     },
     "P": {
@@ -3353,8 +4487,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 32,
-      "order": 32,
+      "color": 38,
+      "order": 38,
       "version": 1
     },
     "Q": {
@@ -4044,8 +5178,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 33,
-      "order": 33,
+      "color": 39,
+      "order": 39,
       "version": 1
     },
     "T": {
@@ -4289,8 +5423,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 34,
-      "order": 35,
+      "color": 40,
+      "order": 41,
       "version": 1
     },
     "Tc": {
@@ -4391,8 +5525,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 37,
-      "order": 38,
+      "color": 43,
+      "order": 44,
       "version": 1
     },
     "Tp": {
@@ -4492,8 +5626,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 39,
-      "order": 40,
+      "color": 45,
+      "order": 46,
       "version": 1
     },
     "U": {
@@ -4612,8 +5746,8 @@
       ],
       "constraints": [],
       "derivs": [],
-      "color": 35,
-      "order": 36,
+      "color": 41,
+      "order": 42,
       "version": 1
     },
     "Y": {
@@ -4977,8 +6111,8 @@
           }
         }
       ],
-      "color": 38,
-      "order": 39,
+      "color": 44,
+      "order": 45,
       "version": 1
     },
     "circ": {
@@ -5255,8 +6389,8 @@
           ]
         }
       ],
-      "color": 36,
-      "order": 37,
+      "color": 42,
+      "order": 43,
       "version": 1
     },
     "cub": {
@@ -6173,6 +7307,267 @@
       "order": 29,
       "version": 1
     },
+    "lg": {
+      "key": "lg",
+      "name": {
+        "key": "lg",
+        "base": "lg",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "feature": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Call",
+        "callee": {
+          "key": "ln",
+          "base": "ln",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        },
+        "kind": "Builtin",
+        "args": [
+          {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Call",
+            "callee": {
+              "key": "abs",
+              "base": "abs",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Builtin",
+            "args": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Sum",
+                "terms": [
+                  {
+                    "id": 3,
+                    "sign": "Plus",
+                    "expr": {
+                      "id": 4,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "x",
+                        "base": "x",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  },
+                  {
+                    "id": 5,
+                    "sign": "Plus",
+                    "expr": {
+                      "id": 6,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Num",
+                      "text": "3",
+                      "int": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "body_src": "ln(abs(x + 3))",
+      "calls": [],
+      "constraints": [],
+      "derivs": [
+        {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Div",
+          "num": {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Call",
+            "callee": {
+              "key": "sign",
+              "base": "sign",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Builtin",
+            "args": [
+              {
+                "id": 2,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Sum",
+                "terms": [
+                  {
+                    "id": 3,
+                    "sign": "Plus",
+                    "expr": {
+                      "id": 4,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "x",
+                        "base": "x",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  },
+                  {
+                    "id": 5,
+                    "sign": "Plus",
+                    "expr": {
+                      "id": 6,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Num",
+                      "text": "3",
+                      "int": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "den": {
+            "id": 7,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Call",
+            "callee": {
+              "key": "abs",
+              "base": "abs",
+              "accent": null,
+              "sub": null,
+              "sup": null,
+              "deriv": 0,
+              "inverse": false
+            },
+            "kind": "Builtin",
+            "args": [
+              {
+                "id": 8,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Sum",
+                "terms": [
+                  {
+                    "id": 9,
+                    "sign": "Plus",
+                    "expr": {
+                      "id": 10,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Name",
+                      "name": {
+                        "key": "x",
+                        "base": "x",
+                        "accent": null,
+                        "sub": null,
+                        "sup": null,
+                        "deriv": 0,
+                        "inverse": false
+                      },
+                      "kind": "Input"
+                    }
+                  },
+                  {
+                    "id": 11,
+                    "sign": "Plus",
+                    "expr": {
+                      "id": 12,
+                      "ty": {
+                        "type": "Scalar"
+                      },
+                      "type": "Num",
+                      "text": "3",
+                      "int": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "color": 32,
+      "order": 32,
+      "version": 1
+    },
     "lin2": {
       "key": "lin2",
       "name": {
@@ -6880,6 +8275,327 @@
       "order": 25,
       "version": 1
     },
+    "rs": {
+      "key": "rs",
+      "name": {
+        "key": "rs",
+        "base": "rs",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "kind": "Curve",
+      "inputs": [
+        {
+          "key": "x",
+          "base": "x",
+          "accent": null,
+          "sub": null,
+          "sup": null,
+          "deriv": 0,
+          "inverse": false
+        }
+      ],
+      "output": {
+        "key": "y",
+        "base": "y",
+        "accent": null,
+        "sub": null,
+        "sup": null,
+        "deriv": 0,
+        "inverse": false
+      },
+      "outputs": [],
+      "range": null,
+      "family": null,
+      "feature": null,
+      "ty": {
+        "type": "Scalar"
+      },
+      "consts": [],
+      "body": {
+        "id": 0,
+        "ty": {
+          "type": "Scalar"
+        },
+        "type": "Div",
+        "num": {
+          "id": 1,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Num",
+          "text": "1",
+          "int": true
+        },
+        "den": {
+          "id": 2,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Call",
+          "callee": {
+            "key": "sqrt",
+            "base": "sqrt",
+            "accent": null,
+            "sub": null,
+            "sup": null,
+            "deriv": 0,
+            "inverse": false
+          },
+          "kind": "Builtin",
+          "args": [
+            {
+              "id": 3,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Call",
+              "callee": {
+                "key": "abs",
+                "base": "abs",
+                "accent": null,
+                "sub": null,
+                "sup": null,
+                "deriv": 0,
+                "inverse": false
+              },
+              "kind": "Builtin",
+              "args": [
+                {
+                  "id": 4,
+                  "ty": {
+                    "type": "Scalar"
+                  },
+                  "type": "Name",
+                  "name": {
+                    "key": "x",
+                    "base": "x",
+                    "accent": null,
+                    "sub": null,
+                    "sup": null,
+                    "deriv": 0,
+                    "inverse": false
+                  },
+                  "kind": "Input"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "body_src": "1/sqrt(abs(x))",
+      "calls": [],
+      "constraints": [],
+      "derivs": [
+        {
+          "id": 0,
+          "ty": {
+            "type": "Scalar"
+          },
+          "type": "Neg",
+          "arg": {
+            "id": 1,
+            "ty": {
+              "type": "Scalar"
+            },
+            "type": "Div",
+            "num": {
+              "id": 2,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Div",
+              "num": {
+                "id": 3,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "sign",
+                  "base": "sign",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 4,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Name",
+                    "name": {
+                      "key": "x",
+                      "base": "x",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Input"
+                  }
+                ]
+              },
+              "den": {
+                "id": 5,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Product",
+                "factors": [
+                  {
+                    "id": 6,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Num",
+                    "text": "2",
+                    "int": true
+                  },
+                  {
+                    "id": 7,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Call",
+                    "callee": {
+                      "key": "sqrt",
+                      "base": "sqrt",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Builtin",
+                    "args": [
+                      {
+                        "id": 8,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Call",
+                        "callee": {
+                          "key": "abs",
+                          "base": "abs",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Builtin",
+                        "args": [
+                          {
+                            "id": 9,
+                            "ty": {
+                              "type": "Scalar"
+                            },
+                            "type": "Name",
+                            "name": {
+                              "key": "x",
+                              "base": "x",
+                              "accent": null,
+                              "sub": null,
+                              "sup": null,
+                              "deriv": 0,
+                              "inverse": false
+                            },
+                            "kind": "Input"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "den": {
+              "id": 10,
+              "ty": {
+                "type": "Scalar"
+              },
+              "type": "Pow",
+              "base": {
+                "id": 11,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Call",
+                "callee": {
+                  "key": "sqrt",
+                  "base": "sqrt",
+                  "accent": null,
+                  "sub": null,
+                  "sup": null,
+                  "deriv": 0,
+                  "inverse": false
+                },
+                "kind": "Builtin",
+                "args": [
+                  {
+                    "id": 12,
+                    "ty": {
+                      "type": "Scalar"
+                    },
+                    "type": "Call",
+                    "callee": {
+                      "key": "abs",
+                      "base": "abs",
+                      "accent": null,
+                      "sub": null,
+                      "sup": null,
+                      "deriv": 0,
+                      "inverse": false
+                    },
+                    "kind": "Builtin",
+                    "args": [
+                      {
+                        "id": 13,
+                        "ty": {
+                          "type": "Scalar"
+                        },
+                        "type": "Name",
+                        "name": {
+                          "key": "x",
+                          "base": "x",
+                          "accent": null,
+                          "sub": null,
+                          "sup": null,
+                          "deriv": 0,
+                          "inverse": false
+                        },
+                        "kind": "Input"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "exp": {
+                "id": 14,
+                "ty": {
+                  "type": "Scalar"
+                },
+                "type": "Num",
+                "text": "2",
+                "int": true
+              }
+            }
+          }
+        }
+      ],
+      "color": 35,
+      "order": 35,
+      "version": 1
+    },
     "sq": {
       "key": "sq",
       "name": {
@@ -7338,7 +9054,7 @@
       "integer": false,
       "declared": false,
       "kind_fixed": false,
-      "order": 34,
+      "order": 40,
       "version": 1
     }
   },
@@ -7400,6 +9116,12 @@
         "hp",
         "Mh",
         "Mj",
+        "lg",
+        "Ml",
+        "Bl",
+        "rs",
+        "Mr",
+        "Br",
         "Pm",
         "Rr",
         "T",
@@ -7416,6 +9138,8 @@
             "Bc": true,
             "Bh": true,
             "Bj": true,
+            "Bl": true,
+            "Br": true,
             "Bs": true,
             "E": true,
             "E4": true,
@@ -7427,7 +9151,9 @@
             "Mi2": true,
             "Mi3": true,
             "Mj": true,
+            "Ml": true,
             "Mm": true,
+            "Mr": true,
             "P": true,
             "Pm": true,
             "Q": true,
@@ -7444,10 +9170,12 @@
             "cub": true,
             "dbl": true,
             "hp": true,
+            "lg": true,
             "lin2": true,
             "q4": true,
             "rat": true,
             "rec": true,
+            "rs": true,
             "sq": true,
             "st": true
           },
@@ -7468,7 +9196,7 @@
       "defined": 1,
       "toggles": {},
       "user_clip": null,
-      "order": 41,
+      "order": 47,
       "version": 1
     },
     "polar(r, \\theta)": {
@@ -7524,7 +9252,7 @@
       "defined": 1,
       "toggles": {},
       "user_clip": null,
-      "order": 42,
+      "order": 48,
       "version": 1
     }
   },
@@ -7533,8 +9261,8 @@
   "vars": {},
   "requests": {},
   "counters": {
-    "next_order": 43,
-    "next_color": 40,
+    "next_order": 49,
+    "next_color": 46,
     "next_hl_color": 0,
     "next_request": 0
   }

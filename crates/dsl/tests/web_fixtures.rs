@@ -140,6 +140,12 @@ define:
     hp(x) -> y: 1 - (x - 1)^3/(x - 1)
     Mh: argmax(hp; 0 <= x <= 2)
     Mj: argmax(st; -1 <= x <= 1)
+    lg(x) -> y: ln(abs(x + 3))
+    Ml: argmin(lg; -5 <= x <= 0)
+    Bl: breaks(lg)
+    rs(x) -> y: 1/sqrt(abs(x))
+    Mr: argmax(rs; -1 <= x <= 1)
+    Br: breaks(rs)
     Pm: extrema(cub;; min)
     Rr(; c): roots(cub; 0 < x < c)
     T(x) -> y: cub@1(Pm_[1])*(x - Pm_[1]) + Pm_[2]

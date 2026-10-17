@@ -370,22 +370,20 @@ function intervalExtreme(f: Fn1, d1: Fn1, brk: number[], a: number, b: number, n
   const word = max ? "최댓값" : "최솟값";
   const xs = signChanges(d1, a, b, n, tol).map(([x]) => x);
   for (const e of [a, b]) if (keep(e)) xs.push(e);
-  // One-sided limits at breaks, from the sides inside [a, b]; linear extrapolation of two
-  // nearby samples so a limit the function also takes compares equal to it.
+  // One-sided limits at breaks, from the sides inside [a, b].
   const limits: [number, number][] = [];
   for (const x0 of brk) {
     if (keep(x0)) xs.push(x0);
     const s = Math.max(Math.abs(x0), b - a, 1e-12);
-    const near = 1e-7 * s, far = 1e-4 * s;
     for (const dir of [-1, 1]) {
-      if (x0 + dir * far < a || x0 + dir * far > b) continue;
-      const v = f(x0 + dir * near), v2 = f(x0 + dir * 2 * near), vf = f(x0 + dir * far);
-      if (!Number.isFinite(v) || !Number.isFinite(vf)) continue;
-      if (Math.abs(v) > 100 * Math.max(1, Math.abs(vf))) {
+      if (x0 + dir * 1e-3 * s < a || x0 + dir * 1e-3 * s > b) continue;
+      const v = sideLimit(f, x0, dir, s);
+      if (Number.isNaN(v)) continue;
+      if (!Number.isFinite(v)) {
         if (sg * v > 0) return `구간에서 ${word}이 없음: x = ${num(x0)} 근처에서 끝없이 ${max ? "커짐" : "작아짐"} (범위를 그 점 밖으로)`;
         continue;
       }
-      limits.push([x0, Number.isFinite(v2) ? 2 * v - v2 : v]);
+      limits.push([x0, v]);
     }
   }
   const vals = xs.map((x) => [x, f(x)] as const).filter(([, y]) => Number.isFinite(y));
@@ -398,6 +396,28 @@ function intervalExtreme(f: Fn1, d1: Fn1, brk: number[], a: number, b: number, n
   const cls: FeatureClass = max ? "IntervalMax" : "IntervalMin";
   const top = vals.filter(([, y]) => Math.abs(y - best) <= eps).map(([x, y]) => [x, y] as [number, number]);
   return dedupe(top.sort((p, q) => p[0] - q[0]), (b - a) * 1e-9).map(([x, y]) => ({ x, y, cls, open: false, vx: x, vy: y }));
+}
+
+/**
+ * f approaching x0 from one side (dir = ±1), sampled at s·10⁻³ … s·10⁻⁸: the limit
+ * (Aitken-extrapolated), ±Infinity when f keeps growing (differences not shrinking over two
+ * decades, which also catches ln and 1/√x), NaN when f is undefined there or has no limit.
+ */
+function sideLimit(f: Fn1, x0: number, dir: number, s: number): number {
+  const v: number[] = [];
+  for (let k = 3; k <= 8; k++) v.push(f(x0 + dir * s * 10 ** -k));
+  const last = v[v.length - 1]!;
+  if (last === Infinity || last === -Infinity) return last;
+  if (!v.every(Number.isFinite)) return NaN;
+  const d = v.slice(1).map((y, i) => y - v[i]!);
+  const dl = d[d.length - 1]!, dp = d[d.length - 2]!, d3 = d[d.length - 3]!;
+  const tol = 1e-6 * Math.max(1, Math.abs(last));
+  if (Math.abs(dl) <= tol) return last;
+  const steady = d.slice(-3).every((x) => Math.sign(x) === Math.sign(dl));
+  if (!steady) return Math.abs(dl) <= 1e3 * tol ? last : NaN;
+  if (Math.abs(dl) >= 0.8 * Math.abs(d3)) return dl > 0 ? Infinity : -Infinity;
+  const r = dl / dp;
+  return Math.abs(r) < 1 ? last + (dl * r) / (1 - r) : last;
 }
 
 /** Short number for warning text. */
@@ -425,14 +445,11 @@ function breaks(f: Fn1, cands: Fn1[], a: number, b: number, n: number, yspan: nu
   const tolY = 1e-4 * Math.max(yspan, 1e-12);
   for (const [x0] of dedupe(xs.map((x) => [x] as [number]), w * 1e-9)) {
     const s = Math.max(Math.abs(x0), w, 1e-12);
-    const near = 1e-7 * s, far = 1e-4 * s;
-    const L = f(x0 - near), R = f(x0 + near), fx = f(x0);
-    const L2 = f(x0 - far), R2 = f(x0 + far);
+    const L = sideLimit(f, x0, -1, s), R = sideLimit(f, x0, 1, s), fx = f(x0);
     const pt = (y: number, cls: FeatureClass, open = false): FeaturePt => ({ x: x0, y, cls, open, vx: x0, vy: y });
-    const lOk = Number.isFinite(L), rOk = Number.isFinite(R);
+    const lOk = !Number.isNaN(L), rOk = !Number.isNaN(R);
     if (!lOk && !rOk) continue;
-    const blows = (v: number, v2: number) => Number.isFinite(v) && Math.abs(v) > 100 * Math.max(1, Math.abs(v2)) && Math.abs(v) > 1e3 * tolY;
-    if (blows(L, L2) || blows(R, R2)) {
+    if (Math.abs(L) === Infinity || Math.abs(R) === Infinity) {
       out.push(pt(NaN, "Asymptote"));
       continue;
     }

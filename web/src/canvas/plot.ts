@@ -100,6 +100,10 @@ export function fitView(spec: ViewSpec, width: number, height: number): Cam | nu
   return { cx: h ? (h[0] + h[1]) / 2 : 0, cy: v ? (v[0] + v[1]) / 2 : 0, scale: Math.min(sx, sy) };
 }
 
+function sameCam(a: Cam, b: Cam): boolean {
+  return a.cx === b.cx && a.cy === b.cy && a.scale === b.scale;
+}
+
 export class Plot {
   readonly view = new View();
   private renderer: Renderer;
@@ -125,6 +129,8 @@ export class Plot {
   private appliedView = new Map<string, string>();
   /** Camera to set once the canvas has a size. */
   private pendingCam: (() => Cam | "reset") | null = null;
+  /** Last camera fitted by a rule (step view), refitted on resize until the user moves it. */
+  private fitted: { fit: () => Cam | "reset"; cam: Cam } | null = null;
   private clipKey = "";
   private clipGeom: { mask: ClipMask; bits: Uint8Array; scale: number; quality: Quality; stamp: string } | null = null;
   /** Scene waiting for its first-screen check, and the warnings it produced. */
@@ -170,6 +176,8 @@ export class Plot {
       this.view.resize(r.width, r.height);
       this.renderer.resize(r.width, r.height);
       if (this.pendingCam && r.width > 0) this.setCam(this.pendingCam);
+      // The canvas changed size right after a fit (the step bar appearing): fit again.
+      else if (this.fitted && sameCam(this.cam(), this.fitted.cam)) this.setCam(this.fitted.fit);
       this.draw();
       this.afterViewChange(false);
     }).observe(host);
@@ -302,6 +310,7 @@ export class Plot {
     const cam = typeof c === "function" ? c() : c;
     if (cam === "reset") this.view.reset();
     else Object.assign(this.view, cam);
+    this.fitted = typeof c === "function" ? { fit: c, cam: this.cam() } : null;
   }
 
   /** Camera for the current step's view (default range without one). */

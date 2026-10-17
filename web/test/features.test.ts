@@ -126,6 +126,13 @@ describe("intersections, y-intercept, interval max / min", () => {
     expect(set.result("Mh").none).toContain("닿지 않음");
     expectPts("Mj", [[0, 1, "IntervalMax"], [1, 1, "IntervalMax"]]);
   });
+
+  it("slow growth (ln, 1/√x) counts as unbounded, not as a limit", () => {
+    expectPts("Ml", []);
+    expect(set.result("Ml").none).toContain("끝없이 작아짐");
+    expectPts("Mr", []);
+    expect(set.result("Mr").none).toContain("끝없이 커짐");
+  });
 });
 
 describe("breaks", () => {
@@ -143,6 +150,11 @@ describe("breaks", () => {
     set.run(C(), RANGE);
     // f(0) = 1: the right side is filled, the left one open.
     expect(set.result("Bj").points.map((p) => p.open)).toEqual([true, false]);
+  });
+
+  it("slow growth (ln, 1/√x) is an asymptote, not a hole", () => {
+    expectPts("Bl", [[-3, NaN, "Asymptote"]]);
+    expectPts("Br", [[0, NaN, "Asymptote"]]);
   });
 });
 
