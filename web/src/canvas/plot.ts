@@ -193,6 +193,12 @@ export class Plot {
     this.bindInput();
   }
 
+  /** Shown (2D scene) or hidden (a 3D scene is drawn by `Plot3D`). */
+  setActive(on: boolean): void {
+    this.canvas.hidden = !on;
+    if (!on) this.cursor.hidden = true;
+  }
+
   // ----- model -----------------------------------------------------------
 
   /** New snapshot. Recomputes functions whose version or constants changed. */
@@ -703,6 +709,8 @@ export class Plot {
 
   private onResult(r: FromWorker): void {
     if (r.type === "fills") return this.onFills(r);
+    // 3D scenes are drawn by `Plot3D` with its own worker.
+    if (r.type === "result3d") return;
     if (r.type === "checks") {
       if (r.id !== this.verifyId) return;
       this.checkResults = r.results;
@@ -1126,6 +1134,8 @@ export class Plot {
     const el = this.canvas;
     let drag: { x: number; y: number } | null = null;
     el.addEventListener("pointerdown", (e) => {
+      // Left button pans; the others do nothing here.
+      if (e.button !== 0) return;
       drag = { x: e.clientX, y: e.clientY };
       el.setPointerCapture(e.pointerId);
       el.classList.add("dragging");

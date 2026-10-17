@@ -1,14 +1,21 @@
-// Workspace sidebar (UI doc "작업 공간 사이드바"): create, pick, ⋯ menu with key create/replace.
-// The new key is shown once in an easy-to-select box (no clipboard API without HTTPS).
+// Workspace sidebar (UI doc "작업 공간 사이드바"): create, pick, ⋯ menu with key create/replace
+// and "move to trash". The new key is shown once in an easy-to-select box (no clipboard
+// API without HTTPS). At the bottom: settings and the trash (restore, delete for good).
 
 import type { WorkspaceInfo } from "../generated/WorkspaceInfo";
 import { h, icon, ICONS } from "./dom";
+import { openModal, type Modal } from "./modal";
+import { openSettings } from "./settings";
 
 export interface SidebarActions {
   open(id: string): void;
   create(name: string): Promise<string | null>;
   /** Returns the new key, or an error message. */
   replaceKey(id: string): Promise<{ key: string } | { error: string }>;
+  /** Move to / out of the trash; delete for good (from the trash). Error message or null. */
+  trash(id: string): Promise<string | null>;
+  restore(id: string): Promise<string | null>;
+  remove(id: string): Promise<string | null>;
 }
 
 type MenuState = { id: string; step: "menu" | "confirm" | "busy" } | { id: string; step: "key"; key: string } | { id: string; step: "error"; message: string };
@@ -20,6 +27,10 @@ export class Sidebar {
   private open = localStorage.getItem("mv.sidebar") !== "closed";
   private creating = false;
   private menu: MenuState | null = null;
+  private trashModal: Modal | null = null;
+  /** In the trash view: the workspace asked to be deleted for good, and the last error. */
+  private confirmDelete: string | null = null;
+  private trashError = "";
 
   constructor(private actions: SidebarActions) {
     document.addEventListener("pointerdown", (e) => {
@@ -35,6 +46,71 @@ export class Sidebar {
     this.list = list;
     this.active = active;
     this.render();
+    if (this.trashModal) this.renderTrash();
+  }
+
+  private trashed(): WorkspaceInfo[] {
+    return this.list.filter((w) => w.trashed_at !== null && w.trashed_at !== undefined);
+  }
+
+  private footer(): HTMLElement {
+    const n = this.trashed().length;
+    return h(
+      "div",
+      { class: "sidebar-foot" },
+      h("button", { class: "iconbtn", "aria-label": "설정", title: "설정", onclick: () => openSettings() }, icon(ICONS.gear)),
+      h("button", { class: "iconbtn trash-btn", "aria-label": `휴지통${n ? ` (${n}개)` : ""}`, title: "휴지통", onclick: () => this.openTrash() }, icon(ICONS.trash), n ? h("span", { class: "badge" }, String(n)) : null),
+    );
+  }
+
+  private openTrash(): void {
+    this.confirmDelete = null;
+    this.trashError = "";
+    this.trashModal = openModal("휴지통", () => (this.trashModal = null));
+    this.renderTrash();
+  }
+
+  private renderTrash(): void {
+    const body = this.trashModal!.body;
+    body.replaceChildren();
+    const items = this.trashed().sort((a, b) => (b.trashed_at ?? 0) - (a.trashed_at ?? 0));
+    if (items.length === 0) {
+      body.append(h("p", { class: "set-hint" }, "휴지통이 비어 있음"));
+      return;
+    }
+    body.append(h("p", { class: "set-hint" }, "휴지통의 작업 공간은 key가 막혀서 Claude가 쓸 수 없음. 복원하면 같은 key로 다시 쓸 수 있음."));
+    const fmt = (ms: number) => new Date(ms).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const run = async (p: Promise<string | null>) => {
+      const err = await p;
+      this.trashError = err ?? "";
+      this.confirmDelete = null;
+      if (this.trashModal) this.renderTrash();
+    };
+    for (const w of items) {
+      const confirm = this.confirmDelete === w.id;
+      body.append(
+        h(
+          "div",
+          { class: "trash-row" },
+          h("div", { class: "trash-name" }, h("span", { class: "name", title: w.name }, w.name), h("span", { class: "when" }, `${fmt(w.trashed_at!)} 삭제`)),
+          confirm
+            ? h(
+                "div",
+                { class: "trash-confirm" },
+                h("span", { class: "warn" }, "되돌릴 수 없음"),
+                h("button", { class: "danger-btn", onclick: () => void run(this.actions.remove(w.id)) }, "영구 삭제"),
+                h("button", { class: "ghost-btn", onclick: () => ((this.confirmDelete = null), this.renderTrash()) }, "취소"),
+              )
+            : h(
+                "div",
+                { class: "trash-confirm" },
+                h("button", { class: "ghost-btn", onclick: () => void run(this.actions.restore(w.id)) }, icon(ICONS.restore), "복원"),
+                h("button", { class: "ghost-btn danger", onclick: () => ((this.confirmDelete = w.id), this.renderTrash()) }, "영구 삭제"),
+              ),
+        ),
+      );
+    }
+    if (this.trashError) body.append(h("p", { class: "set-note err" }, this.trashError));
   }
 
   private toggle(): void {
@@ -58,6 +134,7 @@ export class Sidebar {
       el.append(
         h("button", { class: "iconbtn", "aria-label": "사이드바 펼치기", onclick: () => this.toggle() }, icon(ICONS.expand)),
         h("button", { class: "iconbtn", "aria-label": "새 작업 공간", onclick: () => this.startCreate() }, icon(ICONS.plus)),
+        this.footer(),
       );
       return;
     }
@@ -92,10 +169,11 @@ export class Sidebar {
     } else {
       el.append(h("button", { class: "new-ws", onclick: () => this.startCreate() }, icon(ICONS.plus), "새 작업 공간"));
     }
-    if (this.list.length > 0) el.append(h("div", { class: "recent" }, "최근"));
+    const live = this.list.filter((w) => w.trashed_at === null || w.trashed_at === undefined);
+    if (live.length > 0) el.append(h("div", { class: "recent" }, "최근"));
     const ul = h("div", { class: "ws-list" });
-    for (const w of [...this.list].sort((a, b) => b.updated_at - a.updated_at)) ul.append(this.item(w));
-    el.append(ul);
+    for (const w of [...live].sort((a, b) => b.updated_at - a.updated_at)) ul.append(this.item(w));
+    el.append(ul, this.footer());
   }
 
   private item(w: WorkspaceInfo): HTMLElement {
@@ -137,6 +215,19 @@ export class Sidebar {
     const label = w.has_key ? "key 교체" : "key 생성";
     box.append(
       h("button", { class: "menu-item", onclick: () => (w.has_key ? ((this.menu = { id: w.id, step: "confirm" }), this.render()) : void this.replace(w.id)) }, icon(ICONS.key), label),
+      h(
+        "button",
+        {
+          class: "menu-item",
+          onclick: async () => {
+            const err = await this.actions.trash(w.id);
+            this.menu = err ? { id: w.id, step: "error", message: err } : null;
+            this.render();
+          },
+        },
+        icon(ICONS.trash),
+        "휴지통으로 이동",
+      ),
     );
     if (m.step === "confirm") {
       box.append(h("div", { class: "menu-body" }, h("span", { class: "warn" }, "교체하면 이전 key는 즉시 무효가 됨"), h("button", { class: "pill-btn", onclick: () => void this.replace(w.id) }, "교체")));

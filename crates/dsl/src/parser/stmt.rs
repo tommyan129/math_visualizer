@@ -408,7 +408,7 @@ impl<'a> Parser<'a> {
             let body = if self.eat(Tok::Eq) {
                 DefBody::Equation { lhs: e, rhs: self.expr()? }
             } else if self.eat(Tok::Comma) {
-                DefBody::WithRange { expr: e, range: self.expr()? }
+                self.with_range(e)?
             } else {
                 DefBody::Expr(e)
             };
@@ -426,7 +426,7 @@ impl<'a> Parser<'a> {
             let body = if self.eat(Tok::Eq) {
                 DefBody::Equation { lhs: e, rhs: self.expr()? }
             } else if self.eat(Tok::Comma) {
-                DefBody::WithRange { expr: e, range: self.expr()? }
+                self.with_range(e)?
             } else {
                 DefBody::Expr(e)
             };
@@ -434,10 +434,17 @@ impl<'a> Parser<'a> {
             body
         };
         let end = match &body {
-            DefBody::Expr(e) | DefBody::Equation { rhs: e, .. } | DefBody::WithRange { range: e, .. } => e.span,
+            DefBody::Expr(e) | DefBody::Equation { rhs: e, .. } | DefBody::WithRange { range: e, range2: None, .. } | DefBody::WithRange { range2: Some(e), .. } => e.span,
         };
         let end = family_end.unwrap_or(end);
         Ok(Def { name, name_span, params, output, body, family, span: start.to(end) })
+    }
+
+    /// `expr, range` or `expr, range, range` (after the first comma).
+    fn with_range(&mut self, e: Expr) -> PResult<DefBody> {
+        let range = self.expr()?;
+        let range2 = if self.eat(Tok::Comma) { Some(self.expr()?) } else { None };
+        Ok(DefBody::WithRange { expr: e, range, range2 })
     }
 
     /// Indented block under a definition head: `split [name =] expr at b1, b2, ...` and
@@ -612,6 +619,21 @@ mod tests {
         assert!(matches!(d[3].output, Some(Output::Matrix(_))));
         assert!(d[4].params.is_none());
         assert!(matches!(&d[5].body, DefBody::Expr(e) if matches!(&e.kind, ExprKind::Split { pieces, .. } if pieces.len() == 1)));
+    }
+
+    #[test]
+    fn surface_ranges_parse() {
+        let d = defs("define:\n    s(u, v) -> (x, y, z): (u, v, 0), 0 <= u <= 1, 0 <= v <= 2\n    q(t) -> (x, y, z): (t, t, t), 0 <= t <= 1\n");
+        assert!(matches!(&d[0].body, DefBody::WithRange { range2: Some(_), .. }));
+        assert!(matches!(&d[1].body, DefBody::WithRange { range2: None, .. }));
+        assert_eq!(d[0].span.end as usize, "define:\n    s(u, v) -> (x, y, z): (u, v, 0), 0 <= u <= 1, 0 <= v <= 2".len());
+    }
+
+    #[test]
+    fn third_range_is_a_syntax_error() {
+        let src = "define:\n    s(u, v) -> (x, y, z): (u, v, 0), 0 <= u <= 1, 0 <= v <= 2, 0 <= u <= 3\n";
+        let (_, diags) = crate::parser::parse_program(src);
+        assert!(!diags.is_empty());
     }
 
     #[test]

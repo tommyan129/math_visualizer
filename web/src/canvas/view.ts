@@ -44,7 +44,7 @@ export class View {
   }
 
   box(): ViewBox {
-    return { x_min: this.wx(0), x_max: this.wx(this.width), y_min: this.wy(this.height), y_max: this.wy(0) };
+    return { x_min: this.wx(0), x_max: this.wx(this.width), y_min: this.wy(this.height), y_max: this.wy(0), z_min: null, z_max: null };
   }
 
   panBy(dxPx: number, dyPx: number): void {

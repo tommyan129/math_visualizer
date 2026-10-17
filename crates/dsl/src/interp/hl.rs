@@ -469,7 +469,7 @@ impl<'s> Cx<'s> {
                 let fs: Vec<Option<Ident>> = args
                     .iter()
                     .map(|a| match &a.kind {
-                        ExprKind::Name { name, .. } if self.state.functions.get(&name.key).is_some_and(|f| f.kind == DefKind::Curve && f.family.is_none()) => Some(name.clone()),
+                        ExprKind::Name { name, .. } if self.state.functions.get(&name.key).is_some_and(|f| f.curve_axes().is_some() && f.family.is_none()) => Some(name.clone()),
                         _ => None,
                     })
                     .collect();
@@ -835,9 +835,11 @@ impl<'s> Cx<'s> {
                 Some(self.resolve_range(r, &all, true, &mut deps, &mut consts)?)
             }
             (HlTarget::Function { function }, Some(r)) => {
-                let input = self.state.functions[function].inputs[0].key.clone();
+                // Over the inputs: x for a curve, x and y for a surface.
+                let inputs: Vec<String> = self.state.functions[function].inputs.iter().map(|i| i.key.clone()).collect();
                 debug_assert!(self.state.functions[function].kind == DefKind::Curve);
-                Some(self.resolve_range(r, &[input.as_str()], false, &mut deps, &mut consts)?)
+                let inputs: Vec<&str> = inputs.iter().map(|s| s.as_str()).collect();
+                Some(self.resolve_range(r, &inputs, false, &mut deps, &mut consts)?)
             }
         };
         let axes = match &target {
@@ -845,8 +847,7 @@ impl<'s> Cx<'s> {
                 deps.insert(function.clone());
                 let f = &self.state.functions[function];
                 consts.extend(f.consts.iter().cloned());
-                let (i, o) = f.curve_axes().unwrap();
-                vec![i.key.clone(), o.key.clone()]
+                f.system().map(|(_, ax)| ax.iter().map(|a| a.key.clone()).collect()).unwrap_or_default()
             }
             HlTarget::Grid {} => {
                 let mut used = vec![];
@@ -867,7 +868,8 @@ impl<'s> Cx<'s> {
             systems.extend(self.state.functions.values().filter_map(|f| f.system()).filter(|(_, ax)| ax.len() == 2).map(|(_, ax)| [ax[0].key.clone(), ax[1].key.clone()]));
             systems.iter().any(|s| axes.iter().all(|a| s.contains(a)))
         };
-        if axes.len() > 2 || !fits_some() {
+        let surface = matches!(&target, HlTarget::Function { function } | HlTarget::Sub { function, .. } if self.state.functions[function].is_surface());
+        if !surface && (axes.len() > 2 || !fits_some()) {
             self.err_s(src.range.as_ref().map_or(at, |r| r.span), code::PLACEMENT, format!("범위에 쓴 좌표축 {}이 한 좌표계에 속하지 않음", axes.join(", ")), "x, y만 쓰거나 t, y만 쓰기");
             return None;
         }
@@ -899,8 +901,10 @@ impl<'s> Cx<'s> {
             style_name = Some(k.clone());
         }
         match (&target, style.fill) {
-            // The region is the fill; a fill rule does not apply.
+            // The region is the fill; a fill rule does not apply. A surface highlight colors
+            // the part of the surface over its range (stage-6a decision).
             (HlTarget::Grid {}, _) => style.fill = Fill::Region,
+            (HlTarget::Function { .. }, _) if surface => style.fill = Fill::Region,
             (HlTarget::Function { .. }, Fill::Region) => {
                 let span = src.style.as_ref().map_or(at, |e| e.span);
                 self.err_s(span, code::STYLE, "fill: region은 대상 없는 highlight에만 씀", "fill: axis, above, below");
@@ -1016,9 +1020,13 @@ impl<'s> Cx<'s> {
                 }
             }
         }
-        let fa = function.as_ref().and_then(|f| self.state.functions.get(f)).and_then(|f| f.curve_axes()).map(|(i, o)| [i.key.clone(), o.key.clone()]);
-        let fa = fa.unwrap_or_else(|| ["x".to_string(), "y".to_string()]);
-        let axes: &[&str] = &[fa[0].as_str(), fa[1].as_str()];
+        let fa: Vec<String> = match function.as_ref().and_then(|f| self.state.functions.get(f)) {
+            Some(f) if f.is_surface() => f.inputs.iter().map(|i| i.key.clone()).collect(),
+            Some(f) => f.curve_axes().map_or(vec!["x".into(), "y".into()], |(i, o)| vec![i.key.clone(), o.key.clone()]),
+            None => vec!["x".into(), "y".into()],
+        };
+        let axes: Vec<&str> = fa.iter().map(|s| s.as_str()).collect();
+        let axes: &[&str] = &axes;
         let range = match slots.get(1) {
             None => None,
             Some(r) => {

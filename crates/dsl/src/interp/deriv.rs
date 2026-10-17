@@ -42,8 +42,8 @@ impl<'s> Cx<'s> {
                 self.err_s(def.name_span, code::UNDECLARED, format!("{what} '{}'의 원래 함수 '{base}'가 없음", id.key), format!("{base}(x) -> y: ... 를 먼저 정의"));
                 false
             }
-            Some(f) if f.kind != DefKind::Curve || f.family.is_some() => {
-                let w = if f.family.is_some() { "반복 정의" } else { f.kind.word() };
+            Some(f) if f.kind != DefKind::Curve || f.family.is_some() || f.is_surface() => {
+                let w = if f.family.is_some() { "반복 정의" } else if f.is_surface() { "곡면" } else { f.kind.word() };
                 self.err(def.name_span, code::TYPE, format!("{what} 이름은 일반 함수(f(x) -> y)에만 붙음 ('{base}'는 {w})"));
                 false
             }
@@ -117,7 +117,7 @@ impl<'s> Cx<'s> {
         for g in self.state.functions.values() {
             let Some((base, _)) = related(&g.name) else { continue };
             let ok = match self.state.functions.get(&base) {
-                Some(f) => f.kind == DefKind::Curve && f.family.is_none() && f.curve_axes().map(|(i, o)| (&i.key, &o.key)) == g.curve_axes().map(|(i, o)| (&i.key, &o.key)),
+                Some(f) => f.kind == DefKind::Curve && f.family.is_none() && f.curve_axes().is_some() && f.curve_axes().map(|(i, o)| (&i.key, &o.key)) == g.curve_axes().map(|(i, o)| (&i.key, &o.key)),
                 None => false,
             };
             if !ok {

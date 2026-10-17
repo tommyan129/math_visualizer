@@ -2,6 +2,11 @@
 import type { ViewRange } from "./ViewRange";
 
 /**
- * Camera range per axis; a missing axis keeps 1:1 scale around 0.
+ * Camera range per axis; a missing axis keeps 1:1 scale around 0 (2D) or takes
+ * -5..5 (3D box).
  */
-export type ViewSpec = { h: ViewRange | null, v: ViewRange | null, src: string, };
+export type ViewSpec = { h: ViewRange | null, v: ViewRange | null, 
+/**
+ * Third axis of a 3D scene (the box height).
+ */
+d: ViewRange | null, src: string, };

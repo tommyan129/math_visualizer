@@ -2,12 +2,13 @@
 // Transferable typed arrays. Layer, order and style are attached on the main thread.
 
 import type { Expr } from "../generated/Expr";
-import { CodegenError, compile, compileRegion, type Compiled, type DrawnMembers, type FnSpec, type Region, type Scalar, type Vec } from "./codegen";
+import { CodegenError, compile, compileRegion, compileRegion3, type Compiled, type DrawnMembers, type FnSpec, type Region, type Region3, type Scalar, type Vec } from "./codegen";
 import { FeatureSet, type FeaturePt } from "./features";
 import { computeFill, rasterRegion, type FillRule, type RasterRect } from "./fill";
 import { clipLine, spanShape } from "./linalg";
 import { makeRuntime } from "./numeric";
 import { sampleImplicit } from "./implicit";
+import { boxOrigin, clipLine3, maskOf, planeInBox, sampleParamSurface, sampleSpaceCurve, sampleSurface, spanShape3, type Box3, type LineData, type MeshData } from "./mesh";
 import { sampleParametric } from "./paramsample";
 import { sampleCurve, sampleDiscrete, type Quality, type SampleRange } from "./sample";
 import { runCheck, type CheckSpec } from "./verify";
@@ -31,8 +32,10 @@ export const CLIP_KEY = "\u0000clip";
 export type ToWorker =
   | { type: "functions"; fns: FnSpec[]; constKeys: string[] }
   | { type: "highlights"; specs: HlSpec[] }
-  /** Current scene: axis names (regions map them to x, y) and the clip region. */
-  | { type: "scene"; axes: [string, string]; polar: boolean; clip: Expr | null }
+  /** Current scene: axis names (regions map them to x, y; three for a 3D scene) and the clip region. */
+  | { type: "scene"; axes: string[]; polar: boolean; clip: Expr | null }
+  /** 3D scene (stage 6): geometry of `keys` over the view box. */
+  | { type: "sample3d"; id: number; keys: string[]; C: Float64Array; box: Box3; quality: Quality }
   | { type: "sample"; id: number; keys: string[]; C: Float64Array; range: SampleRange; quality: Quality }
   | { type: "fills"; id: number; items: FillItem[]; C: Float64Array; range: SampleRange; quality: Quality }
   /** Numeric verification (stage 5c) over the given constant sets. */
@@ -84,13 +87,27 @@ export interface RasterResult {
   mask: Uint8Array;
 }
 
+/** One 3D definition's geometry. */
+export type Item3 =
+  /** Surfaces and parametric surfaces (one mesh per `family` copy) and the masks of the highlights on them. */
+  | { key: string; kind: "mesh"; meshes: MeshData[]; hls: { key: string; mask: Float32Array }[] }
+  /** Space curves. */
+  | { key: string; kind: "lines"; line: LineData }
+  /** dim 0: the origin; 1: the line's two ends in the box; 2: the plane's polygon in the box; 3: the whole box. */
+  | { key: string; kind: "span"; dim: 0 | 1 | 2 | 3; origin: [number, number, number]; positions: Float32Array }
+  /** Tail and head. */
+  | { key: string; kind: "arrow"; origin: [number, number, number]; positions: Float32Array };
+
 export type FromWorker =
   | { type: "result"; id: number; quality: Quality; range: SampleRange; curves: CurveResult[]; warnings: WorkerWarning[] }
+  | { type: "result3d"; id: number; quality: Quality; box: Box3; items: Item3[]; warnings: WorkerWarning[] }
   | { type: "fills"; id: number; quality: Quality; range: SampleRange; results: (FillResult | RasterResult)[]; warnings: WorkerWarning[] }
   | { type: "checks"; id: number; results: CheckResult[] };
 
 /** Scene budget for 2D curve samples (design.md "2층 장면 예산"). */
 const SCENE_BUDGET = 1_000_000;
+/** Scene budget for 3D mesh vertices (design.md "2층 장면 예산"; measured in 6b). */
+const MESH_BUDGET = 1_000_000;
 
 const R = makeRuntime();
 const F: Scalar[] = [];
@@ -102,7 +119,9 @@ let fnIndex = new Map<string, number>();
 let hlSpecs: HlSpec[] = [];
 let regions = new Map<string, Region | null>();
 let regionErrors = new Map<string, string>();
-let axes: [string, string] = ["x", "y"];
+let axes: string[] = ["x", "y"];
+/** 3D scenes: clip and surface highlight ranges over the three axes. */
+let regions3 = new Map<string, Region3 | null>();
 let polar = false;
 let clipExpr: Expr | null = null;
 const featureSet = new FeatureSet();
@@ -125,7 +144,20 @@ function setHighlights(specs: HlSpec[]): void {
   hlSpecs = specs;
   regions = new Map();
   regionErrors = new Map();
-  const env = { constIndex, fnIndex, axes };
+  regions3 = new Map();
+  if (axes.length === 3) {
+    const env = { constIndex, fnIndex };
+    const all = clipExpr ? [...specs, { key: CLIP_KEY, fn: null, range: clipExpr }] : specs;
+    for (const h of all) {
+      try {
+        regions3.set(h.key, h.range ? compileRegion3(h.range, axes, env, R, F) : null);
+      } catch (e) {
+        regionErrors.set(h.key, e instanceof CodegenError ? e.message : String(e));
+      }
+    }
+    return;
+  }
+  const env = { constIndex, fnIndex, axes: axes as [string, string] };
   const all = clipExpr ? [...specs, { key: CLIP_KEY, fn: null, range: clipExpr }] : specs;
   for (const h of all) {
     try {
@@ -351,6 +383,123 @@ function arrowGeometry(key: string, vecs: Vec[], C: Float64Array, origin: [numbe
   return { key, kind: "arrow", origin, coords: rel(xy, origin), offsets: Uint32Array.of(0, 2) };
 }
 
+/** Geometry of 3D definitions over the box (stage 6a). */
+function sample3d(id: number, keys: string[], C: Float64Array, box: Box3, quality: Quality): Extract<FromWorker, { type: "result3d" }> {
+  const items: Item3[] = [];
+  const warnings: WorkerWarning[] = [];
+  const clip = regions3.get(CLIP_KEY) ?? null;
+  if (regionErrors.has(CLIP_KEY)) warnings.push({ source: null, code: "W-codegen", message: `clip 계산 코드를 만들 수 없음 (${regionErrors.get(CLIP_KEY)})` });
+  const origin = boxOrigin(box);
+  let vertices = 0;
+  for (const key of keys) {
+    const err = compileErrors.get(key);
+    if (err) {
+      warnings.push({ source: key, code: "W-codegen", message: `계산 코드를 만들 수 없음 (${err})` });
+      continue;
+    }
+    const c = compiled.get(key);
+    if (!c) continue;
+    if (c.kind === "Span") {
+      const shape = spanShape3(c.vecs.map((v) => v(C)));
+      if (shape.dim === null) {
+        warnings.push({ source: key, code: "W-undefined", message: "벡터 값이 정의되지 않아 그리지 않음" });
+        continue;
+      }
+      let pts: number[] = [];
+      if (shape.dim === 0) pts = [0, 0, 0];
+      else if (shape.dim === 1) pts = clipLine3(shape.dir!, box) ?? [];
+      else if (shape.dim === 2) pts = planeInBox(shape.dir!, box).flat();
+      items.push({ key, kind: "span", dim: shape.dim, origin, positions: Float32Array.from(pts.map((v, i) => v - origin[i % 3]!)) });
+      continue;
+    }
+    if (c.kind === "Arrow") {
+      const v = c.vecs[0]?.(C), p = c.vecs[1]?.(C) ?? [0, 0, 0];
+      if (!v || v.length !== 3 || p.length !== 3 || ![...v, ...p].every(Number.isFinite)) {
+        warnings.push({ source: key, code: "W-undefined", message: "벡터 값이 정의되지 않아 그리지 않음" });
+        continue;
+      }
+      const xyz = [p[0]!, p[1]!, p[2]!, p[0]! + v[0]!, p[1]! + v[1]!, p[2]! + v[2]!];
+      items.push({ key, kind: "arrow", origin, positions: Float32Array.from(xyz.map((x, i) => x - origin[i % 3]!)) });
+      continue;
+    }
+    if (vertices >= MESH_BUDGET) {
+      warnings.push({ source: key, code: "W-budget", message: "장면 정점 예산을 넘어 그리지 않음" });
+      continue;
+    }
+    const copies: DrawnMembers[] = [];
+    if (c.family) {
+      const [a, b] = c.family.krange(C);
+      const lo = c.family.loStrict ? a! + 1 : a!, hi = c.family.hiStrict ? b! - 1 : b!;
+      if (!Number.isInteger(lo) || !Number.isInteger(hi)) warnings.push({ source: key, code: "W-family-range", message: "family 범위 끝이 정수가 아니라 그리지 않음" });
+      else {
+        const last = Math.min(hi, lo + MAX_FAMILY - 1);
+        if (hi > last) warnings.push({ source: key, code: "W-family-cap", message: `family 반복이 ${MAX_FAMILY}개를 넘어 앞의 ${MAX_FAMILY}개만 그림` });
+        for (let k = lo; k <= last; k++) copies.push(c.family.at(k));
+      }
+    } else copies.push(c);
+    R.capped = false;
+    R.overlap = false;
+    const meshes: MeshData[] = [];
+    const lines: LineData[] = [];
+    for (const m of copies) {
+      if (m.surface) meshes.push(sampleSurface(m.surface, C, box, quality, clip));
+      else if (m.param2) {
+        const u = m.trange!(C), v = m.trange2!(C);
+        if (!(u[0] <= u[1]) || !(v[0] <= v[1])) warnings.push({ source: key, code: "W-range", message: "매개변수 범위가 비어 있거나 정의되지 않아 그리지 않음" });
+        else meshes.push(sampleParamSurface(m.param2, C, u, v, box, quality, clip));
+      } else if (m.param) {
+        const [t0, t1] = m.trange ? m.trange(C) : [0, 2 * Math.PI];
+        if (!(t0! <= t1!)) warnings.push({ source: key, code: "W-range", message: "매개변수 범위가 비어 있거나 정의되지 않아 그리지 않음" });
+        else lines.push(sampleSpaceCurve(m.param, C, t0!, t1!, box, quality, clip));
+      }
+    }
+    if (R.capped) warnings.push({ source: key, code: "W-sum-terms", message: "sum/prod 항이 10만 개를 넘는 점은 그리지 않음" });
+    if (R.overlap) warnings.push({ source: key, code: "W-split-overlap", message: "현재 값에서 split 구간이 겹치는 점이 있어 그 점은 정의 안 됨 (경계점 순서 확인)" });
+    if (meshes.length) {
+      vertices += meshes.reduce((s, m) => s + m.positions.length / 3, 0);
+      const hls = hlSpecs
+        .filter((h) => h.fn === key && meshes.length === 1)
+        .flatMap((h) => {
+          const reg = regions3.get(h.key);
+          if (regionErrors.has(h.key)) {
+            warnings.push({ source: h.key, code: "W-codegen", message: `계산 코드를 만들 수 없음 (${regionErrors.get(h.key)})` });
+            return [];
+          }
+          return [{ key: h.key, mask: reg ? maskOf(meshes[0]!, reg, C) : meshes[0]!.alpha.slice() }];
+        });
+      items.push({ key, kind: "mesh", meshes, hls });
+    } else if (lines.length) {
+      // Family copies join as pieces of one line batch.
+      const n = lines.reduce((s, l) => s + l.positions.length, 0);
+      const positions = new Float32Array(n);
+      const offsets: number[] = [];
+      let at = 0;
+      for (const l of lines) {
+        positions.set(l.positions, at * 3);
+        for (let i = 0; i + 1 < l.offsets.length; i++) offsets.push(at + l.offsets[i]!);
+        at += l.positions.length / 3;
+      }
+      offsets.push(at);
+      vertices += at;
+      items.push({ key, kind: "lines", line: { origin, positions, offsets: Uint32Array.from(offsets) } });
+    }
+  }
+  return { type: "result3d", id, quality, box, items, warnings };
+}
+
+function transfer3(items: Item3[]): ArrayBuffer[] {
+  return items.flatMap((it): ArrayBuffer[] => {
+    switch (it.kind) {
+      case "mesh":
+        return [...it.meshes.flatMap((m) => [m.positions.buffer, m.normals.buffer, m.alpha.buffer, m.indices.buffer, m.wire.buffer]), ...it.hls.map((h) => h.mask.buffer)] as ArrayBuffer[];
+      case "lines":
+        return [it.line.positions.buffer, it.line.offsets.buffer] as ArrayBuffer[];
+      default:
+        return [it.positions.buffer] as ArrayBuffer[];
+    }
+  });
+}
+
 self.onmessage = (ev: MessageEvent<ToWorker>) => {
   const m = ev.data;
   if (m.type === "functions") {
@@ -374,6 +523,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       }
     });
     (self as unknown as Worker).postMessage({ type: "checks", id: m.id, results } satisfies FromWorker);
+  } else if (m.type === "sample3d") {
+    const r = sample3d(m.id, m.keys, m.C, m.box, m.quality);
+    (self as unknown as Worker).postMessage(r, transfer3(r.items));
   } else if (m.type === "fills") {
     const r = fills(m.id, m.items, m.C, m.range, m.quality);
     const transfer = r.results.flatMap((x) => (x.kind === "fill" ? [x.coords.buffer, x.rings.buffer, x.edge.buffer, x.edgeOffsets.buffer] : [x.mask.buffer]));

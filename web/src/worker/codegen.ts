@@ -29,8 +29,10 @@ export interface FnSpec {
   body: Expr;
   consts: string[];
   calls: string[];
-  /** Parameter range of a parametric / polar function. */
+  /** Parameter range of a parametric / polar function (the first parameter of a surface). */
   range: { lo: Expr; hi: Expr } | null;
+  /** Second parameter's range of a parametric surface `s(u, v) -> (x, y, z)`. */
+  range2?: { lo: Expr; hi: Expr } | null;
   /** `family(...; lo <= k <= hi)`. */
   family: { index: string; lo: Expr; hi: Expr; lo_strict: boolean; hi_strict: boolean } | null;
   /** Feature-point definition (stage 5b). */
@@ -39,8 +41,9 @@ export interface FnSpec {
 
 export function specOf(f: Fn): FnSpec {
   const range = f.range ? { lo: f.range.lo, hi: f.range.hi } : null;
+  const range2 = f.range2 ? { lo: f.range2.lo, hi: f.range2.hi } : null;
   const family = f.family ? { index: f.family.index.key, lo: f.family.lo, hi: f.family.hi, lo_strict: f.family.lo_strict, hi_strict: f.family.hi_strict } : null;
-  return { key: f.key, version: f.version, kind: f.kind, inputs: f.inputs.map((i) => i.key), body: f.body, consts: f.consts, calls: f.calls, range, family, feature: f.feature };
+  return { key: f.key, version: f.version, kind: f.kind, inputs: f.inputs.map((i) => i.key), body: f.body, consts: f.consts, calls: f.calls, range, range2, family, feature: f.feature };
 }
 
 /**
@@ -63,6 +66,10 @@ export function specsOf(state: State, fns: Fn[]): FnSpec[] {
 export type Param = (t: number, C: Float64Array) => number[];
 /** Implicit curve `lhs - rhs` over the scene's horizontal and vertical axis. */
 export type Implicit = (x: number, y: number, C: Float64Array) => number;
+/** Surface `g(x, y) -> z` (stage 6). */
+export type Surface = (x: number, y: number, C: Float64Array) => number;
+/** A point of a parametric surface at `(u, v)` (`[NaN, NaN, NaN]` where undefined). */
+export type Param2 = (u: number, v: number, C: Float64Array) => number[];
 
 export interface Compiled {
   key: string;
@@ -85,6 +92,11 @@ export interface Compiled {
   trange?: (C: Float64Array) => [number, number];
   /** Equations. */
   implicit?: Implicit;
+  /** Surfaces `g(x, y) -> z` (stage 6). */
+  surface?: Surface;
+  /** Parametric surfaces and the second parameter's range. */
+  param2?: Param2;
+  trange2?: (C: Float64Array) => [number, number];
   /** `family`: members per integer k, and the index bounds at the current constants. */
   family?: { at: (k: number) => DrawnMembers; krange: (C: Float64Array) => [number, number]; loStrict: boolean; hiStrict: boolean };
 }
@@ -417,6 +429,14 @@ export function compileOrder(lo: Expr, hi: Expr, constIndex: Map<string, number>
   return new Function("R", "F", src)(R, []) as (C: Float64Array) => boolean;
 }
 
+/** Region over the three axes of a 3D scene (clip, surface highlight ranges). */
+export type Region3 = (x: number, y: number, z: number, C: Float64Array) => boolean;
+
+export function compileRegion3(e: Expr, axes: string[], env: CodegenEnv, R: Runtime, F: Scalar[]): Region3 {
+  const src = `"use strict";\nreturn (x0, x1, x2, C) => ${expr(e, { ...env, axes: null, inputs: axes })};`;
+  return new Function("R", "F", src)(R, F) as Region3;
+}
+
 /** Compiles a resolved inequality region (highlight range slot, clip). */
 export function compileRegion(e: Expr, env: CodegenEnv, R: Runtime, F: Scalar[]): Region {
   const src = `"use strict";\nreturn (x, y, C) => ${expr(e, env)};`;
@@ -468,6 +488,7 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
   const m = make(drawnSource(spec, env, [])) as DrawnMembers;
   switch (spec.kind) {
     case "Parametric":
+      if (m.param2) return { ...base, ...m, table: m.param2 as unknown as Scalar };
       return { ...base, ...m, table: m.param as unknown as Scalar };
     case "Polar":
       // Called as a number (r) from other functions.
@@ -475,6 +496,7 @@ export function compile(spec: FnSpec, env: CodegenEnv, R: Runtime, F: Scalar[], 
     case "Equation":
       return { ...base, ...m };
     default:
+      if (m.surface) return { ...base, ...m, table: m.surface as unknown as Scalar };
       return { ...base, ...m, table: m.scalar!, discrete: discreteCallee || boundUsesInput(spec.body) };
   }
 }
@@ -486,6 +508,11 @@ export interface DrawnMembers {
   param?: Param;
   trange?: (C: Float64Array) => [number, number];
   implicit?: Implicit;
+  /** Surfaces `g(x, y) -> z`. */
+  surface?: Surface;
+  /** Parametric surfaces, with the second parameter's range. */
+  param2?: Param2;
+  trange2?: (C: Float64Array) => [number, number];
 }
 
 /** Object-literal source of a drawn definition's members; `idx` = the family index (→ `k0`). */
@@ -493,6 +520,13 @@ function drawnSource(spec: FnSpec, env: CodegenEnv, idx: string[]): string {
   switch (spec.kind) {
     case "Parametric":
     case "Polar": {
+      if (spec.kind === "Parametric" && spec.inputs.length === 2) {
+        if (!spec.range || !spec.range2) throw new CodegenError("surface ranges");
+        const body = expr(spec.body, { ...env, axes: null, inputs: spec.inputs }, idx);
+        const benv = { ...env, axes: null, inputs: [] };
+        const r = (q: { lo: Expr; hi: Expr }) => `(C) => [${expr(q.lo, benv, idx)}, ${expr(q.hi, benv, idx)}]`;
+        return `{ param2: (x0, x1, C) => ${body}, trange: ${r(spec.range)}, trange2: ${r(spec.range2)} }`;
+      }
       if (spec.inputs.length !== 1) throw new CodegenError("one parameter");
       const body = expr(spec.body, { ...env, axes: null, inputs: spec.inputs }, idx);
       const benv = { ...env, axes: null, inputs: [] };
@@ -506,6 +540,7 @@ function drawnSource(spec: FnSpec, env: CodegenEnv, idx: string[]): string {
       return `{ implicit: (x0, x1, C) => (${expr(spec.body.first, env2, idx)}) - (${expr(spec.body.rest[0]!.rhs, env2, idx)}) }`;
     }
     case "Curve": {
+      if (spec.inputs.length === 2) return `{ surface: (x0, x1, C) => ${expr(spec.body, { ...env, axes: null, inputs: spec.inputs }, idx)} }`;
       const e = expr(spec.body, { ...env, axes: null }, idx);
       return `{ scalar(x, C) { return ${e}; }, batch(xs, out, C) { const n = xs.length; for (let i = 0; i < n; i++) { const x = xs[i]; out[i] = ${e}; } } }`;
     }

@@ -23,6 +23,7 @@ pub fn key_error(e: &KeyError) -> String {
     match e {
         KeyError::Invalid => "[E-key] key가 교체됐거나 없음 → 사용자에게 이 작업 공간의 현재 key를 물어볼 것".into(),
         KeyError::RateLimited => "[E-key-limit] 틀린 key 시도가 많아 1분 동안 key 확인을 막음 → 잠시 뒤 다시".into(),
+        KeyError::Trashed => "[E-key-trashed] 이 작업 공간은 휴지통에 있음 → 사용자에게 복원해 달라고 할 것".into(),
     }
 }
 
@@ -319,6 +320,12 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
         Some(sc) => lines.push(format!("scene: {} · step {step}/{}", sc.label(), sc.step_count())),
     }
     if let (Browser::View { view, .. }, Some(sc)) = (browser, cur)
+        && sc.axes.len() == 3
+        && let (Some(z0), Some(z1)) = (view.z_min, view.z_max)
+    {
+        lines.push(format!("view: {} and {} <= {} <= {} (계산 범위)", view_text(view, (&sc.axes[0].key, &sc.axes[1].key)), fmt_num(z0), sc.axes[2].key, fmt_num(z1)));
+    }
+    if let (Browser::View { view, .. }, Some(sc)) = (browser, cur)
         && sc.axes.len() == 2
     {
         if sc.polar {
@@ -331,6 +338,7 @@ pub fn state_text(w: &WorkspaceView, browser: &Browser) -> String {
     }
     if let Some(sc) = cur {
         match (&sc.user_clip, &sc.clip) {
+            (None, Some(c)) if sc.clip_off => lines.push(format!("clip: 없음 (사용자가 끔, Claude 값 {})", c.src)),
             (Some(u), _) => lines.push(format!("clip: {} (사용자 조정, Claude 값 {})", u.src, sc.clip.as_ref().map_or("없음", |c| c.src.as_str()))),
             (None, Some(c)) => lines.push(format!("clip: {}", c.src)),
             _ => {}
@@ -551,14 +559,14 @@ mod tests {
         let text = apply_ok(&ok2, &Browser::Rendered { warnings: vec![], spans: vec![], features: vec![], checks: checks.clone() });
         assert!(text.contains("검증 f@1") && !text.contains("검증 C"), "{text}");
         let w = view_of(ok2.state, "2D(x, y)", 0);
-        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![], features: vec![], checks };
+        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0, z_min: None, z_max: None }, warnings: vec![], spans: vec![], features: vec![], checks };
         let st = state_text(&w, &b);
         assert!(st.contains("  C: calc(g, h)\n    검증 C: g → h 일치 (48점)"), "{st}");
     }
 
     fn view_of(state: State, scene: &str, step: u32) -> WorkspaceView {
         WorkspaceView {
-            info: WorkspaceInfo { id: "w1".into(), name: "calc".into(), has_key: true, revision: 1, updated_at: 0 },
+            info: WorkspaceInfo { id: "w1".into(), name: "calc".into(), has_key: true, revision: 1, updated_at: 0, trashed_at: None },
             state,
             nav: model::protocol::Nav { scene: Some(scene.into()), step, updated: vec![] },
         }
@@ -569,7 +577,7 @@ mod tests {
         let (state, _) = applied(&["define:\n    f(x; n) -> y: sum(x^k; 0 <= k <= n)\n"]);
         let w = view_of(state, "2D(x, y)", 0);
         let b = Browser::View {
-            view: ViewBox { x_min: -10.0, x_max: 10.0, y_min: -6.25, y_max: 6.25 },
+            view: ViewBox { x_min: -10.0, x_max: 10.0, y_min: -6.25, y_max: 6.25, z_min: None, z_max: None },
             warnings: vec![Warning { source: Some("f".into()), code: "W-sum-terms".into(), message: "항이 너무 많은 점은 그리지 않음".into() }],
             spans: vec![],
             features: vec![],
@@ -582,6 +590,16 @@ mod tests {
     }
 
     #[test]
+    fn state_text_3d_box() {
+        let (state, _) = applied(&["define:\n    g(x, y) -> z: x^2 - y^2\n    S: span([1, 0, 0], [0, 1, 0], [0, 0, 1])\n"]);
+        let w = view_of(state, "3D(x, y, z)", 0);
+        let b = Browser::View { view: ViewBox { x_min: -2.0, x_max: 2.0, y_min: -3.0, y_max: 3.0, z_min: Some(-1.0), z_max: Some(4.0) }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 3 }], features: vec![], checks: vec![] };
+        let t = state_text(&w, &b);
+        assert!(t.contains("scene: scene(3D(x, y, z)) (기본)\nview: -2 <= x <= 2 and -3 <= y <= 3 and -1 <= z <= 4 (계산 범위)\n"), "{t}");
+        assert!(t.contains("  g(x, y) -> z: x^2 - y^2\n  S: span([1, 0, 0], [0, 1, 0], [0, 0, 1]) [공간 (3차원)]"), "{t}");
+    }
+
+    #[test]
     fn span_dimension_and_linear_algebra_text() {
         let (state, notes) = applied(&["define:\n    v(; a): [1, a]\n    w: [0, 1]\n    u: [1, 2, 3]\n    S(; a): span(v, w)\n    T: span(u)\n    p(; a): arrow(v; w)\n    R(t) -> matrix: [[cos(t), 0], [0, 1]]\n"]);
         let ok = ApplyOk { workspace: "w1".into(), revision: 1, notes, state: state.clone() };
@@ -591,7 +609,7 @@ mod tests {
         let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 1 }], features: vec![], checks: vec![] });
         assert!(r.ends_with("브라우저: 경고 없음\nspan: S 직선 (1차원)"), "{r}");
         let w = view_of(state, "2D(x, y)", 0);
-        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0 }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }], features: vec![], checks: vec![] };
+        let b = Browser::View { view: ViewBox { x_min: -1.0, x_max: 1.0, y_min: -1.0, y_max: 1.0, z_min: None, z_max: None }, warnings: vec![], spans: vec![SpanDim { key: "S".into(), dim: 2 }], features: vec![], checks: vec![] };
         let t = state_text(&w, &b);
         assert!(t.contains("  v(; a): [1, a]\n  w: [0, 1]\n  u: [1, 2, 3]\n  S(; a): span(v, w) [평면 (2차원)]\n  T: span(u) [다른 좌표계 축 3개]\n  p(; a): arrow(v; w)\n  R(t) -> matrix: [[cos(t), 0], [0, 1]]"), "{t}");
     }
@@ -610,7 +628,7 @@ mod tests {
         let r = apply_ok(&ok, &Browser::Rendered { warnings: vec![], spans: vec![], features: pts.clone(), checks: vec![] });
         assert!(r.ends_with("특징점 E: 2개: 극대 (-1, 2), 극소 (1, -2)\n특징점 B: 찾은 점 없음"), "{r}");
         let w = view_of(state, "2D(x, y)", 0);
-        let b = Browser::View { view: ViewBox { x_min: -3.0, x_max: 3.0, y_min: -3.0, y_max: 3.0 }, warnings: vec![], spans: vec![], features: pts, checks: vec![] };
+        let b = Browser::View { view: ViewBox { x_min: -3.0, x_max: 3.0, y_min: -3.0, y_max: 3.0, z_min: None, z_max: None }, warnings: vec![], spans: vec![], features: pts, checks: vec![] };
         let t = state_text(&w, &b);
         assert!(t.contains("  f(x) -> y: x^3 - 3*x\n    자동 도함수 f@1(x) = 3*x^2 - 3\n  E: extrema(f) → 2개: 극대 (-1, 2), 극소 (1, -2)\n  B: breaks(f) → 찾은 점 없음"), "{t}");
     }

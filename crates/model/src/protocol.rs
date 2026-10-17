@@ -8,7 +8,7 @@ use ts_rs::TS;
 
 /// Bumped whenever a message or state-model shape changes incompatibly.
 /// A browser with a different version is told to reload.
-pub const PROTOCOL_VERSION: u32 = 7;
+pub const PROTOCOL_VERSION: u32 = 8;
 
 /// Browser -> server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -64,6 +64,11 @@ pub enum ClientRequest {
     /// Show `scene`. Same scene and a `step`: walk to that step (a step overwrites only
     /// what it mentions). Another scene: switch to it at `step` or where it was left.
     Navigate { workspace: String, scene: String, step: Option<u32> },
+    /// Move to the trash (its key stops working until restored).
+    TrashWorkspace { workspace: String },
+    RestoreWorkspace { workspace: String },
+    /// Delete for good; only from the trash.
+    DeleteWorkspace { workspace: String },
 }
 
 /// Server -> browser.
@@ -191,6 +196,10 @@ pub struct WorkspaceInfo {
     /// Unix milliseconds of the last change, for "최근" ordering.
     #[ts(type = "number")]
     pub updated_at: i64,
+    /// In the trash since (Unix ms); `None` = not in the trash.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub trashed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -215,7 +224,7 @@ pub struct Nav {
     pub updated: Vec<String>,
 }
 
-/// Visible world rectangle.
+/// Visible world rectangle; in a 3D scene the box (x, y, z ranges of its axes).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ViewBox {
@@ -223,6 +232,11 @@ pub struct ViewBox {
     pub x_max: f64,
     pub y_min: f64,
     pub y_max: f64,
+    /// Third axis of a 3D scene.
+    #[serde(default)]
+    pub z_min: Option<f64>,
+    #[serde(default)]
+    pub z_max: Option<f64>,
 }
 
 /// How the browser drew a span from the current values: 0 = the origin (point),

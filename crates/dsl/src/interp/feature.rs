@@ -47,6 +47,10 @@ impl<'s> Cx<'s> {
             FeatureKind::Tangents => matches!(f.kind, DefKind::Parametric | DefKind::Polar),
             _ => f.kind == DefKind::Curve,
         };
+        if f.is_surface() {
+            self.unsupported(tspan, &format!("곡면 '{target}'의 특징점"), 6);
+            return Ty::Unknown;
+        }
         if f.family.is_some() || !ok_kind {
             let want_word = if kind == FeatureKind::Tangents { "매개변수·극좌표 함수" } else { "일반 함수(f(x) -> y)" };
             let w = if f.family.is_some() { "반복 정의" } else { f.kind.word() };
@@ -69,7 +73,7 @@ impl<'s> Cx<'s> {
             match &mut a.kind {
                 ExprKind::Name { name, kind: nk } if self.state.functions.contains_key(&name.key) => {
                     let g = self.state.functions[&name.key].clone();
-                    if g.kind != DefKind::Curve || g.family.is_some() {
+                    if g.kind != DefKind::Curve || g.family.is_some() || g.is_surface() {
                         self.err(aspan, code::TYPE, format!("intersect의 둘째 칸은 일반 함수나 '{oo} = 식' ('{}'는 {})", name.key, g.kind.word()));
                         return Ty::Unknown;
                     }

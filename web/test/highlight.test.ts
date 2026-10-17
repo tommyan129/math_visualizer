@@ -88,7 +88,7 @@ describe("function fills", () => {
 describe("overlap and expression coloring", () => {
   it("subexpression nodes are colored last-wins; hidden ones are skipped", () => {
     const { fills, nodeColors } = resolveHighlights(state, new Set());
-    expect(fills.map((h) => h.key)).toEqual(["H1", "H2", "H5", "H6", "H7"]);
+    expect(fills.map((h) => h.key)).toEqual(["H1", "H2", "H5", "H6", "H7", "H8"]);
     const poly = nodeColors.get("poly")!;
     // H3 colors b (orange); H4 colors the whole term -b*x (red).
     const h3 = hl("H3").target, h4 = hl("H4").target;

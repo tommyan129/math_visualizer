@@ -223,10 +223,11 @@ impl Output {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum DefBody {
     Expr(Expr),
     /// `lhs = rhs` (implicit curve, stage 5).
     Equation { lhs: Expr, rhs: Expr },
-    /// `expr, range` (parametric, stage 5).
-    WithRange { expr: Expr, range: Expr },
+    /// `expr, range` (parametric, stage 5); `expr, range, range` (parametric surface, stage 6).
+    WithRange { expr: Expr, range: Expr, range2: Option<Expr> },
 }

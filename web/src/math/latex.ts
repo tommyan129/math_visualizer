@@ -331,9 +331,11 @@ export function functionTex(f: Fn, ctx: LatexCtx): string {
   const head = f.inputs.length ? `${name}${paren(f.inputs.map((i) => identTex(i)).join(", "))}` : name;
   const def = f.family ? `${head} = ${sha(exprTex(unparen(f.body), ctx))}` : definitionTex(f.name, f.inputs, f.body, ctx);
   if (!f.range || !f.inputs[0]) return def;
-  const t = identTex(f.inputs[0]);
-  // The range goes on a line under the definition (beside it is too wide for the panel).
-  return `\\begin{gathered} ${def} \\\\ \\scriptstyle ${exprTex(f.range.lo, ctx)} \\,\\le\\, ${t} \\,\\le\\, ${exprTex(f.range.hi, ctx)} \\end{gathered}`;
+  // The range goes on a line under the definition (beside it is too wide for the panel);
+  // a parametric surface has one per parameter, separated by a comma.
+  const one = (r: { lo: Expr; hi: Expr }, t: Ident) => `${exprTex(r.lo, ctx)} \\,\\le\\, ${identTex(t)} \\,\\le\\, ${exprTex(r.hi, ctx)}`;
+  const ranges = [one(f.range, f.inputs[0]), ...(f.range2 && f.inputs[1] ? [one(f.range2, f.inputs[1])] : [])].join(",\\quad ");
+  return `\\begin{gathered} ${def} \\\\ \\scriptstyle ${ranges} \\end{gathered}`;
 }
 
 /** Color of the parts that changed from the previous calculation step. */

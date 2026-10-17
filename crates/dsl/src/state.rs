@@ -16,7 +16,8 @@ pub const DEFAULT_SCENE: &str = "2D(x, y)";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum DefKind {
-    /// `f(x) -> y`: drawn as a curve.
+    /// `f(x) -> y`: drawn as a curve. With two inputs, `g(x, y) -> z` is a surface in
+    /// `3D(x, y, z)` (stage 6).
     #[default]
     Curve,
     /// `R(\theta) -> matrix`: vector- or matrix-valued, not drawn.
@@ -28,6 +29,7 @@ pub enum DefKind {
     /// `a: arrow(v)`, `arrow(v; P)`: drawn as an arrow.
     Arrow,
     /// `p(t) -> (x, y): (cos(t), sin(t)), 0 <= t <= 2*\pi`: drawn as a curve over its range.
+    /// `q(t) -> (x, y, z)` is a space curve, `s(u, v) -> (x, y, z)` a surface (stage 6).
     Parametric,
     /// `h(\theta) -> polar(r): 1 + cos(\theta)`: drawn in a `polar(r, \theta)` scene.
     Polar,
@@ -79,9 +81,12 @@ pub struct Function {
     #[serde(default)]
     pub outputs: Vec<Ident>,
     /// Parameter range of a parametric function (required) or polar function (optional;
-    /// `None` = 0 <= θ <= 2π).
+    /// `None` = 0 <= θ <= 2π). For a parametric surface, the first parameter's.
     #[serde(default)]
     pub range: Option<ParamRange>,
+    /// Range of the second parameter of a parametric surface `s(u, v) -> (x, y, z)`.
+    #[serde(default)]
+    pub range2: Option<ParamRange>,
     /// `family(...; 0 <= k <= n)`: one copy per integer k (stage 5). Body and range use k.
     #[serde(default)]
     pub family: Option<FamilyIndex>,
@@ -328,19 +333,32 @@ impl Function {
         }
     }
 
-    /// `(input, output)` of a curve.
+    /// `(input, output)` of a one-input curve (not a surface).
     pub fn curve_axes(&self) -> Option<(&Ident, &Ident)> {
-        match (self.kind, self.inputs.first(), &self.output) {
-            (DefKind::Curve, Some(i), Some(o)) => Some((i, o)),
+        match (self.kind, self.inputs.as_slice(), &self.output) {
+            (DefKind::Curve, [i], Some(o)) => Some((i, o)),
             _ => None,
         }
     }
 
+    /// `g(x, y) -> z` (stage 6).
+    pub fn is_surface(&self) -> bool {
+        self.kind == DefKind::Curve && self.inputs.len() == 2
+    }
+
+    /// Drawn in a 3D system: a surface, a space curve or a parametric surface.
+    pub fn is_3d(&self) -> bool {
+        self.system().is_some_and(|(_, ax)| ax.len() == 3)
+    }
+
     /// Coordinate system it is drawn in: `(polar, axes)` — `2D(x, y)` for curves
     /// (input, output), parametric functions (outputs) and equations (inputs);
-    /// `polar(r, \theta)` for polar functions. `None` for spans, arrows and undrawn kinds.
+    /// `3D(x, y, z)` for surfaces (inputs, output) and parametric functions with three
+    /// outputs; `polar(r, \theta)` for polar functions. `None` for spans, arrows and
+    /// undrawn kinds.
     pub fn system(&self) -> Option<(bool, Vec<&Ident>)> {
         match self.kind {
+            DefKind::Curve if self.is_surface() => Some((false, vec![&self.inputs[0], &self.inputs[1], self.output.as_ref()?])),
             DefKind::Curve => self.curve_axes().map(|(i, o)| (false, vec![i, o])),
             DefKind::Parametric => Some((false, self.outputs.iter().collect())),
             DefKind::Equation => Some((false, self.inputs.iter().collect())),
@@ -365,9 +383,10 @@ impl Function {
             let lines: Vec<String> = self.body_src.lines().enumerate().map(|(i, l)| format!("{}{l}", if i == 0 { "    " } else { "        " })).collect();
             return format!("{}:\n{}", self.signature(), lines.join("\n"));
         }
-        let body = match &self.range {
-            Some(r) => format!("{}, {}", self.body_src, r.src),
-            None => self.body_src.clone(),
+        let body = match (&self.range, &self.range2) {
+            (Some(r), Some(r2)) => format!("{}, {}, {}", self.body_src, r.src, r2.src),
+            (Some(r), None) => format!("{}, {}", self.body_src, r.src),
+            _ => self.body_src.clone(),
         };
         match &self.family {
             Some(e) => format!("{}: family({body}; {})", self.signature(), e.src),
@@ -449,6 +468,9 @@ pub struct Scene {
     pub toggles: BTreeMap<String, bool>,
     /// The user's clip adjustment; `None` = Claude's clip.
     pub user_clip: Option<Clip>,
+    /// The user turned Claude's clip off (cleared the clip field); `user_clip` is then `None`.
+    #[serde(default)]
+    pub clip_off: bool,
     #[ts(type = "number")]
     pub order: u64,
     #[ts(type = "number")]
@@ -483,9 +505,9 @@ impl Scene {
     }
 }
 
-/// `2D(x, y)` with the given axis keys.
+/// `2D(x, y)` or, with three axes, `3D(x, y, z)`.
 pub fn system_key(axes: &[&str]) -> String {
-    format!("2D({})", axes.join(", "))
+    format!("{}D({})", if axes.len() == 3 { 3 } else { 2 }, axes.join(", "))
 }
 
 /// `2D(x, y)` or `polar(r, \theta)`.
@@ -504,12 +526,16 @@ pub struct Clip {
     pub consts: Vec<String>,
 }
 
-/// Camera range per axis; a missing axis keeps 1:1 scale around 0.
+/// Camera range per axis; a missing axis keeps 1:1 scale around 0 (2D) or takes
+/// -5..5 (3D box).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ViewSpec {
     pub h: Option<ViewRange>,
     pub v: Option<ViewRange>,
+    /// Third axis of a 3D scene (the box height).
+    #[serde(default)]
+    pub d: Option<ViewRange>,
     pub src: String,
 }
 

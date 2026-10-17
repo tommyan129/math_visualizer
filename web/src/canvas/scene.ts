@@ -23,9 +23,10 @@ export function concealedAt(scene: Scene, step: number): Set<string> {
   return new Set(stepState(scene, step)?.concealed ?? []);
 }
 
-/** The user's clip if adjusted, else Claude's. */
+/** None when the user turned the clip off; else the user's clip if adjusted, else Claude's. */
 export function activeClip(scene: Scene | null): Clip | null {
-  return scene ? (scene.user_clip ?? scene.clip) : null;
+  if (!scene || scene.clip_off) return null;
+  return scene.user_clip ?? scene.clip;
 }
 
 /** Axis keys and their TeX (`2D(x, y)` without a scene). */

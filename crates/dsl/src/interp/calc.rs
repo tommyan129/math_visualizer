@@ -37,8 +37,8 @@ impl<'s> Cx<'s> {
                 ok = false;
                 continue;
             };
-            if f.family.is_some() || !matches!(f.kind, DefKind::Curve | DefKind::Polar) {
-                let w = if f.family.is_some() { "반복 정의" } else { f.kind.word() };
+            if f.family.is_some() || f.is_surface() || !matches!(f.kind, DefKind::Curve | DefKind::Polar) {
+                let w = if f.family.is_some() { "반복 정의" } else if f.is_surface() { "곡면" } else { f.kind.word() };
                 self.err(sspan, code::TYPE, format!("calc의 단계는 일반 함수나 극좌표 함수 ('{key}'는 {w})"));
                 ok = false;
                 continue;

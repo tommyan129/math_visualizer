@@ -102,6 +102,9 @@ impl<'s> Cx<'s> {
             if let HlTarget::Function { function } | HlTarget::Sub { function, .. } = &h.target {
                 return self.placement(function, axes, polar).map_err(|_| format!("'{key}'는 {} 좌표계 함수 {function}의 강조라 {sys} scene에 넣을 수 없음", self.state.function_system(function).unwrap_or_default()));
             }
+            if axes.len() == 3 {
+                return Err(format!("대상 없는 강조 '{key}'는 3D scene에 넣을 수 없음 (입체 영역은 아직 없음)"));
+            }
             return match h.axes.iter().find(|a| !axes.contains(a)) {
                 None => Ok(()),
                 Some(a) => Err(format!("'{key}'의 범위에 축 {a}가 있어 {sys} scene에 넣을 수 없음")),
@@ -133,7 +136,8 @@ impl<'s> Cx<'s> {
             Err(m) => {
                 let sug = match (self.state.function_system(k), self.state.functions.get(k).and_then(|f| f.vector_dim())) {
                     (Some(s), _) => format!("space: {s}"),
-                    (None, Some(3)) => "3D scene (6단계)".to_string(),
+                    (None, Some(3)) => "space: 3D(x, y, z)".to_string(),
+                    (None, Some(2)) => "space: 2D(x, y)".to_string(),
                     _ => "그 축을 쓰는 scene".to_string(),
                 };
                 self.err_s(span, code::PLACEMENT, m, sug);
@@ -182,7 +186,11 @@ impl<'s> Cx<'s> {
             return self.resolve_polar_view(e, &axes[0]);
         }
         let shape = |cx: &mut Self, at: Span| {
-            cx.err_s(at, code::VIEW, "view는 축별 구간 (카메라 창은 직사각형)", format!("-5 <= {} <= 5 and -3 <= {} <= 3", axes[0], axes[1]));
+            if axes.len() == 3 {
+                cx.err_s(at, code::VIEW, "view는 축별 구간 (3D는 상자)", format!("-3 <= {} <= 3 and -3 <= {} <= 3 and -2 <= {} <= 2", axes[0], axes[1], axes[2]));
+            } else {
+                cx.err_s(at, code::VIEW, "view는 축별 구간 (카메라 창은 직사각형)", format!("-5 <= {} <= 5 and -3 <= {} <= 3", axes[0], axes[1]));
+            }
         };
         let parts: Vec<&Expr> = match &unparen(e).kind {
             ExprKind::And { args } => args.iter().collect(),
@@ -192,7 +200,7 @@ impl<'s> Cx<'s> {
                 return None;
             }
         };
-        let mut spec = ViewSpec { h: None, v: None, src: expr_dsl(e) };
+        let mut spec = ViewSpec { h: None, v: None, d: None, src: expr_dsl(e) };
         for p in parts {
             let ExprKind::Compare { first, rest } = &unparen(p).kind else {
                 shape(self, p.span);
@@ -246,7 +254,13 @@ impl<'s> Cx<'s> {
                 self.err(p.span, code::VIEW, format!("view 구간 {}..{}이 비어 있음", fmt_num(a), fmt_num(z)));
                 return None;
             }
-            let slot = if axis == axes[0] { &mut spec.h } else { &mut spec.v };
+            let slot = if axis == axes[0] {
+                &mut spec.h
+            } else if axis == axes[1] {
+                &mut spec.v
+            } else {
+                &mut spec.d
+            };
             if slot.is_some() {
                 self.err(p.span, code::VIEW, format!("축 {axis}의 구간을 두 번 적음"));
                 return None;
@@ -296,7 +310,7 @@ impl<'s> Cx<'s> {
         hi.clear_spans();
         let lo = Expr { id: 0, ty: Ty::Scalar, span: Span::default(), kind: ExprKind::Neg { arg: Box::new(hi.clone()) } };
         let range = ViewRange { lo, hi };
-        Some(ViewSpec { h: Some(range.clone()), v: Some(range), src: expr_dsl(e) })
+        Some(ViewSpec { h: Some(range.clone()), v: Some(range), d: None, src: expr_dsl(e) })
     }
 
     /// Note string (or a string variable): `{expr}` is DSL, `$...$` LaTeX, `{{` `}}` `$$` literal.
@@ -496,15 +510,19 @@ impl<'s> Cx<'s> {
         let axes: Vec<Ident> = match space {
             Some(sp) => {
                 match sp.kind.as_str() {
-                    "2D" | "polar" => {}
-                    "3D" => self.unsupported(sp.span, "3D 좌표계", 6),
+                    "2D" | "polar" | "3D" => {}
                     k => self.err_s(sp.span, code::SCENE, format!("좌표계 '{k}'는 없음"), "2D(x, y)"),
                 }
-                if sp.axes.len() != 2 && matches!(sp.kind.as_str(), "2D" | "polar") {
-                    let sug = if sp.kind == "polar" { "polar(r, \\theta)" } else { "2D(x, y)" };
-                    self.err_s(sp.span, code::SCENE, format!("{} 좌표계에는 축 이름 두 개가 필요함 ({}개 줌)", sp.kind, sp.axes.len()), sug);
-                } else if sp.axes.len() == 2 && sp.axes[0].0.key == sp.axes[1].0.key {
-                    self.err_s(sp.span, code::SCENE, "두 축의 이름이 같음", "2D(x, y)");
+                let want = if sp.kind == "3D" { 3 } else { 2 };
+                if sp.axes.len() != want && matches!(sp.kind.as_str(), "2D" | "polar" | "3D") {
+                    let (n, sug) = match sp.kind.as_str() {
+                        "polar" => ("두", "polar(r, \\theta)"),
+                        "3D" => ("세", "3D(x, y, z)"),
+                        _ => ("두", "2D(x, y)"),
+                    };
+                    self.err_s(sp.span, code::SCENE, format!("{} 좌표계에는 축 이름 {n} 개가 필요함 ({}개 줌)", sp.kind, sp.axes.len()), sug);
+                } else if sp.axes.iter().enumerate().any(|(i, (a, _))| sp.axes[..i].iter().any(|(b, _)| b.key == a.key)) {
+                    self.err_s(sp.span, code::SCENE, "축 이름이 겹침", if want == 3 { "3D(x, y, z)" } else { "2D(x, y)" });
                 } else if let Some((a, s)) = sp.axes.iter().find(|(a, _)| a.deriv > 0 || a.inverse || is_reserved(a)) {
                     self.err(*s, code::SCENE, format!("'{}'는 축 이름으로 쓸 수 없음", a.key));
                 }
@@ -513,15 +531,18 @@ impl<'s> Cx<'s> {
             None => {
                 // One coordinate system among the `show` targets: take it.
                 let systems: BTreeSet<String> = show.into_iter().flatten().filter_map(|(n, _)| self.state.function_system(&n.key)).collect();
-                let flat_2d = show.into_iter().flatten().any(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.vector_dim()) == Some(2));
+                let dims: BTreeSet<u32> = show.into_iter().flatten().filter_map(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.vector_dim())).collect();
                 let first = show.into_iter().flatten().find_map(|(n, _)| self.state.functions.get(&n.key).and_then(|f| f.system()));
                 match (systems.len(), first) {
                     (1, Some((p, ax))) => {
                         inferred_polar = p;
                         ax.into_iter().cloned().collect()
                     }
-                    // Only spans / arrows of length-2 vectors: the plain plane.
-                    (0, _) if flat_2d => vec![Ident::plain("x"), Ident::plain("y")],
+                    // Only spans / arrows of one vector length: the plain plane or space.
+                    (0, _) if dims.len() == 1 => {
+                        let n = *dims.first().unwrap();
+                        ["x", "y", "z"][..n as usize].iter().map(|a| Ident::plain(a)).collect()
+                    }
                     _ => {
                         self.err_s(def.id_span, code::SCENE, "scene의 좌표계(space)가 필요함", format!("scene({key}):\n    space: 2D(x, y)"));
                         vec![]
@@ -659,7 +680,9 @@ impl<'s> Cx<'s> {
                 sc.version = o.version;
                 sc.toggles = o.toggles.clone();
                 // The user's clip stays only while Claude's clip is the same.
-                sc.user_clip = if o.clip.as_ref().map(|c| &c.src) == sc.clip.as_ref().map(|c| &c.src) { o.user_clip.clone() } else { None };
+                let same_clip = o.clip.as_ref().map(|c| &c.src) == sc.clip.as_ref().map(|c| &c.src);
+                sc.user_clip = if same_clip { o.user_clip.clone() } else { None };
+                sc.clip_off = same_clip && o.clip_off;
                 let same = o.source.as_ref() == Some(&src) && o.axes == sc.axes;
                 sc.defined = if same { o.defined } else { self.seq };
                 self.notes.push(if same { Note::SceneUnchanged { key: key.clone() } } else { Note::SceneModified { key: key.clone() } });
@@ -878,11 +901,12 @@ impl<'s> Cx<'s> {
         let mut fns: Vec<&Function> = self.state.functions.values().filter(|f| f.kind.is_drawn()).collect();
         fns.sort_by_key(|f| f.order);
         for f in fns {
-            // Spans and arrows of length-2 vectors go in the default `2D(x, y)`; length 3
-            // waits for 3D (stage 6).
+            // Spans and arrows of length-2 vectors go in the default `2D(x, y)`, length 3
+            // in `3D(x, y, z)`.
             let (polar, axes) = match (f.system(), f.vector_dim()) {
                 (Some((p, ax)), _) => (p, ax.into_iter().cloned().collect::<Vec<_>>()),
                 (None, Some(2)) => (false, vec![Ident::plain("x"), Ident::plain("y")]),
+                (None, Some(3)) => (false, vec![Ident::plain("x"), Ident::plain("y"), Ident::plain("z")]),
                 _ => continue,
             };
             let k = any_system_key(polar, &axes.iter().map(|a| a.key.as_str()).collect::<Vec<_>>());

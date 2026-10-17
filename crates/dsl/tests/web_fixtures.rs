@@ -100,6 +100,14 @@ define:
     Hy(x, y): x*y = 1
     Dv(t; n) -> (x, y): family((j, t), 0 <= t <= quad(j); 0 <= j <= n)
     Oc(x, y): family(x^2 + y^2 = j^2; 1 <= j <= 3)
+    sad(x, y) -> z: x^2 - y^2
+    usesad(x) -> y: sad(x, 1)
+    hx(t; a) -> (x, y, z): (cos(t), sin(t), a*t), 0 <= t <= 4*\\pi
+    sph(u, v) -> (x, y, z): (cos(u)*sin(v), sin(u)*sin(v), cos(v)), 0 <= v <= \\pi, 0 <= u <= 2*\\pi
+    pole(x, y) -> z: 1/x
+    S3: span([1, 0, 0], [0, 1, 1])
+    A3: arrow([1, 2, 3]; [0, 0, 1])
+H8 = highlight(sad; x^2 + y^2 < 1)
 ";
 
 /// Stage 5b: generated derivatives and feature points (`web/test/fixtures/features.json`).

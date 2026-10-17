@@ -4,13 +4,14 @@
 use dsl::names;
 
 const INDEX: &str = "\
-쓸 수 있는 명령 (5c단계). describe(name)으로 자세히:
+쓸 수 있는 명령 (6a단계). describe(name)으로 자세히:
   define     함수 정의·수정 (같은 이름에 다시 쓰면 수정)
   split      구간별 함수 (경계점, 조각마다 식)
   매개변수   p(t) -> (x, y): (식, 식), 범위
   극좌표     h(\\theta) -> polar(r), polar(r, \\theta) scene
   방정식     C(x, y): 좌변 = 우변 (음함수 곡선)
   family     family(본문; 0 <= k <= n): 같은 도형을 k마다 반복
+  3D         g(x, y) -> z 곡면, q(t) -> (x, y, z), s(u, v) -> (x, y, z), 3D(x, y, z) scene
   도함수     f@n(x) -> y, 역함수 ~f(x) -> y, 정의 안 한 f@n은 서버 기호 미분
   특징점     E: extrema(f), roots, intersect, yint, inflections, argmax, argmin, breaks, tangents
   계산 과정  C: calc(f, g, h): 식 변형 단계, 바뀐 부분 색칠, 수치 검증 (적분, 극한)
@@ -34,7 +35,7 @@ const INDEX: &str = "\
   sum      sum / prod
   상수     슬라이더 상수 규칙
   오류     오류 형식
-아직 없음: Claude가 적는 정확한 값 라벨, 특징점 하나 번호로 가리키기(E_[2]), 다변수(3D)";
+아직 없음: Claude가 적는 정확한 값 라벨, 특징점 하나 번호로 가리키기(E_[2]), 3D 임계점(6b), 3D 음함수 곡면";
 
 const SPLIT: &str = "\
 define:
@@ -130,7 +131,7 @@ define:
     q(t; a) -> (x, y): matmul(R(t), [a, 0]), 0 <= t <= \\pi     # 길이가 출력 축 개수인 벡터도 됨
     D(t; k) -> (x, y): (k, t), 0 <= t <= f(k)                   # x = k의 세로 선분
 - 매개변수 범위는 필수 (빠지면 오류). 범위 끝에는 상수·함수 호출 가능, t는 안 됨.
-- 출력 축 (x, y)가 좌표계: 2D(x, y) scene에 들어감. 3D 매개변수 곡선은 6단계.
+- 출력 축 (x, y)가 좌표계: 2D(x, y) scene에 들어감. 출력 축 세 개는 3D (describe 3D).
 - 출력 칸 하나에는 숫자 하나: 매개변수 함수 호출이나 벡터를 칸 하나에 넣으면 오류.
 - 매개변수 함수는 식 안에서 부를 수 없음 (출력 전체 자리 p(2*t)만 가능).
 - 아직 강조 대상이 될 수 없음.";
@@ -186,15 +187,35 @@ define:
 - 원점을 지나는 직선·평면·점. 어느 것인지는 브라우저가 현재 값으로 정함 (슬라이더로 바뀜):
   평행하지 않은 두 벡터는 2D에서 평면 전체, 평행하면 직선, 영벡터만이면 원점.
 - 함수처럼 토글·삭제·req 대상. 벡터를 지우면 span도 지워짐.
-- 길이 2 벡터는 2D scene(어느 축 이름이든)에, 길이 3은 3D에만 (6단계). 기본 scene은 2D(x, y).
+- 길이 2 벡터는 2D scene(어느 축 이름이든)에, 길이 3은 3D scene에. 기본 scene은 2D(x, y) / 3D(x, y, z).
+  3D에서는 평행하지 않은 두 벡터가 원점을 지나는 평면, 세 벡터가 일차독립이면 공간 전체.
 - 보이는 범위만 그림, scene clip이 있으면 그 안만. 그린 차원은 apply 응답과 get_state에 나옴.";
 
 const ARROW: &str = "\
 define:
     p(; a): arrow(v)                    # 원점에서 v까지
     q(; c): arrow([1, 2*c]; [c, c^2])   # 점 P에서 출발: 시작점은 ';' 뒤, 위치벡터로 (y = x^2의 접선 방향)
-- 시작점과 벡터는 같은 길이. 2D scene에는 길이 2만.
+- 시작점과 벡터는 같은 길이. 2D scene에는 길이 2, 3D scene에는 길이 3.
 - 함수처럼 토글·삭제·req 대상. 기본 scene에서 켜진 채 시작.";
+
+const THREE_D: &str = "\
+define:
+    g(x, y) -> z: x^2 - y^2                                          # 곡면 (입력 둘 + 출력 축)
+    q(t; a) -> (x, y, z): (cos(t), sin(t), a*t), 0 <= t <= 4*\\pi     # 공간 곡선
+    s(u, v) -> (x, y, z): (cos(u)*sin(v), sin(u)*sin(v), cos(v)), 0 <= u <= 2*\\pi, 0 <= v <= \\pi
+    S: span([1, 0, 0], [0, 1, 1])                                    # 원점을 지나는 평면
+    w: arrow([1, 2, 3])
+scene(1):
+    space: 3D(x, y, z)                         # show가 3D 정의뿐이면 생략 가능
+    show: g, q
+    view: -3 <= x <= 3 and -3 <= y <= 3 and -2 <= z <= 2   # 계산 범위 (빠진 축은 -5..5), 처음 카메라가 전부 보이게 놓임
+    clip: x^2 + y^2 <= 4                       # x, y, z 부등식, 밖은 안 그림
+H1 = highlight(g; x^2 + y^2 < 1)               # 곡면의 그 부분을 강조 색으로
+- 곡면 g는 view의 x, y 범위 위에서 그리고 z가 view의 z 범위를 벗어나면 잘림 (범위 상자는 화면에 안 그림). 범위를 붙이지 않음.
+  다른 식에서 g(x, 1)처럼 숫자로 부를 수 있음. 2D scene에는 못 넣음 (등고선은 아직 없음).
+- 매개변수 곡면은 매개변수마다 범위 하나 (쉼표로, 순서 자유, 둘 다 필수). 범위 끝에 매개변수는 안 됨.
+- 화면(사용자 조작): 자유 카메라. 왼쪽 끌기 = 화면과 평행 이동, 오른쪽 끌기 = 시선 돌리기, W/A/S/D = 이동, Space/Shift = 위/아래, 휠 = 가리킨 곳으로 다가가기·물러나기 (사용자가 설정에서 바꿀 수 있음).
+- 대상 없는 강조(입체 영역)는 3D scene에 넣을 수 없음. 곡면의 특징점(extrema)은 6b, 곡면의 f@n·~f·calc·between은 없음.";
 
 const DEFINE: &str = "\
 define: 블록 안에 한 줄에 정의 하나 (스페이스 4칸 들여쓰기).
@@ -366,6 +387,7 @@ pub fn describe(name: Option<&str>) -> String {
         "극좌표" | "polar" => POLAR.into(),
         "방정식" | "음함수" | "equation" | "implicit" => EQUATION.into(),
         "family" | "반복" => EACH.into(),
+        "3D" | "3d" | "곡면" | "surface" | "다변수" => THREE_D.into(),
         "도함수" | "역함수" | "f@n" | "~f" | "derivative" | "inverse" => DERIV.into(),
         "계산 과정" | "계산" | "calc" | "integral" | "limit" => CALC.into(),
         "검증" | "수치 검증" | "verify" | "verification" => VERIFY.into(),
@@ -410,6 +432,9 @@ mod tests {
         dsl::interp::apply(&Default::default(), stage5b, &Default::default(), 6).unwrap_or_else(|d| panic!("{d:?}"));
         let stage5c = "define:\n    f(x) -> y: (x+1)^2 - (x-1)^2\n    g(x) -> y: (x^2 + 2*x + 1) - (x^2 - 2*x + 1)\n    h(x) -> y: 4*x\n    C: calc(f, g, h)\n    s(x) -> y: sqrt(x^2)\n    t(x) -> y: x\n    D: calc(s, t; x > 0)\n    p(x) -> y: x^2\n    P(x) -> y: x^3/3\n    I: calc(p, P;; integral)\n    L: calc(p, P;; limit)\nscene(1):\n    show: f, C\n    step:\n        show: +g\n    step:\n        show: +h\n";
         dsl::interp::apply(&Default::default(), stage5c, &Default::default(), 7).unwrap_or_else(|d| panic!("{d:?}"));
+        let stage6 = "define:\n    g(x, y) -> z: x^2 - y^2\n    q(t; a) -> (x, y, z): (cos(t), sin(t), a*t), 0 <= t <= 4*\\pi\n    s(u, v) -> (x, y, z): (cos(u)*sin(v), sin(u)*sin(v), cos(v)), 0 <= u <= 2*\\pi, 0 <= v <= \\pi\n    S: span([1, 0, 0], [0, 1, 1])\n    w: arrow([1, 2, 3])\nscene(1):\n    space: 3D(x, y, z)\n    show: g, q\n    view: -3 <= x <= 3 and -3 <= y <= 3 and -2 <= z <= 2\n    clip: x^2 + y^2 <= 4\nH1 = highlight(g; x^2 + y^2 < 1)\n";
+        dsl::interp::apply(&Default::default(), stage6, &Default::default(), 8).unwrap_or_else(|d| panic!("{d:?}"));
+        assert!(describe(Some("3D")).contains("s(u, v) -> (x, y, z)"));
         assert!(describe(Some("calc")).contains("calc(f, g, h)"));
         assert!(describe(Some("검증")).contains("f(~f(x)) = x"));
         assert!(describe(Some("특징점")).contains("extrema"));

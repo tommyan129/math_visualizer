@@ -81,7 +81,7 @@ fn placement_is_checked_by_axes() {
     assert!(!t.scenes["2D(x, y)"].members.contains(&"H3".to_string()));
     assert_eq!(codes(&s, "H3 = highlight(; 0 < t < x)\n"), vec![code::PLACEMENT]);
     assert_eq!(codes(&s, "H3 = highlight(; between(f, g))\n"), vec![code::PLACEMENT]);
-    assert_eq!(codes(&s, "scene(1):\n    space: 3D(x, y, z)\n"), vec![code::UNSUPPORTED]);
+    assert_eq!(codes(&s, "scene(1):\n    space: 3D(x, y)\n"), vec![code::SCENE]);
     assert_eq!(codes(&s, "scene(1):\n    space: 2D(x, x)\n"), vec![code::SCENE]);
 }
 
@@ -213,6 +213,11 @@ fn modifying_a_scene_keeps_user_state() {
     let s = apply_user_op(&s, &UserOp::SetClip { scene: "1".into(), src: Some("-2 <= x <= 2".into()) }, 11).unwrap().state;
     assert_eq!(s.scenes["1"].user_clip.as_ref().unwrap().src, "-2 <= x <= 2");
     assert!(apply_user_op(&s, &UserOp::SetClip { scene: "1".into(), src: Some("-2 <= q".into()) }, 12).is_err());
+    // Cleared: no clip at all (not Claude's); back to Claude's with `None`.
+    let off = apply_user_op(&s, &UserOp::SetClip { scene: "1".into(), src: Some(" ".into()) }, 12).unwrap().state;
+    assert!(off.scenes["1"].clip_off && off.scenes["1"].user_clip.is_none());
+    let back = apply_user_op(&off, &UserOp::SetClip { scene: "1".into(), src: None }, 13).unwrap().state;
+    assert!(!back.scenes["1"].clip_off && back.scenes["1"].user_clip.is_none());
     assert!(apply_user_op(&s, &UserOp::Toggle { scene: "1".into(), target: "g".into(), visible: true }, 12).is_err());
     // Same block again: unchanged.
     let a = run(&s, SCENE).unwrap();

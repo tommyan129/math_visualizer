@@ -58,11 +58,12 @@ export interface TexImage {
 }
 
 const imageCache = new Map<string, TexImage>();
-let onImageReady: () => void = () => {};
+const readyHandlers: (() => void)[] = [];
+const onImageReady = () => readyHandlers.forEach((fn) => fn());
 
-/** Called when a cached label image finishes loading (the canvas redraws). */
+/** Called when a cached label image finishes loading (the canvases redraw). */
 export function setImageReadyHandler(fn: () => void): void {
-  onImageReady = fn;
+  readyHandlers.push(fn);
 }
 
 function exToPx(v: string | null, fontPx: number): number {

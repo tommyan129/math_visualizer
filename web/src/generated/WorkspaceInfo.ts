@@ -8,4 +8,8 @@ revision: number,
 /**
  * Unix milliseconds of the last change, for "최근" ordering.
  */
-updated_at: number, };
+updated_at: number, 
+/**
+ * In the trash since (Unix ms); `None` = not in the trash.
+ */
+trashed_at: number | null, };

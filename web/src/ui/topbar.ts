@@ -1,6 +1,7 @@
 // Top bar: workspace name, scene tabs (default scenes by coordinate system, Claude
 // scenes by number, a yellow dot when a scene changed while not shown), connection.
 
+import { identTex } from "../math/latex";
 import type { Scene } from "../generated/Scene";
 import type { ConnStatus } from "../net/client";
 import { sceneAxes, sortedScenes } from "../canvas/scene";
@@ -23,8 +24,9 @@ export class Topbar {
     const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "scene" });
     for (const s of sortedScenes(sc.scenes)) {
       const on = s.key === sc.current;
-      const [, tex] = sceneAxes(s);
-      const label: Node = s.number === null ? texElement(`\\mathrm{${s.polar ? "polar" : "2D"}}(${tex[0]}, ${tex[1]})`) : document.createTextNode(`scene ${s.number}`);
+      const tex = s.axes.length ? s.axes.map((a) => identTex(a)) : sceneAxes(s)[1];
+      const sys = s.polar ? "polar" : s.axes.length === 3 ? "3D" : "2D";
+      const label: Node = s.number === null ? texElement(`\\mathrm{${sys}}(${tex.join(", ")})`) : document.createTextNode(`scene ${s.number}`);
       const dot = sc.updated.has(s.key) ? h("span", { class: "updated", "aria-label": "갱신됨", title: "갱신됨" }) : null;
       tabs.append(h("button", { class: `stab${on ? " on" : ""}`, role: "tab", "aria-selected": on ? "true" : "false", onclick: () => sc.select(s.key) }, label, dot));
     }

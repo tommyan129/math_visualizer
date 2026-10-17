@@ -16,6 +16,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -211,6 +212,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -360,6 +362,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -615,6 +618,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -873,6 +877,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -1068,6 +1073,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -1217,6 +1223,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -1431,6 +1438,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -1705,6 +1713,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -1968,6 +1977,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -2188,6 +2198,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Breaks",
@@ -2337,6 +2348,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Extrema",
@@ -2439,6 +2451,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Extrema",
@@ -2541,6 +2554,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Inflections",
@@ -2643,6 +2657,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Inflections",
@@ -2745,6 +2760,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmax",
@@ -2982,6 +2998,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmax",
@@ -3245,6 +3262,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmax",
@@ -3529,6 +3547,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmin",
@@ -3813,6 +3832,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmax",
@@ -4097,6 +4117,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmax",
@@ -4381,6 +4402,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmin",
@@ -4730,6 +4752,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmin",
@@ -4967,6 +4990,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Argmax",
@@ -5322,6 +5346,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Intersect",
@@ -5477,6 +5502,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Extrema",
@@ -5579,6 +5605,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Intersect",
@@ -5727,6 +5754,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Roots",
@@ -5829,6 +5857,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Roots",
@@ -5931,6 +5960,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Roots",
@@ -6033,6 +6063,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Roots",
@@ -6293,6 +6324,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -6521,6 +6553,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Tangents",
@@ -6624,6 +6657,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Tangents",
@@ -6744,6 +6778,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -6847,6 +6882,7 @@
       "output": null,
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": {
         "kind": "Yint",
@@ -6967,6 +7003,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -7078,6 +7115,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -7290,6 +7328,7 @@
         },
         "src": "0 <= t <= 2*\\pi"
       },
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -7512,6 +7551,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -7759,6 +7799,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -7933,6 +7974,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -8036,6 +8078,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -8121,6 +8164,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -8617,6 +8661,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -8879,6 +8924,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -8945,6 +8991,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -9039,6 +9086,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -9224,6 +9272,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -9479,6 +9528,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -9564,6 +9614,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -9769,6 +9820,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -10091,6 +10143,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -10202,6 +10255,7 @@
       },
       "outputs": [],
       "range": null,
+      "range2": null,
       "family": null,
       "feature": null,
       "calc": null,
@@ -10675,6 +10729,7 @@
       "defined": 1,
       "toggles": {},
       "user_clip": null,
+      "clip_off": false,
       "order": 55,
       "version": 1
     },
@@ -10731,6 +10786,7 @@
       "defined": 1,
       "toggles": {},
       "user_clip": null,
+      "clip_off": false,
       "order": 56,
       "version": 1
     }

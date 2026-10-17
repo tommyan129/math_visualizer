@@ -31,7 +31,7 @@ export interface PanelActions {
   /** Resolves to an error message, or null. */
   setValue(constant: string, value: number): Promise<string | null>;
   setRange(constant: string, min: number, max: number): Promise<string | null>;
-  /** The user's clip as DSL text; null = back to Claude's. Resolves to an error or null. */
+  /** The user's clip as DSL text ("" = no clip); null = back to Claude's. Resolves to an error or null. */
   setClip(src: string | null): Promise<string | null>;
 }
 
@@ -305,7 +305,8 @@ export class Panel {
     this.clipInput.addEventListener("change", () => {
       const t = this.clipInput.value.trim();
       if (t === this.clipSrc) return;
-      void send(t === "" ? null : t);
+      // Empty: no clip (the reset button goes back to Claude's).
+      void send(t);
     });
     this.clipInput.addEventListener("keydown", (e) => e.key === "Enter" && this.clipInput.blur());
     this.clipReset.addEventListener("click", () => void send(null));
@@ -368,8 +369,8 @@ export class Panel {
     this.clipSrc = c?.src ?? "";
     if (document.activeElement !== this.clipInput) this.clipInput.value = this.clipSrc;
     const a = sc.axes[0]?.key ?? "x";
-    this.clipInput.placeholder = `clip 없음 (예: ${sc.polar ? `${a} <= 2` : `0 <= ${a} <= 10`})`;
-    this.clipReset.hidden = !sc.user_clip;
+    this.clipInput.placeholder = `clip 없음 (예: ${sc.polar ? `${a} <= 2` : sc.axes.length === 3 ? `${a}^2 + ${sc.axes[1]!.key}^2 <= 4` : `0 <= ${a} <= 10`})`;
+    this.clipReset.hidden = !sc.user_clip && !sc.clip_off;
   }
 
   private renderHighlights(state: State | null, warnings: (key: string) => Warning[]): void {

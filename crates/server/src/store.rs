@@ -64,6 +64,8 @@ pub struct WorkspaceRow {
     pub name: String,
     pub key_hash: Option<String>,
     pub created_ms: i64,
+    /// In the trash since (Unix ms).
+    pub trashed_ms: Option<i64>,
 }
 
 pub struct LoadedWorkspace {
@@ -106,6 +108,13 @@ impl Store {
                  key_hash   TEXT NOT NULL,
                  id         INTEGER PRIMARY KEY AUTOINCREMENT
              );
+             -- Trash moves are their own append-only table; the latest row wins.
+             CREATE TABLE IF NOT EXISTS workspace_trash (
+                 workspace  TEXT NOT NULL REFERENCES workspaces(id),
+                 at_ms      INTEGER NOT NULL,
+                 trashed    INTEGER NOT NULL,
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT
+             );
              CREATE TABLE IF NOT EXISTS log (
                  workspace        TEXT NOT NULL REFERENCES workspaces(id),
                  seq              INTEGER NOT NULL,
@@ -130,6 +139,22 @@ impl Store {
     pub fn create_workspace(&self, id: &str, name: &str, now_ms: i64) -> rusqlite::Result<()> {
         self.conn.execute("INSERT INTO workspaces (id, name, created_ms) VALUES (?1, ?2, ?3)", params![id, name, now_ms])?;
         Ok(())
+    }
+
+    /// Moves a workspace to the trash (`trashed`) or back out of it.
+    pub fn set_trashed(&self, workspace: &str, trashed: bool, now_ms: i64) -> rusqlite::Result<()> {
+        self.conn.execute("INSERT INTO workspace_trash (workspace, at_ms, trashed) VALUES (?1, ?2, ?3)", params![workspace, now_ms, trashed as i64])?;
+        Ok(())
+    }
+
+    /// Deletes a workspace and everything recorded for it (emptying the trash).
+    pub fn delete_workspace(&mut self, workspace: &str) -> rusqlite::Result<()> {
+        let tx = self.conn.transaction()?;
+        for table in ["log", "checkpoints", "workspace_keys", "workspace_trash"] {
+            tx.execute(&format!("DELETE FROM {table} WHERE workspace = ?1"), [workspace])?;
+        }
+        tx.execute("DELETE FROM workspaces WHERE id = ?1", [workspace])?;
+        tx.commit()
     }
 
     pub fn set_key_hash(&self, workspace: &str, key_hash: &str, now_ms: i64) -> rusqlite::Result<()> {
@@ -173,7 +198,7 @@ impl Store {
         let mut out = vec![];
         let mut ws = self.conn.prepare("SELECT id, name, created_ms FROM workspaces ORDER BY created_ms, id").map_err(|e| e.to_string())?;
         let rows = ws
-            .query_map([], |r| Ok(WorkspaceRow { id: r.get(0)?, name: r.get(1)?, key_hash: None, created_ms: r.get(2)? }))
+            .query_map([], |r| Ok(WorkspaceRow { id: r.get(0)?, name: r.get(1)?, key_hash: None, created_ms: r.get(2)?, trashed_ms: None }))
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
@@ -183,6 +208,12 @@ impl Store {
                 .query_row("SELECT key_hash FROM workspace_keys WHERE workspace = ?1 ORDER BY id DESC LIMIT 1", [&row.id], |r| r.get(0))
                 .optional()
                 .map_err(|e| e.to_string())?;
+            row.trashed_ms = self
+                .conn
+                .query_row("SELECT at_ms, trashed FROM workspace_trash WHERE workspace = ?1 ORDER BY id DESC LIMIT 1", [&row.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+                .optional()
+                .map_err(|e| e.to_string())?
+                .and_then(|(at, t)| (t != 0).then_some(at));
             let cp: Option<(i64, String)> = self
                 .conn
                 .query_row("SELECT seq, state FROM checkpoints WHERE workspace = ?1 ORDER BY seq DESC LIMIT 1", [&row.id], |r| Ok((r.get(0)?, r.get(1)?)))

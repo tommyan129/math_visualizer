@@ -13,10 +13,10 @@ impl<'s> Cx<'s> {
         let head = def.params.as_ref().map_or(def.name_span, |p| def.name_span.to(p.span));
         let head_src = self.src[head.range()].to_string();
         let t = inputs.first().map_or("t", |(i, _)| i.key.as_str());
-        let (expr, range) = match &def.body {
-            DefBody::Expr(e) => (Some(e), None),
-            DefBody::WithRange { expr, range } => (Some(expr), Some(range)),
-            DefBody::Equation { .. } => (None, None),
+        let (expr, ranges) = match &def.body {
+            DefBody::Expr(e) => (Some(e), vec![]),
+            DefBody::WithRange { expr, range, range2 } => (Some(expr), std::iter::once(range).chain(range2).collect()),
+            DefBody::Equation { .. } => (None, vec![]),
         };
         let fail = Some(None);
         let (kind, output, outputs) = match (&def.output, &def.body) {
@@ -27,17 +27,15 @@ impl<'s> Cx<'s> {
                 return fail;
             }
             (Some(Output::Tuple(axes, span)), _) => {
-                if axes.len() == 3 {
-                    self.unsupported(*span, "3D 매개변수 곡선", 6);
+                if !matches!(axes.len(), 2 | 3) {
+                    self.err_s(*span, code::AXES, format!("출력 축은 두 개나 세 개 (준 개수 {}개)", axes.len()), "-> (x, y) 또는 -> (x, y, z)");
                     return fail;
                 }
-                if axes.len() != 2 {
-                    self.err_s(*span, code::AXES, format!("출력 축은 두 개 (준 개수 {}개)", axes.len()), "-> (x, y)");
-                    return fail;
-                }
-                if let (None, Some(expr)) = (range, expr) {
+                if let (true, Some(expr)) = (ranges.is_empty(), expr) {
                     let body = &self.src[expr.span.range()];
-                    self.err_s(expr.span, code::RANGE, "매개변수 함수에는 매개변수 범위가 필요함 (축이 없어 어디까지 그릴지 정할 수 없음)", format!("{head_src} -> ({}): {body}, 0 <= {t} <= 2*\\pi", axes.iter().map(|(a, _)| a.key.as_str()).collect::<Vec<_>>().join(", ")));
+                    let ranges = inputs.iter().map(|(i, _)| format!("0 <= {} <= 2*\\pi", i.key)).collect::<Vec<_>>();
+                    let ranges = if ranges.is_empty() { format!("0 <= {t} <= 2*\\pi") } else { ranges.join(", ") };
+                    self.err_s(expr.span, code::RANGE, "매개변수 함수에는 매개변수 범위가 필요함 (축이 없어 어디까지 그릴지 정할 수 없음)", format!("{head_src} -> ({}): {body}, {ranges}", axes.iter().map(|(a, _)| a.key.as_str()).collect::<Vec<_>>().join(", ")));
                     return fail;
                 }
                 (DefKind::Parametric, None, axes.iter().map(|(a, _)| a.clone()).collect())
@@ -53,6 +51,11 @@ impl<'s> Cx<'s> {
                 }
                 (DefKind::Polar, Some(&axes[0].0), vec![])
             }
+            (Some(Output::Axis(..)), DefBody::WithRange { range, .. }) if inputs.len() == 2 => {
+                let r = &self.src[range.span.range()];
+                self.err_s(range.span, code::RANGE, "곡면에는 범위를 붙이지 않음 (scene의 view 상자 위에서 그림)", format!("scene의 view나 clip: {r}"));
+                return fail;
+            }
             (_, DefBody::WithRange { range, .. }) => {
                 self.err_s(range.span, code::RANGE, "범위는 매개변수·극좌표 함수에만 붙음", format!("{head_src} -> (x, y): (t, f(t)), 0 <= t <= 1"));
                 return fail;
@@ -60,16 +63,35 @@ impl<'s> Cx<'s> {
             _ => return None,
         };
 
-        // Inputs: one parameter, or two axes for an equation.
-        let want = if kind == DefKind::Equation { 2 } else { 1 };
+        // Inputs: one parameter (two for a surface `s(u, v) -> (x, y, z)`), or two axes
+        // for an equation.
+        let want = match kind {
+            DefKind::Equation => 2,
+            DefKind::Parametric if outputs.len() == 3 && inputs.len() == 2 => 2,
+            _ => 1,
+        };
         if inputs.len() != want {
             match (kind, inputs.len()) {
                 (DefKind::Equation, 3) => self.unsupported(head, "3D 음함수 곡면", 6),
-                (DefKind::Parametric, 2) => self.unsupported(head, "매개변수 곡면", 6),
+                (DefKind::Parametric, 2) => self.err_s(head, code::AXES, "매개변수 곡면은 3D에만 있음 (출력 축 세 개)", format!("{head_src} -> (x, y, z)")),
                 (DefKind::Equation, n) => self.err_s(head, code::AXES, format!("방정식의 입력은 좌표축 두 개 (준 개수 {n}개)"), format!("{}(x, y)", def.name.key)),
                 (_, 0) => self.err_s(head, code::SYNTAX, "입력 변수가 없음", format!("{}(t)", def.name.key)),
                 (k, n) => self.err(head, code::AXES, format!("{}의 입력은 하나 (준 개수 {n}개)", k.word())),
             }
+            return fail;
+        }
+        // One range per parameter (polar: at most one).
+        if ranges.len() > want {
+            let extra = ranges[want];
+            let msg = if want == 1 { "범위가 하나 더 있음 (매개변수가 하나)".to_string() } else { format!("범위는 매개변수마다 하나 ({want}개)") };
+            self.err(extra.span, code::RANGE, msg);
+            return fail;
+        }
+        if kind == DefKind::Parametric && ranges.len() < want {
+            let missing: Vec<&str> = inputs.iter().map(|(i, _)| i.key.as_str()).filter(|k| !ranges.iter().any(|r| range_param(r) == Some(*k))).collect();
+            let m = missing.first().copied().unwrap_or("v");
+            let at = ranges.last().map_or(head, |r| r.span);
+            self.err_s(at, code::RANGE, format!("매개변수 곡면에는 매개변수마다 범위가 필요함 ({m}의 범위가 없음)"), format!("..., 0 <= {m} <= 1"));
             return fail;
         }
         // Axis names: distinct, usable as axes.
@@ -95,7 +117,7 @@ impl<'s> Cx<'s> {
             ),
             _ => expr.expect("not an equation").clone(),
         };
-        Some(Some(Shape { kind, inputs, consts, output, outputs, body, range }))
+        Some(Some(Shape { kind, inputs, consts, output, outputs, body, ranges }))
     }
 
     /// `(f(t), g(t))` with one number per output axis, or a vector expression of that
@@ -173,8 +195,14 @@ impl<'s> Cx<'s> {
 
     /// `lo <= t <= hi` (`<` also accepted, or written from the top with `>=` / `>`).
     /// The bounds may use constants and calls, never the parameter.
-    pub(super) fn resolve_param_range(&mut self, range: &Expr, sc: &mut Scope, info: &mut DefInfo) -> Option<ParamRange> {
-        let t = sc.inputs[0].clone();
+    /// With two parameters (a surface) the range names its parameter; the index of that
+    /// parameter is returned with the range.
+    pub(super) fn resolve_param_range(&mut self, range: &Expr, sc: &mut Scope, info: &mut DefInfo) -> Option<(usize, ParamRange)> {
+        let idx = match range_param(range) {
+            Some(p) if sc.inputs.len() > 1 => sc.inputs.iter().position(|i| i == p).unwrap_or(0),
+            _ => 0,
+        };
+        let t = sc.inputs[idx].clone();
         let src = self.src[range.span.range()].to_string();
         let sug = format!("0 <= {t} <= 2*\\pi");
         let shape = match &range.kind {
@@ -213,7 +241,7 @@ impl<'s> Cx<'s> {
             b.assign_ids();
             b.clear_spans();
         }
-        Some(ParamRange { lo, hi, src })
+        Some((idx, ParamRange { lo, hi, src }))
     }
 
     /// `family(...; lo <= k <= hi)` head: allowed kind, index name. Puts the index in scope
@@ -268,5 +296,16 @@ impl<'s> Cx<'s> {
             b.clear_spans();
         }
         Some(FamilyIndex { index: h.index.clone(), lo, lo_strict: h.lo_strict, hi, hi_strict: h.hi_strict, src: self.src[h.range_span.range()].to_string() })
+    }
+}
+
+/// The parameter a range `lo <= t <= hi` is written for (the middle name).
+fn range_param(range: &Expr) -> Option<&str> {
+    match &range.kind {
+        ExprKind::Compare { rest, .. } if rest.len() == 2 => match &rest[0].rhs.kind {
+            ExprKind::Name { name, .. } => Some(name.key.as_str()),
+            _ => None,
+        },
+        _ => None,
     }
 }

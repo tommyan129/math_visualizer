@@ -31,6 +31,8 @@ pub enum Event {
 pub enum KeyError {
     Invalid,
     RateLimited,
+    /// The key's workspace is in the trash.
+    Trashed,
 }
 
 #[derive(Debug)]
@@ -84,6 +86,9 @@ enum Cmd {
     Snapshot { workspace: String, reply: Reply<Option<Arc<Snapshot>>> },
     Navigate { workspace: String, scene: String, step: Option<u32>, reply: Reply<Result<(), String>> },
     List { reply: Reply<Vec<WorkspaceInfo>> },
+    /// `trashed`: move to / out of the trash.
+    Trash { workspace: String, trashed: bool, reply: Reply<Result<(), String>> },
+    Delete { workspace: String, reply: Reply<Result<(), String>> },
 }
 
 #[derive(Clone)]
@@ -96,6 +101,7 @@ struct Workspace {
     id: String,
     name: String,
     key_hash: Option<String>,
+    trashed_ms: Option<i64>,
     state: State,
     revision: u64,
     updated_ms: i64,
@@ -167,7 +173,7 @@ impl NavState {
 
 impl Workspace {
     fn info(&self) -> WorkspaceInfo {
-        WorkspaceInfo { id: self.id.clone(), name: self.name.clone(), has_key: self.key_hash.is_some(), revision: self.revision, updated_at: self.updated_ms }
+        WorkspaceInfo { id: self.id.clone(), name: self.name.clone(), has_key: self.key_hash.is_some(), revision: self.revision, updated_at: self.updated_ms, trashed_at: self.trashed_ms }
     }
 
     fn snapshot(&self) -> Arc<Snapshot> {
@@ -202,7 +208,7 @@ pub fn start(db: &Path, limits: Limits) -> Result<EngineHandle, String> {
             let state = normalize(&l.state, l.revision);
             let mut nav = NavState::default();
             nav.follow(&[], &state);
-            Workspace { id: l.row.id, name: l.row.name, key_hash: l.row.key_hash, state, revision: l.revision, updated_ms: l.updated_ms, last_notes: l.last_notes, nav }
+            Workspace { id: l.row.id, name: l.row.name, key_hash: l.row.key_hash, trashed_ms: l.row.trashed_ms, state, revision: l.revision, updated_ms: l.updated_ms, last_notes: l.last_notes, nav }
         })
         .collect();
     let (events, _) = broadcast::channel(64);
@@ -254,6 +260,12 @@ impl Engine {
             Cmd::Navigate { workspace, scene, step, reply } => {
                 let _ = reply.send(self.navigate(&workspace, &scene, step));
             }
+            Cmd::Trash { workspace, trashed, reply } => {
+                let _ = reply.send(self.trash(&workspace, trashed));
+            }
+            Cmd::Delete { workspace, reply } => {
+                let _ = reply.send(self.delete(&workspace));
+            }
         }
     }
 
@@ -297,6 +309,7 @@ impl Engine {
         }
         let h = keys::hash(key.trim());
         match self.workspaces.iter().position(|w| w.key_hash.as_deref() == Some(h.as_str())) {
+            Some(i) if self.workspaces[i].trashed_ms.is_some() => Err(KeyError::Trashed),
             Some(i) => Ok(i),
             None => {
                 self.limiter.fail(now);
@@ -329,7 +342,11 @@ impl Engine {
     fn locate(&mut self, at: &WsRef) -> Result<(usize, Actor), ApplyError> {
         match at {
             WsRef::Key(k) => self.find_by_key(k).map(|i| (i, Actor::Claude)).map_err(ApplyError::Key),
-            WsRef::Id(id) => self.index(id).map(|i| (i, Actor::User)).ok_or_else(|| ApplyError::Internal("작업 공간이 없음".into())),
+            WsRef::Id(id) => match self.index(id) {
+                Some(i) if self.workspaces[i].trashed_ms.is_some() => Err(ApplyError::Internal("작업 공간이 휴지통에 있음 (복원 후 사용)".into())),
+                Some(i) => Ok((i, Actor::User)),
+                None => Err(ApplyError::Internal("작업 공간이 없음".into())),
+            },
         }
     }
 
@@ -394,6 +411,7 @@ impl Engine {
             id,
             name: name.to_string(),
             key_hash: None,
+            trashed_ms: None,
             state: State::default(),
             revision: 0,
             updated_ms: now,
@@ -403,6 +421,30 @@ impl Engine {
         let info = self.workspaces.last().unwrap().info();
         let _ = self.events.send(Event::Workspaces(self.list()));
         Ok(info)
+    }
+
+    fn trash(&mut self, workspace: &str, trashed: bool) -> Result<(), String> {
+        let i = self.index(workspace).ok_or("작업 공간이 없음")?;
+        if self.workspaces[i].trashed_ms.is_some() == trashed {
+            return Ok(());
+        }
+        let now = now_ms();
+        self.store.set_trashed(workspace, trashed, now).map_err(|e| format!("기록 실패: {e}"))?;
+        self.workspaces[i].trashed_ms = trashed.then_some(now);
+        let _ = self.events.send(Event::Workspaces(self.list()));
+        Ok(())
+    }
+
+    /// Deletes for good; only a workspace in the trash.
+    fn delete(&mut self, workspace: &str) -> Result<(), String> {
+        let i = self.index(workspace).ok_or("작업 공간이 없음")?;
+        if self.workspaces[i].trashed_ms.is_none() {
+            return Err("휴지통에 있는 작업 공간만 영구 삭제할 수 있음".into());
+        }
+        self.store.delete_workspace(workspace).map_err(|e| format!("삭제 실패: {e}"))?;
+        self.workspaces.remove(i);
+        let _ = self.events.send(Event::Workspaces(self.list()));
+        Ok(())
     }
 
     fn replace_key(&mut self, workspace: &str) -> Result<String, String> {
@@ -462,6 +504,14 @@ impl EngineHandle {
     pub async fn navigate(&self, workspace: String, scene: String, step: Option<u32>) -> Result<(), String> {
         self.call(|reply| Cmd::Navigate { workspace, scene, step, reply }).await
     }
+
+    pub async fn trash(&self, workspace: String, trashed: bool) -> Result<(), String> {
+        self.call(|reply| Cmd::Trash { workspace, trashed, reply }).await
+    }
+
+    pub async fn delete(&self, workspace: String) -> Result<(), String> {
+        self.call(|reply| Cmd::Delete { workspace, reply }).await
+    }
 }
 
 #[cfg(test)]
@@ -484,6 +534,37 @@ mod tests {
         let k2 = e.replace_key(w.id.clone()).await.unwrap();
         assert!(matches!(e.apply(WsRef::Key(k1), def("g(x) -> y: x")).await, Err(ApplyError::Key(KeyError::Invalid))));
         assert!(e.apply(WsRef::Key(k2), def("g(x) -> y: x")).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn trash_restore_and_delete_survive_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("t.db");
+        let (id, key, other) = {
+            let e = start(&db, Limits::default()).unwrap();
+            let w = e.create("calc".into()).await.unwrap();
+            let o = e.create("other".into()).await.unwrap();
+            let k = e.replace_key(w.id.clone()).await.unwrap();
+            e.apply(WsRef::Key(k.clone()), def("f(x) -> y: x")).await.unwrap();
+            // Only a workspace in the trash can be deleted.
+            assert!(e.delete(w.id.clone()).await.is_err());
+            e.trash(w.id.clone(), true).await.unwrap();
+            assert!(matches!(e.apply(WsRef::Key(k.clone()), def("g(x) -> y: x")).await, Err(ApplyError::Key(KeyError::Trashed))));
+            assert!(e.apply(WsRef::Id(w.id.clone()), def("g(x) -> y: x")).await.is_err());
+            e.trash(o.id.clone(), true).await.unwrap();
+            (w.id, k, o.id)
+        };
+        let e = start(&db, Limits::default()).unwrap();
+        let list = e.list().await;
+        assert!(list.iter().all(|w| w.trashed_at.is_some()));
+        e.trash(id.clone(), false).await.unwrap();
+        assert!(e.apply(WsRef::Key(key), def("g(x) -> y: x")).await.is_ok());
+        e.delete(other.clone()).await.unwrap();
+        assert!(e.snapshot(other).await.is_none());
+        let e = start(&db, Limits::default()).unwrap();
+        let list = e.list().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!((list[0].id.as_str(), list[0].trashed_at, list[0].revision), (id.as_str(), None, 2));
     }
 
     #[tokio::test]

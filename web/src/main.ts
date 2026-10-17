@@ -2,16 +2,18 @@
 // re-derives history or scoping rules. The server holds the current scene and step.
 
 import "./style.css";
+import type { ClientRequest } from "./generated/ClientRequest";
 import type { Nav } from "./generated/Nav";
 import type { Snapshot } from "./generated/Snapshot";
 import type { UserOp } from "./generated/UserOp";
 import type { Warning } from "./generated/Warning";
 import type { WorkspaceInfo } from "./generated/WorkspaceInfo";
-import { Plot } from "./canvas/plot";
+import { Plots } from "./canvas/plots";
 import { Client, type ConnStatus } from "./net/client";
 import { Animator } from "./ui/animate";
 import { h, icon, ICONS } from "./ui/dom";
 import { Drawer } from "./ui/drawer";
+import { bound } from "./ui/keymap";
 import { Panel } from "./ui/panel";
 import { Sidebar } from "./ui/sidebar";
 import { splitter } from "./ui/split";
@@ -39,10 +41,16 @@ const client = new Client(wsUrl, {
   message(m) {
     if (m.type === "Workspaces") {
       workspaces = m.list;
-      if (!openId || !workspaces.some((w) => w.id === openId)) {
-        const recent = [...workspaces].sort((a, b) => b.updated_at - a.updated_at)[0];
+      const live = workspaces.filter((w) => w.trashed_at === null || w.trashed_at === undefined);
+      // The open workspace went to the trash (or is gone): open the most recent other one.
+      if (!openId || !live.some((w) => w.id === openId)) {
+        const recent = [...live].sort((a, b) => b.updated_at - a.updated_at)[0];
         if (recent) void openWorkspace(recent.id);
-        else openId = null;
+        else {
+          openId = null;
+          snapshot = null;
+          animator.stopAll();
+        }
       }
       render();
     } else if (m.type === "Snapshot") {
@@ -107,7 +115,7 @@ function onSnapshot(s: Snapshot): void {
   if (ours) expectNav = null;
   else if (prev && (prev.scene !== s.nav.scene || prev.step !== s.nav.step)) animator.stopAll();
   for (const k of Object.keys(s.state.constants)) if (!panel.isDragging(k) && !animator.playing(k)) plot.clearOverride(k);
-  plot.setState(s.state, s.revision, s.nav);
+  plot.setState(s.state, s.revision, s.nav, s.workspace);
   render();
   void refreshRequests();
 }
@@ -178,7 +186,15 @@ const sidebar = new Sidebar({
     if (r.type === "Key") return { key: r.key };
     return { error: r.type === "Error" ? r.message : "실패" };
   },
+  trash: (id) => workspaceOp({ type: "TrashWorkspace", workspace: id }),
+  restore: (id) => workspaceOp({ type: "RestoreWorkspace", workspace: id }),
+  remove: (id) => workspaceOp({ type: "DeleteWorkspace", workspace: id }),
 });
+
+async function workspaceOp(req: ClientRequest): Promise<string | null> {
+  const r = await client.request(req);
+  return r.type === "Error" ? r.message : null;
+}
 
 const topbar = new Topbar(() => client.reclaim());
 
@@ -217,7 +233,7 @@ const panel = new Panel({
     const e = await userOp({ type: "SetValue", constant: k, value: v });
     if (e) {
       plot.clearOverride(k);
-      if (snapshot) plot.setState(snapshot.state, snapshot.revision, snapshot.nav);
+      if (snapshot) plot.setState(snapshot.state, snapshot.revision, snapshot.nav, snapshot.workspace);
     }
     return e;
   },
@@ -282,7 +298,7 @@ document.getElementById("app")!.replaceWith(
   h("div", { class: "app" }, sidebar.el, h("div", { class: "main" }, topbar.el, h("div", { class: "body" }, panel.el, splitPanel, canvasCol))),
 );
 
-const plot = new Plot(card, {
+const plot = new Plots(card, {
   rendered(revision: number, warnings: Warning[]) {
     // -1: the first-screen check finished after the render was reported.
     if (openId && revision >= 0) client.send({ type: "Rendered", workspace: openId, revision, warnings, spans: plot.spanDims(), features: plot.featurePoints(), checks: plot.checks() });
@@ -297,10 +313,10 @@ document.addEventListener("keydown", (e) => {
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
   if (!stepbar.visible) return;
-  if (e.key === "ArrowRight" || e.key === "PageDown") {
+  if (bound("stepNext", e.code)) {
     e.preventDefault();
     void goStep(nav().step + 1);
-  } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+  } else if (bound("stepPrev", e.code)) {
     e.preventDefault();
     void goStep(nav().step - 1);
   }

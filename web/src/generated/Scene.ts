@@ -62,4 +62,8 @@ toggles: { [key in string]: boolean },
 /**
  * The user's clip adjustment; `None` = Claude's clip.
  */
-user_clip: Clip | null, order: number, version: number, };
+user_clip: Clip | null, 
+/**
+ * The user turned Claude's clip off (cleared the clip field); `user_clip` is then `None`.
+ */
+clip_off: boolean, order: number, version: number, };

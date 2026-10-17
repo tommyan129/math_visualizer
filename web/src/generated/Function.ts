@@ -24,9 +24,13 @@ output: Ident | null,
 outputs: Array<Ident>, 
 /**
  * Parameter range of a parametric function (required) or polar function (optional;
- * `None` = 0 <= θ <= 2π).
+ * `None` = 0 <= θ <= 2π). For a parametric surface, the first parameter's.
  */
 range: ParamRange | null, 
+/**
+ * Range of the second parameter of a parametric surface `s(u, v) -> (x, y, z)`.
+ */
+range2: ParamRange | null, 
 /**
  * `family(...; 0 <= k <= n)`: one copy per integer k (stage 5). Body and range use k.
  */

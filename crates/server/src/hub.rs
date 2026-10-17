@@ -194,6 +194,18 @@ impl Hub {
                 Ok(()) => ServerResponse::Ok {},
                 Err(message) => ServerResponse::Error { message },
             },
+            ClientRequest::TrashWorkspace { workspace } => match self.engine.trash(workspace, true).await {
+                Ok(()) => ServerResponse::Ok {},
+                Err(message) => ServerResponse::Error { message },
+            },
+            ClientRequest::RestoreWorkspace { workspace } => match self.engine.trash(workspace, false).await {
+                Ok(()) => ServerResponse::Ok {},
+                Err(message) => ServerResponse::Error { message },
+            },
+            ClientRequest::DeleteWorkspace { workspace } => match self.engine.delete(workspace).await {
+                Ok(()) => ServerResponse::Ok {},
+                Err(message) => ServerResponse::Error { message },
+            },
         }
     }
 

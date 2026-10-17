@@ -248,8 +248,9 @@ struct Shape<'d> {
     /// Output axes of a parametric function.
     outputs: Vec<Ident>,
     body: Expr,
-    /// `0 <= t <= 2*\pi` after the body (parametric, polar).
-    range: Option<&'d Expr>,
+    /// `0 <= t <= 2*\pi` after the body (parametric, polar); one per parameter of a
+    /// parametric surface.
+    ranges: Vec<&'d Expr>,
 }
 
 #[derive(Default)]
@@ -366,18 +367,18 @@ impl<'s> Cx<'s> {
             return None;
         }
         if kind == DefKind::Curve {
-            if inputs.len() > 1 {
-                self.unsupported(def.params.as_ref().unwrap().span, "다변수 함수", 6);
+            if inputs.len() > 2 {
+                let o = output.map_or("z", |o| o.key.as_str());
+                self.err(def.params.as_ref().unwrap().span, code::AXES, format!("함수의 입력은 하나나 둘 (입력 {}개는 그릴 좌표계가 없음; 둘이면 3D 곡면 -> {o})", inputs.len()));
                 return None;
             }
-            let input = &inputs[0].0;
             let output = output.unwrap();
-            if input.key == output.key {
+            if let Some((input, _)) = inputs.iter().find(|(i, _)| i.key == output.key) {
                 self.err_s(
                     def.name_span.to(def.output.as_ref().unwrap().span()),
                     code::AXES,
                     format!("입력 축과 출력 축이 같음 ({} -> {})", input.key, output.key),
-                    format!("{}({}) -> y", def.name.key, input.key),
+                    if inputs.len() == 2 { format!("{}({}, {}) -> z", def.name.key, inputs[0].0.key, inputs[1].0.key) } else { format!("{}({}) -> y", def.name.key, input.key) },
                 );
                 return None;
             }
@@ -391,7 +392,7 @@ impl<'s> Cx<'s> {
             self.err(*s, code::AXES, format!("'{}'는 {what} 이름으로 쓸 수 없음", i.key));
             return None;
         }
-        Some(Shape { kind, inputs, consts, output, outputs: vec![], body: body.clone(), range: None })
+        Some(Shape { kind, inputs, consts, output, outputs: vec![], body: body.clone(), ranges: vec![] })
     }
 
     fn check_names(&mut self, def: &Def, shape: &Shape) {
@@ -490,7 +491,15 @@ impl<'s> Cx<'s> {
             }
             _ => self.resolve(&mut body, &mut scope, &mut info),
         };
-        let range = shape.range.and_then(|r| self.resolve_param_range(r, &mut scope, &mut info));
+        let (mut range, mut range2) = (None, None);
+        for r in &shape.ranges {
+            let Some((i, pr)) = self.resolve_param_range(r, &mut scope, &mut info) else { continue };
+            let slot = if i == 0 { &mut range } else { &mut range2 };
+            if slot.is_some() {
+                self.err(r.span, code::RANGE, format!("매개변수 {}의 범위를 두 번 적음", scope.inputs[i]));
+            }
+            *slot = Some(pr);
+        }
         let family = match (&def.family, family_ok) {
             (Some(h), true) => {
                 scope.indices.pop();
@@ -602,6 +611,7 @@ impl<'s> Cx<'s> {
             output: shape.output.cloned(),
             outputs: shape.outputs.clone(),
             range,
+            range2,
             family,
             feature: self.pending_feature.take(),
             calc: self.pending_calc.take(),
@@ -1496,6 +1506,7 @@ pub enum UserOp {
         done: bool,
     },
     /// The user's clip for a scene as DSL text; `None` = back to Claude's clip.
+    /// `None`: back to Claude's clip; `Some("")`: no clip; otherwise the user's clip.
     SetClip { scene: String, src: Option<String> },
 }
 
@@ -1507,7 +1518,14 @@ impl UserOp {
             UserOp::SetValue { constant, value } => format!("slider {constant} = {}", fmt_num(*value)),
             UserOp::SetRange { constant, min, max } => format!("range {constant}: {} .. {}", fmt_num(*min), fmt_num(*max)),
             UserOp::SetRequestDone { number, done } => format!("req #{number} {}", if *done { "처리됨" } else { "대기" }),
-            UserOp::SetClip { scene, src } => format!("clip scene({scene}): {}", src.as_deref().unwrap_or("처음 값")),
+            UserOp::SetClip { scene, src } => format!(
+                "clip scene({scene}): {}",
+                match src.as_deref().map(str::trim) {
+                    None => "처음 값",
+                    Some("") => "끔",
+                    Some(t) => t,
+                }
+            ),
         }
     }
 }
@@ -1532,12 +1550,14 @@ pub fn apply_user_op(state: &State, op: &UserOp, seq: u64) -> Result<Applied, St
             s.toggles.insert(target.clone(), *visible);
         }
         UserOp::SetClip { scene, src } => {
+            let off = src.as_deref().is_some_and(|t| t.trim().is_empty());
             let clip = match src {
-                None => None,
-                Some(text) => Some(scene::user_clip(&new, scene, text)?),
+                Some(text) if !off => Some(scene::user_clip(&new, scene, text)?),
+                _ => None,
             };
             let s = new.scenes.get_mut(scene).ok_or_else(|| format!("scene({scene})이 없음"))?;
             s.user_clip = clip;
+            s.clip_off = off;
         }
         UserOp::SetRequestDone { number, done } => {
             let r = new.requests.get_mut(number).ok_or_else(|| format!("요청사항 #{number}이 없음"))?;
