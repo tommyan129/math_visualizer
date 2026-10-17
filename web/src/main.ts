@@ -209,6 +209,7 @@ const animator = new Animator({
     panel.endPreview(k);
     render();
   },
+  integer: (k) => snapshot?.state.constants[k]?.integer ?? false,
 });
 
 const panel = new Panel({

@@ -8,4 +8,9 @@ duration: number,
 /**
  * Back and forth until the user grabs the slider or leaves the step.
  */
-looped: boolean, };
+looped: boolean, 
+/**
+ * Start to end at constant speed, over and over (jumps back to the start),
+ * until the user grabs the slider or leaves the step.
+ */
+repeat: boolean, };

@@ -8591,7 +8591,8 @@
               "from": 1.0,
               "to": 3.0,
               "duration": 0.5,
-              "looped": true
+              "looped": true,
+              "repeat": false
             }
           ]
         }
@@ -8920,7 +8921,8 @@
               "from": 1.0,
               "to": 3.0,
               "duration": 0.5,
-              "looped": true
+              "looped": true,
+              "repeat": false
             },
             "view": {
               "id": 0,

@@ -43,7 +43,7 @@ describe("scene model", () => {
 
   it("step caches: values, animate, view and notes", () => {
     expect(sc.steps[1]!.values).toEqual({ a: 2 });
-    expect(sc.steps[2]!.animate).toEqual([{ constant: "a", from: 1, to: 3, duration: 0.5, looped: true }]);
+    expect(sc.steps[2]!.animate).toEqual([{ constant: "a", from: 1, to: 3, duration: 0.5, looped: true, repeat: false }]);
     expect(sc.steps[2]!.changed_view).toBe(true);
     const segs = sc.steps[1]!.note[0]!.segs.map((g) => g.type);
     expect(segs).toEqual(["Def", "Text", "Tex", "Text"]);

@@ -38,7 +38,7 @@ fn scene_with_steps_caches_every_step() {
     assert!(matches!(&segs[2], NoteSeg::Tex { tex } if tex == "\\alpha"));
     // Step 2: animate end value is the step's value; note appended from a variable.
     let s2 = &sc.steps[2];
-    assert_eq!(s2.animate, vec![Animate { constant: "a".into(), from: 1.0, to: 3.0, duration: 0.5, looped: true }]);
+    assert_eq!(s2.animate, vec![Animate { constant: "a".into(), from: 1.0, to: 3.0, duration: 0.5, looped: true, repeat: false }]);
     assert_eq!(s2.values["a"], 3.0);
     assert!(s2.changed_view && !s1.changed_view);
     assert_eq!(s2.note.len(), 2);
@@ -113,6 +113,7 @@ fn scene_field_errors() {
     assert_eq!(c("    step:\n        set: zz = 1\n"), vec![code::UNDECLARED]);
     assert_eq!(c("    step:\n        animate: a = 0 -> 1, 0s\n"), vec![code::STEP]);
     assert_eq!(c("    step:\n        set: a = 1\n        animate: a = 0 -> 1\n"), vec![code::STEP]);
+    assert_eq!(c("    step:\n        animate: a = 0 -> 1, loop, repeat\n"), vec![code::STEP]);
     assert_eq!(c("    step:\n        note: \"a\"\n        note: \"b\"\n"), vec![code::DUPLICATE]);
 }
 

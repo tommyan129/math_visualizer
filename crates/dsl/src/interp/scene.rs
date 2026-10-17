@@ -624,10 +624,12 @@ impl<'s> Cx<'s> {
                                 }
                             },
                         };
-                        if ss.set.iter().any(|s| s.name.key == a.name.key) {
+                        if a.looped && a.repeat {
+                            self.err(a.name_span, code::STEP, "loop(왕복)와 repeat(되풀이) 중 하나만 씀");
+                        } else if ss.set.iter().any(|s| s.name.key == a.name.key) {
                             self.err(a.name_span, code::STEP, format!("'{}'를 같은 step의 set과 animate에 같이 씀", a.name.key));
                         } else if let (Some(from), Some(to), Some(duration)) = (from, to, duration) {
-                            ss.animate = Some(AnimateSource { name: a.name.clone(), from, to, duration, looped: a.looped });
+                            ss.animate = Some(AnimateSource { name: a.name.clone(), from, to, duration, looped: a.looped, repeat: a.repeat });
                         }
                     }
                     FieldValue::Expr(e) => {
@@ -803,7 +805,7 @@ impl<'s> Cx<'s> {
                 if fits(&a.name.key, a.from) && fits(&a.name.key, a.to) {
                     next.values.insert(a.name.key.clone(), a.to);
                     next.changed_values.push(a.name.key.clone());
-                    next.animate.push(Animate { constant: a.name.key.clone(), from: a.from, to: a.to, duration: a.duration, looped: a.looped });
+                    next.animate.push(Animate { constant: a.name.key.clone(), from: a.from, to: a.to, duration: a.duration, looped: a.looped, repeat: a.repeat });
                     deps.insert(a.name.key.clone());
                 } else {
                     removed.push((a.name.key.clone(), place("animate")));

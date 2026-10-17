@@ -113,6 +113,7 @@ pub struct AnimateItem {
     /// Seconds as written (`2s`, `0.5s`).
     pub duration: Option<(String, Span)>,
     pub looped: bool,
+    pub repeat: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

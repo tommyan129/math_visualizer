@@ -206,14 +206,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// `n = 4 -> 64`, then optionally `, 2s` and `, loop`.
+    /// `n = 4 -> 64`, then optionally `, 2s` and `, loop` or `, repeat`.
     fn animate_item(&mut self) -> PResult<AnimateItem> {
         let (name, name_span) = self.name()?;
         self.expect(Tok::Eq, "'='")?;
         let from = self.expr()?;
         self.expect(Tok::Arrow, "'->' (시작값 -> 끝값)")?;
         let to = self.expr()?;
-        let mut item = AnimateItem { name, name_span, from, to, duration: None, looped: false };
+        let mut item = AnimateItem { name, name_span, from, to, duration: None, looped: false, repeat: false };
         while self.eat(Tok::Comma) {
             let t = self.toks[self.pos];
             let next = self.toks.get(self.pos + 1).copied();
@@ -227,7 +227,11 @@ impl<'a> Parser<'a> {
                     self.bump();
                     item.looped = true;
                 }
-                _ => return self.unexpected("재생 시간(2s) 또는 loop"),
+                (Tok::Ident, _) if self.peek_text() == "repeat" && !item.repeat => {
+                    self.bump();
+                    item.repeat = true;
+                }
+                _ => return self.unexpected("재생 시간(2s), loop 또는 repeat"),
             }
         }
         // `n = 4 -> 64` written as one expression would have been caught above; a
@@ -288,11 +292,13 @@ mod tests {
 
     #[test]
     fn animate_options_are_optional() {
-        let sc = scene("scene(1):\n    space: 2D(x, y)\n    step:\n        animate: a = 0 -> 1.5\n    step:\n        animate: a = 1.5 -> 0, loop\n");
+        let sc = scene("scene(1):\n    space: 2D(x, y)\n    step:\n        animate: a = 0 -> 1.5\n    step:\n        animate: a = 1.5 -> 0, loop\n    step:\n        animate: a = 0 -> 1, repeat, 3s\n");
         let FieldValue::Animate(a) = &sc.steps[0].fields[0].value else { panic!() };
-        assert!(a.duration.is_none() && !a.looped);
+        assert!(a.duration.is_none() && !a.looped && !a.repeat);
         let FieldValue::Animate(a) = &sc.steps[1].fields[0].value else { panic!() };
-        assert!(a.duration.is_none() && a.looped);
+        assert!(a.duration.is_none() && a.looped && !a.repeat);
+        let FieldValue::Animate(a) = &sc.steps[2].fields[0].value else { panic!() };
+        assert!(a.duration.as_ref().map(|d| d.0.as_str()) == Some("3") && !a.looped && a.repeat);
     }
 
     #[test]
@@ -326,6 +332,7 @@ mod tests {
         // Missing sign in a step show; bad animate tail; step outside a scene.
         assert_eq!(errs("scene(1):\n    space: 2D(x, y)\n    step:\n        show: f\n"), vec![code::SYNTAX]);
         assert_eq!(errs("scene(1):\n    space: 2D(x, y)\n    step:\n        animate: n = 4 -> 64, fast\n"), vec![code::SYNTAX]);
+        assert_eq!(errs("scene(1):\n    space: 2D(x, y)\n    step:\n        animate: n = 4 -> 64, repeat, repeat\n"), vec![code::SYNTAX]);
         assert_eq!(errs("step:\n    show: +f\n"), vec![code::SCENE]);
         // Scene number, missing block, nested step.
         assert_eq!(errs("scene(0):\n    space: 2D(x, y)\n"), vec![code::SYNTAX]);
